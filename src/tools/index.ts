@@ -11,6 +11,7 @@ import { SearchInFilesSchema, handleSearchInFiles } from './files.js';
 import { GetLatestLogSchema, handleGetLatestLog } from './logs.js';
 
 // New tools
+import { GetAssetInfoSchema, ReimportAssetSchema, handleGetAssetInfo, handleReimportAsset } from './assetInfo.js';
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
 import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyActor } from './sceneWrite.js';
@@ -121,6 +122,20 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Updates an existing actor in a .scene file by ID or name. Can change display name, active state, and position. Backs up the scene before writing.',
       inputSchema: zodToJsonSchema(ModifyActorSchema),
       handler: (a, c) => handleModifyActor(a as Parameters<typeof handleModifyActor>[0], c),
+    },
+
+    // ── Asset Info ────────────────────────────────────────────────────────────
+    {
+      name: 'get_asset_info',
+      description: 'Reads asset metadata from any file in Content/. For .flax binary assets extracts TypeName (e.g. SkinnedModel, Model, MaterialInstance) and GUID from the CFWF header. For .scene/.json returns full parsed data.',
+      inputSchema: zodToJsonSchema(GetAssetInfoSchema),
+      handler: (a, c) => handleGetAssetInfo(a as Parameters<typeof handleGetAssetInfo>[0], c),
+    },
+    {
+      name: 'reimport_asset',
+      description: 'Shows current asset type and, if open_editor:true, launches FlaxEditor so you can reimport manually. NOTE: headless reimport is not supported by Flax CLI — the actual reimport must be done in the editor.',
+      inputSchema: zodToJsonSchema(ReimportAssetSchema),
+      handler: (a, c) => handleReimportAsset(a as Parameters<typeof handleReimportAsset>[0], c),
     },
 
     // ── Assets ────────────────────────────────────────────────────────────────
