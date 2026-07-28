@@ -152,11 +152,13 @@ export class FileRpcClient {
       throw new BridgeRpcError('BRIDGE_UNAVAILABLE', `Editor bridge is unavailable: ${bridge.reason}.`, { reason: bridge.reason });
     }
     const bridgeVersion = Number(bridge.bridgeVersion);
-    if (bridge.protocolVersion !== '1' || !Number.isInteger(bridgeVersion) || bridgeVersion < 5) {
+    const phase2Method = /^(?:code|play|log|capture|runtime)\./.test(method);
+    const minimumBridgeVersion = phase2Method ? 6 : 5;
+    if (bridge.protocolVersion !== '1' || !Number.isInteger(bridgeVersion) || bridgeVersion < minimumBridgeVersion) {
       throw new BridgeRpcError(
         'BRIDGE_UNSUPPORTED',
         'Editor bridge protocol is not compatible with this server.',
-        { bridgeVersion: bridge.bridgeVersion, protocolVersion: bridge.protocolVersion },
+        { bridgeVersion: bridge.bridgeVersion, protocolVersion: bridge.protocolVersion, minimumBridgeVersion },
       );
     }
 

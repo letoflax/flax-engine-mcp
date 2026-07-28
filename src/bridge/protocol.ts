@@ -37,12 +37,37 @@ export type EditBridgeMethod =
   | 'edit.undo'
   | 'edit.redo';
 
+export type CodeBridgeMethod =
+  | 'code.status'
+  | 'code.compile_start'
+  | 'code.diagnostics'
+  | 'code.generate_project_start'
+  | 'code.generate_project_status';
+
+export type PlayBridgeMethod =
+  | 'play.status'
+  | 'play.start_scenes'
+  | 'play.start_game'
+  | 'play.stop'
+  | 'play.pause'
+  | 'play.resume'
+  | 'play.step';
+
+export type ObservabilityBridgeMethod =
+  | 'log.query'
+  | 'capture.start'
+  | 'capture.status'
+  | 'runtime.inspect_actor';
+
 export type BridgeMethod =
   | 'status'
   | SceneBridgeMethod
   | ActorBridgeMethod
   | ScriptBridgeMethod
-  | EditBridgeMethod;
+  | EditBridgeMethod
+  | CodeBridgeMethod
+  | PlayBridgeMethod
+  | ObservabilityBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */
 export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {

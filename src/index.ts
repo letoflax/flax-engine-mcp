@@ -3,12 +3,18 @@ import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import { createProjectContext } from './projectContext.js';
 import { buildToolRegistry, ToolDefinition } from './tools/index.js';
 import { finalizeToolResponse, toolError, ToolDomainError, ToolResponse } from './errors.js';
 import { ProjectMeta } from './projectContext.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
+import { listFlaxResources, readFlaxResource } from './resources.js';
 
 export function parseProjectPath(argv = process.argv): string {
   const idx = argv.indexOf('--project-path');
@@ -63,7 +69,7 @@ async function main(): Promise<void> {
 
   const server = new Server(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {}, resources: {} } }
   );
 
   const tools = buildToolRegistry(ctx);
@@ -82,6 +88,9 @@ async function main(): Promise<void> {
     const { name, arguments: args } = request.params;
     return dispatchToolCall(tools, name, args, ctx);
   });
+
+  server.setRequestHandler(ListResourcesRequestSchema, async () => listFlaxResources(ctx));
+  server.setRequestHandler(ReadResourceRequestSchema, async request => readFlaxResource(request.params.uri, ctx));
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

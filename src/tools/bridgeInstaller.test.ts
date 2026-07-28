@@ -45,7 +45,7 @@ test('dry-run previews a bridge install without creating files or directories', 
   }
 });
 
-test('install writes only the fixed target and reports bundled/installed metadata', async () => {
+test('install uses the bootstrap Game fallback and reports bundled/installed metadata', async () => {
   const f = await fixture();
   try {
     const result = await installEditorBridge(
@@ -64,6 +64,41 @@ test('install writes only the fixed target and reports bundled/installed metadat
   } finally {
     await f.cleanup();
   }
+});
+
+test('install detects the module referenced by the editor target', async () => {
+  const f = await fixture();
+  try {
+    const moduleDir = path.join(f.root, 'Source', 'Sample');
+    await fs.mkdir(moduleDir, { recursive: true });
+    await fs.writeFile(path.join(moduleDir, 'Sample.Build.cs'), 'public class Sample { }\n');
+    await fs.writeFile(path.join(f.root, 'Source', 'FixtureEditorTarget.Build.cs'),
+      'public class FixtureEditorTarget { void Init() { Modules.Add(nameof(Sample)); } }\n');
+    const result = await installEditorBridge(InstallEditorBridgeSchema.parse({}), f.ctx, f.bundled);
+    assert.equal(result.isError, undefined);
+    const target = path.join(moduleDir, 'MCP', 'FlaxMcpBridge.cs');
+    assert.equal(await fs.readFile(target, 'utf8'), f.content);
+    assert.equal((result.structuredContent as any).data.module, 'Sample');
+    assert.equal((result.structuredContent as any).data.target, 'Source/Sample/MCP/FlaxMcpBridge.cs');
+    await assert.rejects(fs.access(f.target));
+  } finally { await f.cleanup(); }
+});
+
+test('ambiguous modules require an explicit module selection', async () => {
+  const f = await fixture();
+  try {
+    for (const module of ['Client', 'Server']) {
+      const directory = path.join(f.root, 'Source', module);
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, `${module}.Build.cs`), `public class ${module} { }\n`);
+    }
+    let result = await installEditorBridge(InstallEditorBridgeSchema.parse({}), f.ctx, f.bundled);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'VALIDATION_FAILED');
+    result = await installEditorBridge(InstallEditorBridgeSchema.parse({ module: 'Client' }), f.ctx, f.bundled);
+    assert.equal(result.isError, undefined);
+    assert.equal((result.structuredContent as any).data.target, 'Source/Client/MCP/FlaxMcpBridge.cs');
+  } finally { await f.cleanup(); }
 });
 
 test('replacement requires force or the matching installed hash', async () => {
@@ -96,14 +131,14 @@ test('replacement requires force or the matching installed hash', async () => {
   }
 });
 
-test('the packaged bridge resolver finds the real version 5 artifact', async () => {
+test('the packaged bridge resolver finds the real version 6 artifact', async () => {
   const f = await fixture();
   try {
     const bundledPath = await locateBundledEditorBridge();
     assert.equal(path.basename(bundledPath), 'FlaxMcpBridge.cs');
     const info = await inspectEditorBridgeInstallation(f.ctx);
     assert.equal(info.bundled.available, true);
-    assert.equal(info.bundled.version, '5');
+    assert.equal(info.bundled.version, '6');
     assert.match(info.bundled.hash ?? '', /^[a-f0-9]{64}$/);
     assert.equal(info.installed.present, false);
   } finally {

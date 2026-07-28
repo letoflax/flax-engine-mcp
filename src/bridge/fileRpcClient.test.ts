@@ -129,6 +129,17 @@ test('file RPC rejects an incompatible bridge protocol before writing a request'
   }
 });
 
+test('Phase 2 methods require bridge version 6 while Phase 1 remains compatible with version 5', async () => {
+  const f = await fixture({ BridgeVersion: 5, ProtocolVersion: 1 });
+  try {
+    const client = new FileRpcClient(await createProjectContext(f.root), { deadlineMs: 100 });
+    await expectBridgeError(() => client.call('code.status', {}), 'BRIDGE_UNSUPPORTED');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('file RPC requires a token and rejects a mismatched response id', async () => {
   const missingToken = await fixture();
   const mismatch = await fixture();

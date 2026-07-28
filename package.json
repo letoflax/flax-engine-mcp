@@ -1,6 +1,6 @@
 {
   "name": "flax-engine-mcp",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "MCP server for Flax Engine game projects",
   "type": "module",
   "bin": {
@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test dist/contracts.test.js dist/tools/serverStatus.test.js dist/tools/readTools.test.js dist/tools/scripts.test.js dist/tools/bridgeInstaller.test.js dist/bridge/fileRpcClient.test.js dist/tools/editorLive.test.js dist/tools/sceneWrite.test.js",
+    "test": "npm run build && node --test dist/contracts.test.js dist/resources.test.js dist/tools/serverStatus.test.js dist/tools/readTools.test.js dist/tools/scripts.test.js dist/tools/bridgeInstaller.test.js dist/bridge/fileRpcClient.test.js dist/tools/editorLive.test.js dist/tools/sceneWrite.test.js dist/tools/liveObservability.test.js dist/tools/runtimeLive.test.js dist/tools/legacyCompatibility.test.js",
     "dev": "tsc --watch",
     "start": "node dist/index.js"
   },

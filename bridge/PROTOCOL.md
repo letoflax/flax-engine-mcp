@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (v5 / v1)
+# Flax MCP Editor Bridge protocol (bridge v6 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 5, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 6, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -28,16 +28,58 @@ Successful `resultJson` payload DTOs use PascalCase fields. Status results omit 
 project path, and scene paths are project-relative; the heartbeat's project path
 exists only so the local client can reject a bridge from another project.
 
-Allowed methods: `status`, `scene.list_loaded`, `scene.get_tree`, `scene.save`,
+Bridge v5 methods remain available: `status`, `scene.list_loaded`, `scene.get_tree`, `scene.save`,
 `project.save_all`, actor CRUD/find/duplicate/reparent, narrowly scoped script
 attach/detach/instance read/update, and `edit.undo`/`edit.redo`. The script update
 surface only permits `Enabled`; arbitrary reflection-based property changes are
 not exposed. `actor.update` permits only name, active, position, scale, and Euler
 angles. The public Flax 1.12 API does not expose a reliable transaction/rollback
-primitive for arbitrary operations, so bridge v5 advertises `TransactionsSupported:false`
+primitive for arbitrary operations, so the bridge advertises `TransactionsSupported:false`
 and intentionally does not claim an atomic batch operation.
 Recursive actor-tree results are bounded to 64 levels and 2,000 actors; larger
 trees fail with `RESPONSE_TOO_LARGE` instead of exhausting the editor or client.
+
+Bridge v6 adds:
+
+- `code.status`, `code.compile_start`, `code.diagnostics`,
+  `code.generate_project_start`, and `code.generate_project_status`.
+- `play.status`, `play.start_scenes`, `play.start_game`, `play.stop`,
+  `play.pause`, `play.resume`, and `play.step`.
+- `log.query`, `capture.start`, `capture.status`, and
+  `runtime.inspect_actor`.
+
+Compilation and project generation use operation IDs and persisted state below
+`Cache/MCP`. Starting an operation is a short request; clients poll status
+instead of holding one RPC open. Script compilation may unload and recreate the
+bridge assembly, heartbeat, and session token. A client must never blindly
+repeat `code.compile_start` after losing its response: v6 accepts a caller-selected
+operation ID and may adopt only that exact persisted operation. Successful completion
+requires script reload to finish and the editor to be ready. Diagnostics are
+tied to the latest operation, bounded and paginated; file paths are
+project-relative.
+
+Play start is rejected while compilation is active, after a failed compile
+unless explicitly overridden, or with edited scenes unless explicitly allowed.
+Flax 1.12 headless editors also reject play start because their game-window
+cleanup path cannot reliably leave play mode; status, compile, diagnostics, and
+log queries remain available headlessly.
+Status includes a play-session ID, lifecycle state, mode, duration, dirty-scene
+state, and an informational editor frame counter. Frame stepping is acknowledged
+by Flax's running-to-repaused lifecycle before another step is requested. Stop is
+idempotent. Runtime actor inspection is read-only, play-mode-only, depth-bounded,
+and exposes only allowlisted actor/script metadata.
+
+`log.query` reads a bounded in-memory ring using sequence numbers, severity,
+category, play-session, and substring filters. Entries are correlated with the
+active compilation/play session, and log text is redacted before it leaves the
+bridge. `Tail:true` requests the newest matching entries; ordinary sequence
+scans remain ascending and paginated.
+
+Viewport capture is play-mode-only and unavailable in headless mode. It writes a
+PNG below `Cache/MCP/captures`; status returns an opaque capture ID, never an
+arbitrary caller path. Files expire after 24 hours and the Node server exposes
+them through `flax://capture/<id>` with bounded MCP `resources/list` and
+`resources/read` handlers.
 
 `actor.duplicate` delegates to Flax's undoable editor command. Flax 1.12 does not
 return the new actor ID from that public command, so the response reports

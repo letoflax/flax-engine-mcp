@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { ProjectMeta, walkDir, safeReadFile } from '../projectContext.js';
 import { toolResult, toolError, ToolResponse } from '../errors.js';
 import { readTextFile } from '../textEncoding.js';
+import { callEditorBridge } from '../bridge/fileRpcClient.js';
+import { BridgeMethod } from '../bridge/protocol.js';
+import { inspectEditorBridge } from './serverStatus.js';
 
 export const GetProjectSummarySchema = z.object({
   sections: z.array(z.enum(['scripts', 'scenes', 'assets', 'settings', 'docs']))
@@ -129,11 +132,54 @@ const WARNING_PATTERNS = [
   /\[Warning\]/,
 ];
 
+const COMPILER_ERRORS_DEPRECATION = 'Deprecated legacy tool: delegated to live code diagnostics. Prefer code_get_diagnostics.';
+
+async function hasPhase2Bridge(ctx: ProjectMeta): Promise<boolean> {
+  const bridge = await inspectEditorBridge(ctx);
+  return bridge.connected && bridge.protocolVersion === '1' && Number(bridge.bridgeVersion) >= 6;
+}
+
+function diagnosticRows(value: unknown): Record<string, unknown>[] {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const entries = source.Entries ?? source.entries;
+  return Array.isArray(entries) ? entries.filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object' && !Array.isArray(entry)) : [];
+}
+
+function diagnosticLine(entry: Record<string, unknown>): string {
+  const line = entry.Line ?? entry.line;
+  const message = String(entry.Message ?? entry.message ?? 'Unknown compiler diagnostic.').trim();
+  return `  L${typeof line === 'number' && line > 0 ? line : '?'}: ${message}`;
+}
+
+async function getLiveCompilerErrors(args: z.infer<typeof GetCompilerErrorsSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  const response = await callEditorBridge(ctx, 'code.diagnostics' as BridgeMethod, {
+    Severities: args.include_warnings ? ['error', 'warning'] : ['error'],
+    MaxResults: 200,
+  });
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  for (const entry of diagnosticRows(response.data)) {
+    const level = String(entry.Level ?? entry.level ?? '').toLowerCase();
+    if (level === 'error' || level === 'fatal') errors.push(diagnosticLine(entry));
+    else if (args.include_warnings && level === 'warning') warnings.push(diagnosticLine(entry));
+  }
+  const out: string[] = ['Log: live editor diagnostics', ''];
+  if (errors.length === 0 && warnings.length === 0) out.push('No compilation errors or warnings found.');
+  else {
+    if (errors.length) out.push(`## Errors (${errors.length})`, ...errors, '');
+    if (warnings.length) out.push(`## Warnings (${warnings.length})`, ...warnings, '');
+  }
+  const warningsOut = [COMPILER_ERRORS_DEPRECATION, ...response.warnings];
+  if (args.log_file) warningsOut.push('log_file is ignored while using live editor diagnostics.');
+  return toolResult(out.join('\n'), { mode: 'editor-connected', data: { source: 'live_editor_diagnostics', errors: errors.length, warnings: warnings.length }, warnings: warningsOut });
+}
+
 export async function handleGetCompilerErrors(
   args: z.infer<typeof GetCompilerErrorsSchema>,
   ctx: ProjectMeta
 ): Promise<ToolResponse> {
   try {
+    if (await hasPhase2Bridge(ctx)) return await getLiveCompilerErrors(args, ctx);
     let logFile: string | null = null;
 
     const entries = (await fs.readdir(ctx.logsDir).catch(() => [] as string[]))

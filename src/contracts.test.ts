@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { createProjectContext } from './projectContext.js';
 import { buildToolRegistry } from './tools/index.js';
 import { dispatchToolCall } from './index.js';
+import { SERVER_VERSION } from './version.js';
 
 const projectPath = await mkdtemp(path.join(os.tmpdir(), 'flax-mcp-contract-'));
 after(async () => rm(projectPath, { recursive: true, force: true }));
@@ -20,6 +21,15 @@ await writeFile(path.join(projectPath, 'Source', 'Game', 'Fixture.cs'), 'public 
 
 const ctx = await createProjectContext(projectPath);
 const tools = buildToolRegistry(ctx);
+
+test('release registry has a unique, version-aligned 64-tool contract', async () => {
+  const names = tools.map(tool => tool.name);
+  const packageMetadata = JSON.parse(await readFile(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string };
+  assert.equal(tools.length, 64);
+  assert.equal(new Set(names).size, tools.length);
+  assert.equal(SERVER_VERSION, '1.3.0');
+  assert.equal(packageMetadata.version, SERVER_VERSION);
+});
 
 test('dispatch applies Zod defaults and returns a structured envelope', async () => {
   const result = await dispatchToolCall(tools, 'list_assets', undefined, ctx);
