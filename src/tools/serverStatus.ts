@@ -36,9 +36,11 @@ interface BridgeHeartbeat {
   timestamp?: unknown;
   Timestamp?: unknown;
   editorVersion?: unknown;
+  EditorVersion?: unknown;
   bridgeVersion?: unknown;
   BridgeVersion?: unknown;
   protocolVersion?: unknown;
+  ProtocolVersion?: unknown;
   endpoint?: unknown;
   [key: string]: unknown;
 }
@@ -168,9 +170,9 @@ export async function inspectEditorBridge(
     reason: 'project_mismatch',
     pid,
     heartbeatAgeMs: age,
-    editorVersion: stringValue(heartbeat.editorVersion),
+    editorVersion: versionValue(heartbeat.editorVersion ?? heartbeat.EditorVersion),
     bridgeVersion: versionValue(heartbeat.bridgeVersion ?? heartbeat.BridgeVersion),
-    protocolVersion: stringValue(heartbeat.protocolVersion),
+    protocolVersion: versionValue(heartbeat.protocolVersion ?? heartbeat.ProtocolVersion),
     endpoint: stringValue(heartbeat.endpoint),
   };
 

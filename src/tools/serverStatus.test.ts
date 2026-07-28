@@ -52,7 +52,7 @@ test('bridge connects only for a matching, live, fresh heartbeat', async () => {
   }
 });
 
-test('bridge accepts the PascalCase version 4 heartbeat shape', async () => {
+test('bridge accepts the PascalCase bridge heartbeat shape', async () => {
   const f = await fixture();
   const now = Date.now();
   try {
@@ -60,12 +60,16 @@ test('bridge accepts the PascalCase version 4 heartbeat shape', async () => {
     await fs.writeFile(path.join(f.root, 'Cache', 'MCP', 'bridge.json'), JSON.stringify({
       Pid: 4321,
       Project: f.root,
-      BridgeVersion: 4,
+      BridgeVersion: 5,
+      ProtocolVersion: 1,
+      EditorVersion: '1.12.0',
       Timestamp: new Date(now).toISOString(),
     }));
     const status = await inspectEditorBridge(await createProjectContext(f.root), now, () => true);
     assert.equal(status.connected, true);
-    assert.equal(status.bridgeVersion, '4');
+    assert.equal(status.bridgeVersion, '5');
+    assert.equal(status.protocolVersion, '1');
+    assert.equal(status.editorVersion, '1.12.0');
     assert.equal(status.pid, 4321);
   } finally {
     await f.cleanup();

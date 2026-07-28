@@ -27,6 +27,48 @@ import {
   handleEditorGetStatus,
   handleGetServerCapabilities,
 } from './serverStatus.js';
+import {
+  GetEditorBridgeInstallationSchema,
+  InstallEditorBridgeSchema,
+  handleGetEditorBridgeInstallation,
+  handleInstallEditorBridge,
+} from './bridgeInstaller.js';
+import {
+  ActorCreateSchema,
+  ActorDeleteSchema,
+  ActorDuplicateSchema,
+  ActorFindSchema,
+  ActorGetSchema,
+  ActorReparentSchema,
+  ActorUpdateSchema,
+  EditRedoSchema,
+  EditUndoSchema,
+  ProjectSaveAllSchema,
+  SceneGetTreeSchema,
+  SceneListLoadedSchema,
+  SceneSaveSchema,
+  ScriptAttachSchema,
+  ScriptDetachSchema,
+  ScriptInstanceGetSchema,
+  ScriptInstanceUpdateSchema,
+  handleActorCreate,
+  handleActorDelete,
+  handleActorDuplicate,
+  handleActorFind,
+  handleActorGet,
+  handleActorReparent,
+  handleActorUpdate,
+  handleEditRedo,
+  handleEditUndo,
+  handleProjectSaveAll,
+  handleSceneGetTree,
+  handleSceneListLoaded,
+  handleSceneSave,
+  handleScriptAttach,
+  handleScriptDetach,
+  handleScriptInstanceGet,
+  handleScriptInstanceUpdate,
+} from './editorLive.js';
 
 export interface ToolDefinition {
   name: string;
@@ -42,6 +84,25 @@ export interface ToolDefinition {
 const INPUT_SCHEMAS: Record<string, z.AnyZodObject> = {
   get_server_capabilities: GetServerCapabilitiesSchema,
   editor_get_status: EditorGetStatusSchema,
+  get_editor_bridge_installation: GetEditorBridgeInstallationSchema,
+  install_editor_bridge: InstallEditorBridgeSchema,
+  scene_list_loaded: SceneListLoadedSchema,
+  scene_get_tree: SceneGetTreeSchema,
+  scene_save: SceneSaveSchema,
+  project_save_all: ProjectSaveAllSchema,
+  actor_get: ActorGetSchema,
+  actor_find: ActorFindSchema,
+  actor_create: ActorCreateSchema,
+  actor_update: ActorUpdateSchema,
+  actor_delete: ActorDeleteSchema,
+  actor_duplicate: ActorDuplicateSchema,
+  actor_reparent: ActorReparentSchema,
+  script_attach: ScriptAttachSchema,
+  script_detach: ScriptDetachSchema,
+  script_instance_get: ScriptInstanceGetSchema,
+  script_instance_update: ScriptInstanceUpdateSchema,
+  edit_undo: EditUndoSchema,
+  edit_redo: EditRedoSchema,
   get_project_info: GetProjectInfoSchema,
   get_game_settings: GetGameSettingsSchema,
   get_project_summary: GetProjectSummarySchema,
@@ -93,13 +154,32 @@ const WRITE_TOOL_NAMES = new Set([
   'create_actor',
   'modify_actor',
   'reimport_asset',
+  'install_editor_bridge',
+  'scene_save',
+  'project_save_all',
+  'actor_create',
+  'actor_update',
+  'actor_delete',
+  'actor_duplicate',
+  'actor_reparent',
+  'script_attach',
+  'script_detach',
+  'script_instance_update',
+  'edit_undo',
+  'edit_redo',
 ]);
 
 function annotationsFor(name: string): ToolAnnotations {
   const writes = WRITE_TOOL_NAMES.has(name);
   return {
     readOnlyHint: !writes,
-    destructiveHint: name === 'write_script' || name === 'apply_script_patch' || name === 'create_actor' || name === 'modify_actor',
+    destructiveHint: name === 'write_script' ||
+      name === 'apply_script_patch' ||
+      name === 'create_actor' ||
+      name === 'modify_actor' ||
+      name === 'install_editor_bridge' ||
+      name === 'actor_delete' ||
+      name === 'script_detach',
     idempotentHint: !writes,
     openWorldHint: false,
   };
@@ -118,6 +198,120 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Reports whether a matching, live, recently heartbeating Flax Editor Bridge is connected.',
       inputSchema: zodToJsonSchema(EditorGetStatusSchema),
       handler: (a, c) => handleEditorGetStatus(a, c),
+    },
+    {
+      name: 'get_editor_bridge_installation',
+      description: 'Reports bundled and installed Editor Bridge versions and hashes without exposing full filesystem paths.',
+      inputSchema: zodToJsonSchema(GetEditorBridgeInstallationSchema),
+      handler: (a, c) => handleGetEditorBridgeInstallation(a, c),
+    },
+    {
+      name: 'install_editor_bridge',
+      description: 'Safely previews or installs the bundled Editor Bridge at Source/Game/MCP/FlaxMcpBridge.cs with replacement guards.',
+      inputSchema: zodToJsonSchema(InstallEditorBridgeSchema),
+      handler: (a, c) => handleInstallEditorBridge(a as Parameters<typeof handleInstallEditorBridge>[0], c),
+    },
+    {
+      name: 'scene_list_loaded',
+      description: 'Lists scenes currently loaded in the connected Flax Editor.',
+      inputSchema: zodToJsonSchema(SceneListLoadedSchema),
+      handler: (a, c) => handleSceneListLoaded(a, c),
+    },
+    {
+      name: 'scene_get_tree',
+      description: 'Returns the live actor tree for a loaded scene from Flax Editor.',
+      inputSchema: zodToJsonSchema(SceneGetTreeSchema),
+      handler: (a, c) => handleSceneGetTree(a as Parameters<typeof handleSceneGetTree>[0], c),
+    },
+    {
+      name: 'scene_save',
+      description: 'Requests Flax Editor to save a loaded scene.',
+      inputSchema: zodToJsonSchema(SceneSaveSchema),
+      handler: (a, c) => handleSceneSave(a as Parameters<typeof handleSceneSave>[0], c),
+    },
+    {
+      name: 'project_save_all',
+      description: 'Requests Flax Editor to save all edited project content.',
+      inputSchema: zodToJsonSchema(ProjectSaveAllSchema),
+      handler: (a, c) => handleProjectSaveAll(a, c),
+    },
+    {
+      name: 'actor_get',
+      description: 'Reads a live actor by GUID from the connected editor.',
+      inputSchema: zodToJsonSchema(ActorGetSchema),
+      handler: (a, c) => handleActorGet(a as Parameters<typeof handleActorGet>[0], c),
+    },
+    {
+      name: 'actor_find',
+      description: 'Finds live actors by case-insensitive name substring.',
+      inputSchema: zodToJsonSchema(ActorFindSchema),
+      handler: (a, c) => handleActorFind(a as Parameters<typeof handleActorFind>[0], c),
+    },
+    {
+      name: 'actor_create',
+      description: 'Creates a resolved project or engine Actor type through Flax Editor with validated dry-run.',
+      inputSchema: zodToJsonSchema(ActorCreateSchema),
+      handler: (a, c) => handleActorCreate(a as Parameters<typeof handleActorCreate>[0], c),
+    },
+    {
+      name: 'actor_update',
+      description: 'Updates live actor name, active state, or transform through Flax Editor.',
+      inputSchema: zodToJsonSchema(ActorUpdateSchema),
+      handler: (a, c) => handleActorUpdate(a as Parameters<typeof handleActorUpdate>[0], c),
+    },
+    {
+      name: 'actor_delete',
+      description: 'Deletes a live actor using the editor undo stack; supports dry-run.',
+      inputSchema: zodToJsonSchema(ActorDeleteSchema),
+      handler: (a, c) => handleActorDelete(a as Parameters<typeof handleActorDelete>[0], c),
+    },
+    {
+      name: 'actor_duplicate',
+      description: 'Duplicates a live actor using the editor undo stack; supports dry-run.',
+      inputSchema: zodToJsonSchema(ActorDuplicateSchema),
+      handler: (a, c) => handleActorDuplicate(a as Parameters<typeof handleActorDuplicate>[0], c),
+    },
+    {
+      name: 'actor_reparent',
+      description: 'Reparents a live actor with an optional preserved world transform.',
+      inputSchema: zodToJsonSchema(ActorReparentSchema),
+      handler: (a, c) => handleActorReparent(a as Parameters<typeof handleActorReparent>[0], c),
+    },
+    {
+      name: 'script_attach',
+      description: 'Attaches a resolved Script type to a live actor through Flax Editor.',
+      inputSchema: zodToJsonSchema(ScriptAttachSchema),
+      handler: (a, c) => handleScriptAttach(a as Parameters<typeof handleScriptAttach>[0], c),
+    },
+    {
+      name: 'script_detach',
+      description: 'Detaches a live script instance by GUID.',
+      inputSchema: zodToJsonSchema(ScriptDetachSchema),
+      handler: (a, c) => handleScriptDetach(a as Parameters<typeof handleScriptDetach>[0], c),
+    },
+    {
+      name: 'script_instance_get',
+      description: 'Reads a live script instance and its enabled state.',
+      inputSchema: zodToJsonSchema(ScriptInstanceGetSchema),
+      handler: (a, c) => handleScriptInstanceGet(a as Parameters<typeof handleScriptInstanceGet>[0], c),
+    },
+    {
+      name: 'script_instance_update',
+      description: 'Updates the enabled state of a live script instance.',
+      inputSchema: zodToJsonSchema(ScriptInstanceUpdateSchema),
+      handler: (a, c) => handleScriptInstanceUpdate(a as Parameters<typeof handleScriptInstanceUpdate>[0], c),
+    },
+    {
+      name: 'edit_undo',
+      description: 'Performs the last available Flax Editor undo action.',
+      inputSchema: zodToJsonSchema(EditUndoSchema),
+      handler: (a, c) => handleEditUndo(a, c),
+    },
+    {
+      name: 'edit_redo',
+      description: 'Performs the last available Flax Editor redo action.',
+      inputSchema: zodToJsonSchema(EditRedoSchema),
+      handler: (a, c) => handleEditRedo(a, c),
     },
 
     // ── Project Info ──────────────────────────────────────────────────────────

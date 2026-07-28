@@ -2,8 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { ProjectMeta, walkDir, safeReadFile, assertSafePath } from '../projectContext.js';
-import { toolResult, toolError, ToolResponse } from '../errors.js';
+import { ToolDomainError, toolResult, toolError, ToolResponse } from '../errors.js';
 import crypto from 'node:crypto';
+import { inspectEditorBridge } from './serverStatus.js';
 
 export const CreateActorSchema = z.object({
   type_name: z.string().describe('Flax TypeName (e.g. "FlaxEngine.EmptyActor", "FlaxEngine.StaticModel", "FlaxEngine.PointLight")'),
@@ -11,6 +12,8 @@ export const CreateActorSchema = z.object({
   scene: z.string().optional().describe('Scene file name. Defaults to DefaultScene.'),
   parent_id: z.string().optional().describe('Parent actor ID (hex). Defaults to scene root.'),
   position: z.object({ X: z.number(), Y: z.number(), Z: z.number() }).optional().describe('World position'),
+  allow_offline_write: z.boolean().optional().default(false)
+    .describe('Required explicit opt-in for legacy direct scene serialization when no Editor Bridge is connected.'),
 });
 
 export const ModifyActorSchema = z.object({
@@ -19,6 +22,8 @@ export const ModifyActorSchema = z.object({
   name: z.string().optional().describe('New display name'),
   active: z.boolean().optional().describe('Set actor active/inactive'),
   position: z.object({ X: z.number(), Y: z.number(), Z: z.number() }).optional().describe('New world position'),
+  allow_offline_write: z.boolean().optional().default(false)
+    .describe('Required explicit opt-in for legacy direct scene serialization when no Editor Bridge is connected.'),
 });
 
 interface SceneActor {
@@ -92,11 +97,28 @@ async function saveScene(scenePath: string, data: SceneFile): Promise<void> {
   await fs.writeFile(scenePath, JSON.stringify(data, null, '\t'), 'utf-8');
 }
 
+async function requireLegacyOfflineWrite(allowed: boolean, ctx: ProjectMeta): Promise<void> {
+  if (!allowed) {
+    throw new ToolDomainError(
+      'VALIDATION_FAILED',
+      'Legacy direct scene writes require allow_offline_write:true. Prefer actor_create or actor_update.',
+    );
+  }
+  const bridge = await inspectEditorBridge(ctx);
+  if (bridge.connected) {
+    throw new ToolDomainError(
+      'VALIDATION_FAILED',
+      'Direct scene serialization is disabled while Flax Editor is connected. Use actor_create or actor_update.',
+    );
+  }
+}
+
 export async function handleCreateActor(
   args: z.infer<typeof CreateActorSchema>,
   ctx: ProjectMeta
 ): Promise<ToolResponse> {
   try {
+    await requireLegacyOfflineWrite(args.allow_offline_write, ctx);
     const { path: scenePath, data } = await loadScene(ctx, args.scene);
 
     // Find scene root ID (first entry with TypeName ending in .Scene)
@@ -138,6 +160,7 @@ export async function handleModifyActor(
   ctx: ProjectMeta
 ): Promise<ToolResponse> {
   try {
+    await requireLegacyOfflineWrite(args.allow_offline_write, ctx);
     const { path: scenePath, data } = await loadScene(ctx, args.scene);
 
     const actor = data.Data.find(a =>
