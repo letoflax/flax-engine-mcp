@@ -1,10 +1,13 @@
+import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { ProjectMeta } from '../projectContext.js';
 import { ToolResponse } from '../errors.js';
 
 // Existing tools
 import { GetProjectInfoSchema, GetGameSettingsSchema, handleGetProjectInfo, handleGetGameSettings } from './project.js';
-import { ListScriptsSchema, ReadScriptSchema, WriteScriptSchema, handleListScripts, handleReadScript, handleWriteScript } from './scripts.js';
+import { ListScriptsSchema, ReadScriptSchema, WriteScriptSchema, ApplyScriptPatchSchema, handleListScripts, handleReadScript, handleWriteScript, handleApplyScriptPatch } from './scripts.js';
+import { GetAuditEntriesSchema, handleGetAuditEntries } from '../audit.js';
 import { ListAssetsSchema, GetSceneActorsSchema, handleListAssets, handleGetSceneActors } from './assets.js';
 import { ReadSettingsSchema, handleReadSettings } from './settings.js';
 import { SearchInFilesSchema, handleSearchInFiles } from './files.js';
@@ -18,16 +21,105 @@ import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyAc
 import { GetProjectSummarySchema, GetCompilerErrorsSchema, ValidateProjectSchema, handleGetProjectSummary, handleGetCompilerErrors, handleValidateProject } from './intelligence.js';
 import { GetInputActionsSchema, GetPhysicsSettingsSchema, handleGetInputActions, handleGetPhysicsSettings } from './config.js';
 import { ListDocsSchema, ReadDocSchema, handleListDocs, handleReadDoc } from './docs.js';
+import {
+  EditorGetStatusSchema,
+  GetServerCapabilitiesSchema,
+  handleEditorGetStatus,
+  handleGetServerCapabilities,
+} from './serverStatus.js';
 
 export interface ToolDefinition {
   name: string;
   description: string;
+  /** Runtime source of truth; the JSON schema is only the protocol projection. */
+  zodInputSchema: z.AnyZodObject;
   inputSchema: ReturnType<typeof zodToJsonSchema>;
+  outputSchema: ReturnType<typeof zodToJsonSchema>;
+  annotations: ToolAnnotations;
   handler: (args: unknown, ctx: ProjectMeta) => Promise<ToolResponse>;
 }
 
+const INPUT_SCHEMAS: Record<string, z.AnyZodObject> = {
+  get_server_capabilities: GetServerCapabilitiesSchema,
+  editor_get_status: EditorGetStatusSchema,
+  get_project_info: GetProjectInfoSchema,
+  get_game_settings: GetGameSettingsSchema,
+  get_project_summary: GetProjectSummarySchema,
+  list_scripts: ListScriptsSchema,
+  read_script: ReadScriptSchema,
+  write_script: WriteScriptSchema,
+  apply_script_patch: ApplyScriptPatchSchema,
+  get_audit_entries: GetAuditEntriesSchema,
+  get_script_classes: GetScriptClassesSchema,
+  find_references: FindReferencesSchema,
+  list_networked_scripts: ListNetworkedScriptsSchema,
+  search_in_files: SearchInFilesSchema,
+  generate_script: GenerateScriptSchema,
+  get_scene_actors: GetSceneActorsSchema,
+  create_actor: CreateActorSchema,
+  modify_actor: ModifyActorSchema,
+  get_asset_info: GetAssetInfoSchema,
+  reimport_asset: ReimportAssetSchema,
+  list_assets: ListAssetsSchema,
+  read_settings: ReadSettingsSchema,
+  get_input_actions: GetInputActionsSchema,
+  get_physics_settings: GetPhysicsSettingsSchema,
+  get_compiler_errors: GetCompilerErrorsSchema,
+  validate_project: ValidateProjectSchema,
+  list_docs: ListDocsSchema,
+  read_doc: ReadDocSchema,
+  get_latest_log: GetLatestLogSchema,
+};
+
+const TOOL_OUTPUT_SCHEMA = zodToJsonSchema(z.object({
+  operationId: z.string().uuid(),
+  mode: z.enum(['offline', 'editor-connected']),
+  ok: z.boolean(),
+  data: z.unknown().optional(),
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+    details: z.unknown().optional(),
+  }).optional(),
+  warnings: z.array(z.string()),
+  changes: z.array(z.unknown()),
+  timing: z.object({ durationMs: z.number().nonnegative() }),
+}).strict());
+
+const WRITE_TOOL_NAMES = new Set([
+  'write_script',
+  'apply_script_patch',
+  'generate_script',
+  'create_actor',
+  'modify_actor',
+  'reimport_asset',
+]);
+
+function annotationsFor(name: string): ToolAnnotations {
+  const writes = WRITE_TOOL_NAMES.has(name);
+  return {
+    readOnlyHint: !writes,
+    destructiveHint: name === 'write_script' || name === 'apply_script_patch' || name === 'create_actor' || name === 'modify_actor',
+    idempotentHint: !writes,
+    openWorldHint: false,
+  };
+}
+
 export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
-  return [
+  const tools: Array<Omit<ToolDefinition, 'zodInputSchema' | 'outputSchema' | 'annotations'>> = [
+    {
+      name: 'get_server_capabilities',
+      description: 'Reports server, project, and feature capabilities plus live Flax Editor Bridge availability.',
+      inputSchema: zodToJsonSchema(GetServerCapabilitiesSchema),
+      handler: (a, c) => handleGetServerCapabilities(a, c),
+    },
+    {
+      name: 'editor_get_status',
+      description: 'Reports whether a matching, live, recently heartbeating Flax Editor Bridge is connected.',
+      inputSchema: zodToJsonSchema(EditorGetStatusSchema),
+      handler: (a, c) => handleEditorGetStatus(a, c),
+    },
+
     // ── Project Info ──────────────────────────────────────────────────────────
     {
       name: 'get_project_info',
@@ -63,9 +155,21 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'write_script',
-      description: 'Creates or overwrites a C# script in Source/Game/. Set overwrite:true to replace an existing file.',
+      description: 'Creates or overwrites a C# script in Source/Game/. Set overwrite:true to replace an existing file. Supports dry_run and expected_hash; writes are atomic and audited.',
       inputSchema: zodToJsonSchema(WriteScriptSchema),
       handler: (a, c) => handleWriteScript(a as Parameters<typeof handleWriteScript>[0], c),
+    },
+    {
+      name: 'apply_script_patch',
+      description: 'Atomically applies a bounded unified diff to an existing C# script. The full patch is validated before any write; supports dry_run and expected_hash.',
+      inputSchema: zodToJsonSchema(ApplyScriptPatchSchema),
+      handler: (a, c) => handleApplyScriptPatch(a as Parameters<typeof handleApplyScriptPatch>[0], c),
+    },
+    {
+      name: 'get_audit_entries',
+      description: 'Returns recent redacted audit entries for script write and patch operations. Source content and patch text are never included.',
+      inputSchema: zodToJsonSchema(GetAuditEntriesSchema),
+      handler: (a, c) => handleGetAuditEntries(a as Parameters<typeof handleGetAuditEntries>[0], c),
     },
 
     // ── Code Analysis ─────────────────────────────────────────────────────────
@@ -202,4 +306,19 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       handler: (a, c) => handleGetLatestLog(a as Parameters<typeof handleGetLatestLog>[0], c),
     },
   ];
+
+  return tools.map(tool => {
+    const zodInputSchema = INPUT_SCHEMAS[tool.name];
+    if (!zodInputSchema) {
+      throw new Error(`Tool "${tool.name}" is missing its Zod input schema.`);
+    }
+    const strictSchema = zodInputSchema.strict();
+    return {
+      ...tool,
+      zodInputSchema: strictSchema,
+      inputSchema: zodToJsonSchema(strictSchema),
+      outputSchema: TOOL_OUTPUT_SCHEMA,
+      annotations: annotationsFor(tool.name),
+    };
+  });
 }

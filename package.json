@@ -1,6 +1,6 @@
 {
   "name": "flax-engine-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server for Flax Engine game projects",
   "type": "module",
   "bin": {
@@ -8,13 +8,14 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test dist/contracts.test.js dist/tools/serverStatus.test.js dist/tools/readTools.test.js dist/tools/scripts.test.js",
     "dev": "tsc --watch",
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.1",
-    "zod": "^3.22.4",
-    "zod-to-json-schema": "^3.23.5"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.0",
+    "zod-to-json-schema": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -103,8 +103,6 @@ export async function handleGetScriptClasses(
 
     for (const f of gameFiles) {
       const base = path.basename(f);
-      if (filter && !base.toLowerCase().includes(filter)) continue;
-
       const source = await fs.readFile(f, 'utf-8').catch(() => null);
       if (!source) continue;
 
@@ -112,7 +110,9 @@ export async function handleGetScriptClasses(
       const classes = parseClass(source, rel);
 
       for (const cls of classes) {
-        if (filter && !cls.className.toLowerCase().includes(filter)) continue;
+        if (filter &&
+          !base.toLowerCase().includes(filter) &&
+          !cls.className.toLowerCase().includes(filter)) continue;
 
         output.push(`## ${cls.className}${cls.baseClass ? ` : ${cls.baseClass}` : ''}`);
         output.push(`File: ${cls.file}${cls.namespace ? `  |  Namespace: ${cls.namespace}` : ''}`);
@@ -149,13 +149,16 @@ export async function handleFindReferences(
   ctx: ProjectMeta
 ): Promise<ToolResponse> {
   try {
-    const exts = args.scope === 'all' ? ['.cs', '.md'] : ['.cs'];
-    const files = await walkDir(ctx.sourceDir, exts);
+    const files = await walkDir(ctx.sourceDir, ['.cs']);
+    if (args.scope === 'all') {
+      files.push(...await walkDir(ctx.projectPath, ['.md']));
+    }
+    const uniqueFiles = [...new Set(files)].sort();
 
     const results: string[] = [];
     let total = 0;
 
-    for (const f of files) {
+    for (const f of uniqueFiles) {
       const source = await fs.readFile(f, 'utf-8').catch(() => null);
       if (!source) continue;
 

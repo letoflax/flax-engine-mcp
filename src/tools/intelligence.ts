@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { ProjectMeta, walkDir, safeReadFile } from '../projectContext.js';
 import { toolResult, toolError, ToolResponse } from '../errors.js';
+import { readTextFile } from '../textEncoding.js';
 
 export const GetProjectSummarySchema = z.object({
   sections: z.array(z.enum(['scripts', 'scenes', 'assets', 'settings', 'docs']))
@@ -149,7 +150,7 @@ export async function handleGetCompilerErrors(
 
     if (!logFile) return toolResult('No log files found.');
 
-    const raw = await safeReadFile(logFile);
+    const raw = await readTextFile(logFile).catch(() => null);
     if (!raw) return toolError(new Error(`Cannot read ${logFile}`));
 
     const lines = raw.split('\n');
@@ -190,6 +191,36 @@ interface Issue {
   severity: 'error' | 'warning' | 'info';
   check: string;
   message: string;
+}
+
+async function readAssetId(filePath: string): Promise<string | null> {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.flax') {
+    const handle = await fs.open(filePath, 'r').catch(() => null);
+    if (!handle) return null;
+    try {
+      const header = Buffer.alloc(44);
+      const { bytesRead } = await handle.read(header, 0, header.length, 0);
+      if (bytesRead >= 44 && header.subarray(0, 4).toString('ascii') === 'CFWF') {
+        return header.subarray(0x1c, 0x2c).toString('hex');
+      }
+    } finally {
+      await handle.close();
+    }
+    return null;
+  }
+
+  if (ext === '.json' || ext === '.scene') {
+    const raw = await safeReadFile(filePath);
+    if (!raw) return null;
+    try {
+      const id = (JSON.parse(raw) as { ID?: unknown }).ID;
+      return typeof id === 'string' && /^[0-9a-f]{32}$/i.test(id) ? id.toLowerCase() : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export async function handleValidateProject(
@@ -253,15 +284,14 @@ export async function handleValidateProject(
     // --- Assets check ---
     if (checks.includes('assets')) {
       const sceneFiles = await walkDir(ctx.contentDir, ['.scene']);
-      const allAssetIds = new Set<string>();
       const allFiles = await walkDir(ctx.contentDir, []);
       for (const f of allFiles) {
-        const ext = path.extname(f);
-        if (ext === '.flax' || ext === '.json') {
-          const raw = await safeReadFile(f);
-          if (raw) {
-            try { const p = JSON.parse(raw) as { ID?: string }; if (p.ID) allAssetIds.add(p.ID); } catch { /* skip */ }
-          }
+        if (path.extname(f).toLowerCase() === '.flax' && await readAssetId(f) === null) {
+          issues.push({
+            severity: 'warning',
+            check: 'assets',
+            message: `${path.relative(ctx.projectPath, f)} has an invalid or unreadable Flax asset header`,
+          });
         }
       }
 
@@ -269,14 +299,14 @@ export async function handleValidateProject(
         const raw = await safeReadFile(s);
         if (!raw) continue;
         try {
-          const parsed = JSON.parse(raw) as { Data?: Array<Record<string, unknown>> };
-          const refs = JSON.stringify(parsed).match(/[0-9a-f]{32}/g) ?? [];
-          const uniqueRefs = [...new Set(refs)];
-          const broken = uniqueRefs.filter(id => !allAssetIds.has(id));
-          if (broken.length > 3) {
-            issues.push({ severity: 'info', check: 'assets', message: `${path.basename(s)}: ${broken.length} unresolved asset references (may include engine-internal IDs)` });
-          }
-        } catch { /* skip */ }
+          JSON.parse(raw);
+        } catch {
+          issues.push({
+            severity: 'error',
+            check: 'assets',
+            message: `${path.relative(ctx.projectPath, s)} is not valid scene JSON`,
+          });
+        }
       }
     }
 

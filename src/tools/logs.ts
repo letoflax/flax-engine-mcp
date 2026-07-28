@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { ProjectMeta } from '../projectContext.js';
 import { toolResult, toolError, ToolResponse } from '../errors.js';
+import { readTextFile } from '../textEncoding.js';
 
 export const GetLatestLogSchema = z.object({
   lines: z.number().int().min(10).max(500).optional().default(100),
@@ -26,7 +27,7 @@ export async function handleGetLatestLog(
 
     const latest = logFiles[logFiles.length - 1];
     const logPath = path.join(ctx.logsDir, latest);
-    const raw = await fs.readFile(logPath, 'utf-8').catch(() => null);
+    const raw = await readTextFile(logPath).catch(() => null);
     if (!raw) return toolError(new Error(`Cannot read ${latest}`));
 
     let lines = raw.split('\n');

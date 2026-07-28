@@ -21,8 +21,9 @@ export async function handleSearchInFiles(
       files.push(...await walkDir(ctx.sourceDir, ['.cs']));
     }
     if (args.scope === 'docs' || args.scope === 'all') {
-      files.push(...await walkDir(ctx.sourceDir, ['.md']));
+      files.push(...await walkDir(ctx.projectPath, ['.md']));
     }
+    files = [...new Set(files)].sort();
 
     const results: string[] = [];
     let total = 0;

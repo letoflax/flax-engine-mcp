@@ -21,6 +21,32 @@ interface FlaxAsset {
   [key: string]: unknown;
 }
 
+const FLAX_MAGIC = 'CFWF';
+const FLAX_GUID_OFFSET = 0x1c;
+const FLAX_TYPENAME_OFFSET = 0x2c;
+
+async function readBinaryAssetHeader(filePath: string): Promise<{ typeName: string; guid: string } | null> {
+  const handle = await fs.open(filePath, 'r').catch(() => null);
+  if (!handle) return null;
+  try {
+    const buffer = Buffer.alloc(512);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const data = buffer.subarray(0, bytesRead);
+    if (data.length <= FLAX_TYPENAME_OFFSET || data.subarray(0, 4).toString('ascii') !== FLAX_MAGIC) {
+      return null;
+    }
+
+    let end = FLAX_TYPENAME_OFFSET;
+    while (end + 1 < data.length && (data[end] !== 0 || data[end + 1] !== 0)) end += 2;
+    return {
+      typeName: data.subarray(FLAX_TYPENAME_OFFSET, end).toString('utf16le'),
+      guid: data.subarray(FLAX_GUID_OFFSET, FLAX_GUID_OFFSET + 16).toString('hex'),
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function handleListAssets(
   args: z.infer<typeof ListAssetsSchema>,
   ctx: ProjectMeta
@@ -39,16 +65,21 @@ export async function handleListAssets(
       const ext = path.extname(f);
       const base = path.basename(f);
       const rel = path.relative(ctx.projectPath, f);
+      const binaryHeader = ext === '.flax' ? await readBinaryAssetHeader(f) : null;
 
       let assetType = 'other';
       if (ext === '.scene') assetType = 'scene';
-      else if (ext === '.flax') assetType = 'material';
+      else if (ext === '.flax') {
+        assetType = binaryHeader && /(?:^|\.)Material(?:Instance)?$/i.test(binaryHeader.typeName) ? 'material' : 'other';
+      }
       else if (ext === '.json' && f.includes('Settings')) assetType = 'settings';
 
       if (args.type !== 'all' && args.type !== assetType) continue;
 
       let guid = '';
-      if (ext === '.scene' || ext === '.flax' || ext === '.json') {
+      if (ext === '.flax') {
+        guid = binaryHeader?.guid ?? '';
+      } else if (ext === '.scene' || ext === '.json') {
         const raw = await safeReadFile(f);
         if (raw) {
           try {
@@ -134,19 +165,28 @@ export async function handleGetSceneActors(
     const idToActor = new Map(actors.map(a => [a.ID, a]));
     const lines: string[] = [`Scene: ${path.basename(scenePath)} (${filtered.length} actors)\n`];
 
-    function getDepth(actor: SceneActor): number {
-      if (!actor.ParentID) return 0;
-      const parent = idToActor.get(actor.ParentID);
-      if (!parent) return 1;
-      return 1 + getDepth(parent);
+    function getDepth(actor: SceneActor): { depth: number; cyclic: boolean } {
+      const visited = new Set<string>();
+      let current: SceneActor | undefined = actor;
+      let depth = 0;
+
+      while (current?.ParentID) {
+        if (visited.has(current.ParentID)) return { depth, cyclic: true };
+        visited.add(current.ParentID);
+        const parent = idToActor.get(current.ParentID);
+        depth++;
+        if (!parent || depth >= actors.length) return { depth, cyclic: depth >= actors.length };
+        current = parent;
+      }
+      return { depth, cyclic: false };
     }
 
     for (const actor of filtered) {
-      const depth = getDepth(actor);
+      const { depth, cyclic } = getDepth(actor);
       const indent = '  '.repeat(depth);
       const name = actor.Name ?? '(unnamed)';
       const type = actor.TypeName ?? '';
-      let line = `${indent}• ${name} [${type}]`;
+      let line = `${indent}• ${name} [${type}]${cyclic ? ' ⚠ cyclic parent reference' : ''}`;
 
       if (args.include_transforms && actor.Transform) {
         line += ` T:${JSON.stringify(actor.Transform)}`;

@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets Claude interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 23 tools for reading code, editing scenes, generating scripts, validating your project, and more.
+An MCP (Model Context Protocol) server that lets Claude interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 29 tools for reading code, editing scenes, generating scripts, validating your project, and more.
 
 ## Requirements
 
@@ -14,6 +14,7 @@ git clone https://github.com/letofanius/flax-engine-mcp.git
 cd flax-engine-mcp
 npm install
 npm run build
+npm test
 ```
 
 ## Add to Claude Code
@@ -29,6 +30,8 @@ To use a different project, just change `--project-path`. You can run multiple i
 ### Project Info
 | Tool | What it does |
 |------|-------------|
+| `get_server_capabilities` | Server/project identity, feature flags, mode, and Editor Bridge availability |
+| `editor_get_status` | Validates the live bridge heartbeat, project identity, process, and freshness |
 | `get_project_info` | Project config from `.flaxproj` — name, version, default scene, directory layout |
 | `get_game_settings` | Contents of `GameSettings.json` — product name, scene ID, all sub-settings refs |
 | `get_project_summary` | Full project overview in one call — scripts, scenes, assets, settings, docs |
@@ -38,7 +41,9 @@ To use a different project, just change `--project-path`. You can run multiple i
 |------|-------------|
 | `list_scripts` | List all C# scripts with size and modification time |
 | `read_script` | Read a script by filename or path |
-| `write_script` | Create or overwrite a script (requires `overwrite:true` to replace existing) |
+| `write_script` | Atomically create or overwrite a script with dry-run, expected-hash checks, and audit logging |
+| `apply_script_patch` | Validate and atomically apply a bounded unified diff with dry-run and expected-hash support |
+| `get_audit_entries` | Read recent redacted script mutation audit records |
 
 ### Code Analysis
 | Tool | What it does |
@@ -63,6 +68,8 @@ To use a different project, just change `--project-path`. You can run multiple i
 ### Assets
 | Tool | What it does |
 |------|-------------|
+| `get_asset_info` | Inspect JSON assets or the type, GUID, and version header of binary `.flax` assets |
+| `reimport_asset` | Inspect reimport intent and optionally launch Flax Editor for manual reimport |
 | `list_assets` | List Content/ assets by type (scene, material, settings, other) with GUIDs |
 
 ### Settings & Config
@@ -87,6 +94,8 @@ To use a different project, just change `--project-path`. You can run multiple i
 
 ## Notes
 
-- **Scene writes are safe** — `create_actor` and `modify_actor` always save a `.bak` backup before modifying the scene file.
-- **`write_script` is safe** — requires `overwrite:true` to replace an existing file.
-- **Path traversal is blocked** — all file operations are restricted to the project directory.
+- **Foundation contracts** — every tool validates arguments, advertises an output schema and annotations, and returns structured results with operation metadata.
+- **Editor status** — `get_server_capabilities` and `editor_get_status` validate a matching live heartbeat at `Cache/MCP/bridge.json`; otherwise the server reports offline mode.
+- **Script mutations are hardened** — writes stay under `Source/`, reject symlink/junction escapes, use same-directory atomic replacement, support dry-run and expected hashes, and record redacted audit metadata.
+- **Scene writes are legacy offline operations** — `create_actor` and `modify_actor` directly edit serialized `.scene` files and create a `.bak`; they do not use Flax Editor Undo/Redo or transactions.
+- Run `npm test` to build and execute the contract, status, read-tool, and script-safety suites.

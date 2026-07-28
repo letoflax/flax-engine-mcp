@@ -236,7 +236,7 @@ export async function handleGenerateScript(
 
     if (args.save) {
       const { handleWriteScript } = await import('./scripts.js');
-      const result = await handleWriteScript({ name: `${args.name}.cs`, content, overwrite: false }, ctx);
+      const result = await handleWriteScript({ name: `${args.name}.cs`, content, overwrite: false, dry_run: false }, ctx);
       const first = result.content[0];
       const saved = first && 'text' in first ? first.text : '';
       return toolResult(`Generated from template "${args.template}":\n\n${content}\n---\n${saved}`);
