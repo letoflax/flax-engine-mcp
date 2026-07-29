@@ -40,7 +40,7 @@ const TOOL_FAMILIES = {
     'actor_duplicate', 'actor_reparent', 'script_attach', 'script_detach',
     'script_instance_update', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'create_actor', 'modify_actor',
   ],
-  asset: ['reimport_asset', 'asset_import', 'asset_reimport'],
+  asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_move', 'asset_rename', 'asset_duplicate'],
   runtime: [
     'play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume',
     'play_step_frame', 'play_run_for', 'viewport_capture', 'runtime_inspect_actor',

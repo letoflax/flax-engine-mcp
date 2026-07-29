@@ -37,6 +37,14 @@ import {
   handleAssetReimport,
   handleAssetReimportStatus,
 } from './assetImport.js';
+import {
+  AssetDuplicateSchema,
+  AssetMoveSchema,
+  AssetRenameSchema,
+  handleAssetDuplicate,
+  handleAssetMove,
+  handleAssetRename,
+} from './assetOrganize.js';
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
 import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyActor } from './sceneWrite.js';
@@ -227,6 +235,9 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   asset_import_status: AssetOperationStatusSchema,
   asset_reimport: AssetReimportSchema,
   asset_reimport_status: AssetOperationStatusSchema,
+  asset_move: AssetMoveSchema,
+  asset_rename: AssetRenameSchema,
+  asset_duplicate: AssetDuplicateSchema,
   read_settings: ReadSettingsSchema,
   get_input_actions: GetInputActionsSchema,
   get_physics_settings: GetPhysicsSettingsSchema,
@@ -261,6 +272,9 @@ const WRITE_TOOL_NAMES = new Set([
   'reimport_asset',
   'asset_import',
   'asset_reimport',
+  'asset_move',
+  'asset_rename',
+  'asset_duplicate',
   'install_editor_bridge',
   'scene_save',
   'project_save_all',
@@ -748,6 +762,24 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Gets the bounded status for one asset_reimport operation. Requires bridge v9.',
       inputSchema: zodToJsonSchema(AssetOperationStatusSchema),
       handler: (a, c) => handleAssetReimportStatus(a as Parameters<typeof handleAssetReimportStatus>[0], c),
+    },
+    {
+      name: 'asset_move',
+      description: 'Moves one Content registry asset to an existing Content-relative folder through the Flax Editor Content database. Supports dry_run, collision policy, expected path/index guards, and idempotent retries. Requires bridge v10.',
+      inputSchema: zodToJsonSchema(AssetMoveSchema),
+      handler: (a, c) => handleAssetMove(a as Parameters<typeof handleAssetMove>[0], c),
+    },
+    {
+      name: 'asset_rename',
+      description: 'Renames one Content registry asset while preserving its extension through the Flax Content API. Supports dry_run, collision policy, expected path/index guards, and idempotent retries. Requires bridge v10.',
+      inputSchema: zodToJsonSchema(AssetRenameSchema),
+      handler: (a, c) => handleAssetRename(a as Parameters<typeof handleAssetRename>[0], c),
+    },
+    {
+      name: 'asset_duplicate',
+      description: 'Duplicates one Content registry asset into an existing Content-relative folder through the Flax Editor Content database. Existing references remain bound to the source asset. Requires bridge v10.',
+      inputSchema: zodToJsonSchema(AssetDuplicateSchema),
+      handler: (a, c) => handleAssetDuplicate(a as Parameters<typeof handleAssetDuplicate>[0], c),
     },
 
     // ── Settings ──────────────────────────────────────────────────────────────

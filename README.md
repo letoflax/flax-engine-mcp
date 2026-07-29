@@ -165,6 +165,27 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `asset_find_references` | Find direct reverse references from source assets/scenes/prefabs without property paths (bridge v8) |
 | `asset_import` / `asset_import_status` | Start or poll an allowlisted external import with dry-run, collision, and idempotency guards (bridge v9) |
 | `asset_reimport` / `asset_reimport_status` | Start or poll a reimport using only Flax asset metadata and configured import roots (bridge v9) |
+| `asset_move` | Move one registry asset to an existing Content folder, with dry-run, collision, stale-index, and idempotency guards (bridge v10) |
+| `asset_rename` | Rename one registry asset without changing its extension, with bounded reference impact (bridge v10) |
+| `asset_duplicate` | Duplicate one registry asset to a named Content destination; existing references remain on the source (bridge v10) |
+
+For example, first preview a move and then repeat the same request without
+`dry_run` after confirmation:
+
+```json
+{
+  "asset_id": "0123456789abcdef0123456789abcdef",
+  "destination": "Content/Materials/Shared",
+  "collision_policy": "error",
+  "dry_run": true,
+  "expected_path": "Content/Materials/Temporary/Surface.flax",
+  "expected_index_revision": "<64-character revision from asset_search>",
+  "idempotency_key": "organize-surface-1"
+}
+```
+
+`asset_rename` takes `name` instead of `destination`; `asset_duplicate` takes
+both. The name excludes the extension, which remains the source extension.
 
 ### Settings & Config
 | Tool | What it does |
@@ -197,6 +218,7 @@ Each workflow first asks the client to inspect safe MCP resources (and read-only
 - **Asset registry and graph reads** -- `asset_search`, `asset_get`, `asset_dependencies`, and `asset_find_references` require bridge v8. They use only public Flax 1.12 `Content` registry metadata and `Asset.GetReferences`; result pages are at most 200 entries, dependency depth is at most 16, registry scans are capped at 10,000 assets, and opaque cursors expire after ten minutes or invalidate when filters or registry metadata change. Paths/GUIDs are project-scoped. The bridge does not expose importer settings, file size/modified time/import status, actor/property reference locations, or inferred prefab overrides because public APIs do not verify them.
 - **Asset compatibility aliases** -- `list_assets` delegates safe all/scene requests to `asset_search` with a v8 bridge; `get_asset_info` delegates `Content/...` paths to `asset_get`. Other legacy filters, bare filenames, offline projects, and bridges older than v8 keep their original filesystem-backed behavior.
 - **Safe asset imports** -- `asset_import` and `asset_reimport` require bridge v9, the `full` permission profile (or an explicit tool allow override), and at least one `--asset-import-root`. They invoke only Flax's verified `Editor.Import`, `ContentImporting.Reimport`, and `BinaryAsset.ImportPath` APIs, never copy source files or launch editor processes. Importer settings/type conversion are intentionally not exposed. New imports finish synchronously in Flax 1.12; reimports use Flax's queue and must be polled by operation ID (ten-minute retention, at most 512 records). Imports are rejected while Flax is playing, compiling/reloading, or already importing. The direct APIs are UI-free; headless availability still depends on the installed Flax Editor importer backend and should be verified in the target CI/editor setup.
+- **Safe asset organization** -- `asset_move`, `asset_rename`, and `asset_duplicate` require bridge v10 and the `full` permission profile (or an explicit tool allow override). They select exactly one registry asset by GUID or `Content/...` path; destinations must be normalized existing folders inside `Content`, names cannot change an extension, and collisions either fail or receive a bounded `-N` suffix. Use `dry_run:true` before writing and pass `expected_path` and/or `expected_index_revision` from a recent asset read/search to reject stale state. The bridge calls only public Flax 1.12 `ContentDatabase.Move`, `Content.RenameAsset`, and `ContentDatabase.Copy` APIs—never a raw filesystem move/copy or reflection. Results include no more than 50 direct reverse references; actor/property locations remain unavailable. Move and rename verify that the source GUID remains; duplicate reports its new GUID while existing references continue to target the source. Flax exposes no verified undo record for these APIs, and v7 leases are scene-only, so results explicitly warn that undo and asset leases are unsupported. Calls do not save project content automatically.
 
 - **Foundation contracts** — every tool validates arguments, advertises an output schema and annotations, and returns structured results with operation metadata.
 - **Validation rules** — `validate_project` keeps its legacy text summary, while `structuredContent.data.findings` exposes stable rule IDs, severities, project-relative locations, suggested fixes, auto-fix metadata, filters (`rule_ids`, `severities`), per-call suppressions, and cursor pagination (maximum 200 findings/page). Offline rules cover missing first scenes/assets, compiler log failures, duplicate input mappings, statically suspicious network attributes, optional required-camera checks, invalid Flax headers, settings, and scene JSON. Editor/cooker-only checks are explicitly reported as capability gaps rather than inferred.
