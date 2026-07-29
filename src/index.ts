@@ -5,6 +5,8 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
@@ -15,6 +17,7 @@ import { finalizeToolResponse, toolError, ToolDomainError, ToolResponse } from '
 import { ProjectMeta } from './projectContext.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
 import { listFlaxResources, readFlaxResource } from './resources.js';
+import { getFlaxPrompt, listFlaxPrompts } from './prompts.js';
 import { allowedToolNames, assertPermissionRegistryCoverage, parsePermissionPolicy, policyForContext } from './permissions.js';
 
 export function parseProjectPath(argv = process.argv): string {
@@ -78,7 +81,7 @@ async function main(): Promise<void> {
 
   const server = new Server(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {}, resources: {} } }
+    { capabilities: { tools: {}, resources: {}, prompts: {} } }
   );
 
   const tools = buildToolRegistry(ctx);
@@ -101,6 +104,8 @@ async function main(): Promise<void> {
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => listFlaxResources(ctx));
   server.setRequestHandler(ReadResourceRequestSchema, async request => readFlaxResource(request.params.uri, ctx));
+  server.setRequestHandler(ListPromptsRequestSchema, async () => listFlaxPrompts());
+  server.setRequestHandler(GetPromptRequestSchema, async request => getFlaxPrompt(request.params.name, request.params.arguments));
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

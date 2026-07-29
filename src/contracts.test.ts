@@ -176,6 +176,38 @@ test('stdio advertises contracts and enforces them at the MCP boundary', async t
   assert.equal(invalid.result.structuredContent.error.code, 'INVALID_ARGUMENT');
 });
 
+test('stdio advertises pure MCP prompts with strict prompt argument handling', async t => {
+  const server = startJsonRpcServer();
+  t.after(() => server.child.kill());
+  const before = await readFile(path.join(projectPath, 'Source', 'Game', 'Fixture.cs'), 'utf8');
+  const initialized = await server.request(1, 'initialize', {
+    protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'prompt-contract-test', version: '1.0.0' },
+  });
+  assert.deepEqual(initialized.result.capabilities.prompts, {});
+  server.notify('notifications/initialized', {});
+
+  const listed = await server.request(2, 'prompts/list', {});
+  assert.deepEqual(listed.result.prompts.map((prompt: { name: string }) => prompt.name), [
+    'create_gameplay_feature', 'fix_compile_errors', 'create_scene_from_description', 'debug_runtime_exception', 'prepare_release_build',
+  ]);
+  const debug = listed.result.prompts.find((prompt: { name: string }) => prompt.name === 'debug_runtime_exception');
+  assert.deepEqual(debug.arguments.map((argument: { name: string; required: boolean }) => [argument.name, argument.required]), [
+    ['symptom', true], ['run_seconds', false], ['apply_fix', false],
+  ]);
+
+  const prompt = await server.request(3, 'prompts/get', {
+    name: 'debug_runtime_exception', arguments: { symptom: 'null reference', run_seconds: '5', apply_fix: 'false' },
+  });
+  assert.equal(prompt.result.messages[0].role, 'user');
+  assert.match(prompt.result.messages[0].content.text, /resources\/list/);
+  const rejected = await server.request(4, 'prompts/get', {
+    name: 'debug_runtime_exception', arguments: { symptom: 'null reference', run_seconds: 'five' },
+  });
+  assert.equal(rejected.error.code, -32602);
+  assert.match(rejected.error.message, /base-10 integer/);
+  assert.equal(await readFile(path.join(projectPath, 'Source', 'Game', 'Fixture.cs'), 'utf8'), before);
+});
+
 test('tools/list and capabilities reflect the active permission policy', async t => {
   const server = startJsonRpcServer(['--permission-profile', 'read-only', '--allow-tool', 'code_compile', '--deny-tool', 'list_assets']);
   t.after(() => server.child.kill());
