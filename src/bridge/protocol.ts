@@ -94,6 +94,15 @@ export type PrefabBridgeMethod =
   | 'prefab.revert_overrides'
   | 'prefab.break_link';
 
+/** Bridge v13 exposes bounded GameCooker workflows, not arbitrary build commands. */
+export type BuildBridgeMethod =
+  | 'build.list_targets'
+  | 'build.validate'
+  | 'build.cook'
+  | 'build.status'
+  | 'build.result'
+  | 'build.cancel';
+
 export type BridgeMethod =
   | 'status'
   | SceneBridgeMethod
@@ -105,7 +114,8 @@ export type BridgeMethod =
   | ObservabilityBridgeMethod
   | AssetBridgeMethod
   | OperationBridgeMethod
-  | PrefabBridgeMethod;
+  | PrefabBridgeMethod
+  | BuildBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */
 export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {

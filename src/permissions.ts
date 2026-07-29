@@ -28,7 +28,7 @@ const TOOL_FAMILIES = {
     'list_scripts', 'read_script', 'get_audit_entries', 'get_script_classes',
     'find_references', 'list_networked_scripts', 'search_in_files', 'get_scene_actors',
     'get_asset_info', 'list_assets', 'asset_search', 'asset_get', 'asset_dependencies', 'asset_find_references', 'asset_import_status', 'asset_reimport_status', 'prefab_get_instances', 'prefab_get_overrides', 'read_settings', 'get_input_actions',
-    'get_physics_settings', 'get_compiler_errors', 'validate_project', 'operation_get_status', 'list_docs',
+    'get_physics_settings', 'get_compiler_errors', 'validate_project', 'operation_get_status', 'build_list_targets', 'build_validate', 'build_get_status', 'build_get_result', 'list_docs',
     'read_doc', 'get_latest_log',
   ],
   code: [
@@ -44,7 +44,7 @@ const TOOL_FAMILIES = {
   asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_move', 'asset_rename', 'asset_duplicate', 'prefab_create_from_actor', 'prefab_apply_overrides'],
   runtime: [
     'play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume',
-    'play_step_frame', 'play_run_for', 'viewport_capture', 'runtime_inspect_actor',
+    'play_step_frame', 'play_run_for', 'viewport_capture', 'runtime_inspect_actor', 'build_cook', 'build_cancel',
   ],
 } as const;
 

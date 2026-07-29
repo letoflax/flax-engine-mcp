@@ -329,3 +329,33 @@ bounded cursors. `prefab.get_overrides`, `prefab.revert_overrides`,
 `prefab.apply_overrides`, and `prefab.break_link` remain explicit stable
 `UNSUPPORTED_FLAX_VERSION` capabilities because Flax 1.12 lacks a reviewed,
 undoable and previewable public path for those operations.
+
+## Bridge v13: bounded build/cook workflows
+
+Bridge v13 keeps protocol v1 and all v5--v12 methods. It adds
+`build.list_targets`, `build.validate`, `build.cook`, `build.status`,
+`build.result`, and `build.cancel`, backed only by Flax 1.12's public
+`GameCooker.Build`, `GameCooker.Cancel`, build event, and progress event APIs.
+
+The build target allowlist is deliberately small: `windows64`, `linux_x64`,
+`macos_x64`, `macos_arm64`, `android_arm64`, and `web`; configurations are
+`debug`, `development`, and `release`. `build.list_targets` and
+`build.validate` are preflight only: Flax exposes no reviewed managed API for
+checking whether a target toolchain is installed, so a listed target is not a
+claim that it is locally buildable.
+
+`build.cook` requires a caller-selected or generated 32-character `OperationId`
+and a project-relative, non-empty `OutputPath` below `Builds/`. The bridge
+rejects traversal, absolute paths, wrong separators, more than 32
+identifier-like custom defines, a non-empty output directory, play mode, script
+reload, and concurrent cooking. It never accepts arbitrary commands, build
+presets, packaging settings, or an output path outside the project.
+`DryRun:true` validates but never calls `GameCooker.Build`.
+
+Build progress and terminal state appear both in the dedicated status/result
+methods and generic v11 `operation.status` (`Kind:"build_cook"`).
+`build.result` returns `BUILD_NOT_COMPLETE` until terminal. Unlike compilation
+and content import, Flax 1.12 exposes `GameCooker.Cancel`; `build.cancel` and
+generic `operation.cancel` request it asynchronously. A cancellation request is
+terminal only after the cooker reports completion, so callers must poll rather
+than treating acknowledgement as proof of cleanup.

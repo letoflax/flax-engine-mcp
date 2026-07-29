@@ -173,6 +173,18 @@ import {
   handlePlayStepFrame,
   handlePlayStop,
 } from './runtimeLive.js';
+import {
+  BuildCookSchema,
+  BuildListTargetsSchema,
+  BuildOperationSchema,
+  BuildValidateSchema,
+  handleBuildCancel,
+  handleBuildCook,
+  handleBuildGetResult,
+  handleBuildGetStatus,
+  handleBuildListTargets,
+  handleBuildValidate,
+} from './buildLive.js';
 
 export interface ToolDefinition {
   name: string;
@@ -224,6 +236,12 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   code_generate_project: CodeGenerateProjectSchema,
   operation_get_status: OperationGetStatusSchema,
   operation_cancel: OperationCancelSchema,
+  build_list_targets: BuildListTargetsSchema,
+  build_validate: BuildValidateSchema,
+  build_cook: BuildCookSchema,
+  build_get_status: BuildOperationSchema,
+  build_get_result: BuildOperationSchema,
+  build_cancel: BuildOperationSchema,
   play_get_status: PlayGetStatusSchema,
   play_start_scenes: PlayStartScenesSchema,
   play_start_game: PlayStartGameSchema,
@@ -331,6 +349,8 @@ const WRITE_TOOL_NAMES = new Set([
   'code_compile',
   'code_generate_project',
   'operation_cancel',
+  'build_cook',
+  'build_cancel',
   'play_start_scenes',
   'play_start_game',
   'play_stop',
@@ -558,6 +578,42 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Requests cancellation only when the active Bridge v11 backend advertises a safe cancellation checkpoint. Unsupported backends are reported accurately.',
       inputSchema: zodToJsonSchema(OperationCancelSchema),
       handler: (a, c) => handleOperationCancel(a as Parameters<typeof handleOperationCancel>[0], c),
+    },
+    {
+      name: 'build_list_targets',
+      description: 'Lists the small reviewed Flax GameCooker target allowlist. Listed targets are not a claim that the local platform toolchain is installed.',
+      inputSchema: zodToJsonSchema(BuildListTargetsSchema),
+      handler: (a, c) => handleBuildListTargets(a as Parameters<typeof handleBuildListTargets>[0], c),
+    },
+    {
+      name: 'build_validate',
+      description: 'Performs a non-mutating build/cook preflight for a reviewed target and an empty project-relative Builds/ output directory. Toolchain availability remains unknown until start.',
+      inputSchema: zodToJsonSchema(BuildValidateSchema),
+      handler: (a, c) => handleBuildValidate(a as Parameters<typeof handleBuildValidate>[0], c),
+    },
+    {
+      name: 'build_cook',
+      description: 'Starts one bounded Flax GameCooker build into an empty project-relative Builds/ directory. Supports dry-run and returns a raw operation handle; no arbitrary command line or preset is exposed.',
+      inputSchema: zodToJsonSchema(BuildCookSchema),
+      handler: (a, c) => handleBuildCook(a as Parameters<typeof handleBuildCook>[0], c),
+    },
+    {
+      name: 'build_get_status',
+      description: 'Reads the current bounded status of one bridge v13 build/cook operation.',
+      inputSchema: zodToJsonSchema(BuildOperationSchema),
+      handler: (a, c) => handleBuildGetStatus(a as Parameters<typeof handleBuildGetStatus>[0], c),
+    },
+    {
+      name: 'build_get_result',
+      description: 'Reads the terminal result of one bridge v13 build/cook operation; running operations return BUILD_NOT_COMPLETE.',
+      inputSchema: zodToJsonSchema(BuildOperationSchema),
+      handler: (a, c) => handleBuildGetResult(a as Parameters<typeof handleBuildGetResult>[0], c),
+    },
+    {
+      name: 'build_cancel',
+      description: 'Requests cancellation from Flax GameCooker for one active build/cook operation. The result is confirmed only by later status/result polling.',
+      inputSchema: zodToJsonSchema(BuildOperationSchema),
+      handler: (a, c) => handleBuildCancel(a as Parameters<typeof handleBuildCancel>[0], c),
     },
     {
       name: 'play_get_status',

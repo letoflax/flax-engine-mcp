@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v12 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v13 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*12/);
-  assert.match(source, /BridgeVersion\s*=\s*12/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*13/);
+  assert.match(source, /BridgeVersion\s*=\s*13/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -116,4 +116,22 @@ test('bridge v12 exposes only the verified bounded prefab surface and leaves uns
   assert.match(source, /UNSUPPORTED_FLAX_VERSION/);
   assert.doesNotMatch(source, /PrefabManager\.ApplyAll\(/);
   assert.doesNotMatch(source, /\.BreakPrefabLink\(/);
+});
+
+test('bridge v13 exposes only bounded public GameCooker build/cook workflows', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "build\.list_targets"/);
+  assert.match(source, /case "build\.validate"/);
+  assert.match(source, /case "build\.cook"/);
+  assert.match(source, /case "build\.status"/);
+  assert.match(source, /case "build\.result"/);
+  assert.match(source, /case "build\.cancel"/);
+  assert.match(source, /GameCooker\.Build\(platform, configuration, output, BuildOptions\.None/);
+  assert.match(source, /GameCooker\.Cancel\(false\)/);
+  assert.match(source, /GameCooker\.Event \+= OnGameCookerEvent/);
+  assert.match(source, /GameCooker\.Progress \+= OnGameCookerProgress/);
+  assert.match(source, /BuildOutputScope = "project-relative-Builds-only"/);
+  assert.match(source, /ToolchainPreflightSupported = false/);
+  assert.match(source, /BUILD_NOT_COMPLETE/);
+  assert.doesNotMatch(source, /Process\.Start\(/);
 });
