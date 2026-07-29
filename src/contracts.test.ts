@@ -103,6 +103,7 @@ function startJsonRpcServer(extraArgs: string[] = []): {
   child: ReturnType<typeof spawn>;
   request: (id: number, method: string, params: unknown) => Promise<any>;
   notify: (method: string, params: unknown) => void;
+  notifications: any[];
 } {
   const child = spawn(process.execPath, ['dist/index.js', '--project-path', projectPath, ...extraArgs], {
     cwd: process.cwd(),
@@ -110,6 +111,7 @@ function startJsonRpcServer(extraArgs: string[] = []): {
   });
   let buffer = '';
   const pending = new Map<number, (message: any) => void>();
+  const notifications: any[] = [];
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', chunk => {
     buffer += chunk;
@@ -119,7 +121,8 @@ function startJsonRpcServer(extraArgs: string[] = []): {
       buffer = buffer.slice(newline + 1);
       if (!line) continue;
       const message = JSON.parse(line) as { id?: number };
-      const resolve = message.id === undefined ? undefined : pending.get(message.id);
+      if (message.id === undefined) { notifications.push(message); continue; }
+      const resolve = pending.get(message.id);
       if (resolve) {
         pending.delete(message.id!);
         resolve(message);
@@ -142,6 +145,7 @@ function startJsonRpcServer(extraArgs: string[] = []): {
     notify(method, params) {
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`);
     },
+    notifications,
   };
 }
 
@@ -155,6 +159,8 @@ test('stdio advertises contracts and enforces them at the MCP boundary', async t
     clientInfo: { name: 'contract-test', version: '1.0.0' },
   });
   assert.equal(initialized.result.serverInfo.name, 'flax-engine-mcp');
+  assert.equal(initialized.result.capabilities.resources.subscribe, true);
+  assert.equal(initialized.result.capabilities.resources.listChanged, true);
   server.notify('notifications/initialized', {});
 
   const listed = await server.request(2, 'tools/list', {});
@@ -174,6 +180,30 @@ test('stdio advertises contracts and enforces them at the MCP boundary', async t
   });
   assert.equal(invalid.result.isError, true);
   assert.equal(invalid.result.structuredContent.error.code, 'INVALID_ARGUMENT');
+
+  const resources = await server.request(5, 'resources/list', {});
+  assert.ok(resources.result.resources.some((resource: { uri: string }) => resource.uri === 'flax://project/info'));
+  const project = await server.request(6, 'resources/read', { uri: 'flax://project/info' });
+  assert.equal(project.result.contents[0].mimeType, 'application/json');
+  const templates = await server.request(7, 'resources/templates/list', {});
+  assert.deepEqual(templates.result.resourceTemplates, []); // fixture has no live bridge capability
+});
+
+test('stdio resource subscriptions collect debounced updates and honour unsubscribe', async t => {
+  const server = startJsonRpcServer();
+  t.after(() => server.child.kill());
+  await server.request(1, 'initialize', { protocolVersion: '2025-11-25', capabilities: { resources: { subscribe: true } }, clientInfo: { name: 'resource-test', version: '1.0.0' } });
+  server.notify('notifications/initialized', {});
+  await server.request(2, 'resources/subscribe', { uri: 'flax://editor/status' });
+  await server.request(3, 'resources/subscribe', { uri: 'flax://editor/status' });
+  const write = await server.request(4, 'tools/call', { name: 'write_script', arguments: { name: 'ResourceSubscription.cs', content: 'public class ResourceSubscription {}' } });
+  assert.equal(write.result.isError, undefined);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  assert.equal(server.notifications.filter(item => item.method === 'notifications/resources/updated' && item.params.uri === 'flax://editor/status').length, 1);
+  await server.request(5, 'resources/unsubscribe', { uri: 'flax://editor/status' });
+  await server.request(6, 'tools/call', { name: 'write_script', arguments: { name: 'SecondResourceSubscription.cs', content: 'public class SecondResourceSubscription {}' } });
+  await new Promise(resolve => setTimeout(resolve, 500));
+  assert.equal(server.notifications.filter(item => item.method === 'notifications/resources/updated' && item.params.uri === 'flax://editor/status').length, 1);
 });
 
 test('tools/list and capabilities reflect the active permission policy', async t => {
