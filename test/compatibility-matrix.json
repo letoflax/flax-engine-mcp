@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/any.json",
+  "generatedBy": "manual test matrix; not a runtime compatibility guarantee",
+  "entries": [
+    {
+      "os": "Windows",
+      "flax": "1.12",
+      "role": "recommended-and-current",
+      "status": "fixture-transport-covered",
+      "coverage": ["bridge status", "DTO/IPC", "malformed response", "timeout/disconnect", "stale file", "duplicate retry", "remote permission denied"],
+      "headedEditor": "manual required",
+      "headless": "status/compile/diagnostics/logs only; play is unsupported"
+    },
+    {
+      "os": "Linux",
+      "flax": "unverified",
+      "role": "future workflow validation",
+      "status": "not-claimed"
+    },
+    {
+      "os": "macOS",
+      "flax": "unverified",
+      "role": "future workflow validation",
+      "status": "not-claimed"
+    }
+  ]
+}
