@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { PermissionPolicy } from './permissions.js';
 
 export interface ProjectMeta {
   projectPath: string;
@@ -9,6 +10,8 @@ export interface ProjectMeta {
   sourceDir: string;
   logsDir: string;
   settingsDir: string;
+  /** Process-wide, CLI-derived policy. Kept on context for capability reporting. */
+  permissionPolicy?: PermissionPolicy;
 }
 
 export async function createProjectContext(projectPath: string): Promise<ProjectMeta> {

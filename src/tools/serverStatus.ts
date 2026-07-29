@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ProjectMeta, safeReadFile } from '../projectContext.js';
 import { toolError, toolResult, ToolMode, ToolResponse } from '../errors.js';
 import { SERVER_VERSION } from '../version.js';
+import { classifiedToolNames, permissionSummary } from '../permissions.js';
 
 export const GetServerCapabilitiesSchema = z.object({});
 export const EditorGetStatusSchema = z.object({});
@@ -209,6 +210,9 @@ export async function handleGetServerCapabilities(
         viewportCapture: phase2,
         runtimeInspection: phase2,
       },
+      permissions: permissionSummary(ctx.permissionPolicy ?? {
+        profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false,
+      }, classifiedToolNames()),
     };
     return toolResult(JSON.stringify(data, null, 2), { mode, data });
   } catch (error) {

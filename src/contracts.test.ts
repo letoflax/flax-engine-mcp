@@ -8,6 +8,7 @@ import { createProjectContext } from './projectContext.js';
 import { buildToolRegistry } from './tools/index.js';
 import { dispatchToolCall } from './index.js';
 import { SERVER_VERSION } from './version.js';
+import { allowedToolNames, isToolAllowed, parsePermissionPolicy } from './permissions.js';
 
 const projectPath = await mkdtemp(path.join(os.tmpdir(), 'flax-mcp-contract-'));
 after(async () => rm(projectPath, { recursive: true, force: true }));
@@ -51,12 +52,48 @@ test('dispatch rejects unknown arguments with a stable domain error', async () =
   assert.equal(result.content[0]?.type === 'text' && result.content[0].text.startsWith('INVALID_ARGUMENT:'), true);
 });
 
-function startJsonRpcServer(): {
+test('permission policy parses profiles and repeated overrides', () => {
+  assert.deepEqual(parsePermissionPolicy(['node', 'server', '--permission-profile', 'code-edit', '--allow-tool', 'actor_create', '--deny-tool', 'write_script', '--allow-tool', 'read_doc']), {
+    profile: 'code-edit', allowTools: ['actor_create', 'read_doc'], denyTools: ['write_script'], emergencyReadOnly: false,
+  });
+  assert.throws(() => parsePermissionPolicy(['node', 'server', '--permission-profile', 'unsafe']), /Invalid --permission-profile/);
+  assert.throws(() => parsePermissionPolicy(['node', 'server', '--allow-tool']), /requires a tool name/);
+});
+
+test('permission profiles cover the registry and fail closed by default', () => {
+  const names = tools.map(tool => tool.name);
+  assert.equal(allowedToolNames(names, { profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false }).length, 64);
+  assert.equal(isToolAllowed('read_script', { profile: 'read-only', allowTools: [], denyTools: [], emergencyReadOnly: false }), true);
+  assert.equal(isToolAllowed('write_script', { profile: 'read-only', allowTools: [], denyTools: [], emergencyReadOnly: false }), false);
+  assert.equal(isToolAllowed('code_compile', { profile: 'code-edit', allowTools: [], denyTools: [], emergencyReadOnly: false }), true);
+  assert.equal(isToolAllowed('actor_update', { profile: 'code-edit', allowTools: [], denyTools: [], emergencyReadOnly: false }), false);
+  assert.equal(isToolAllowed('play_start_game', { profile: 'scene-edit', allowTools: [], denyTools: [], emergencyReadOnly: false }), true);
+  assert.equal(isToolAllowed('reimport_asset', { profile: 'scene-edit', allowTools: [], denyTools: [], emergencyReadOnly: false }), false);
+  assert.equal(isToolAllowed('future_mutation', { profile: 'full', allowTools: ['future_mutation'], denyTools: [], emergencyReadOnly: false }), false);
+});
+
+test('permission deny takes precedence and emergency mode blocks mutation and runtime', async () => {
+  const policy = { profile: 'full' as const, allowTools: ['write_script'], denyTools: ['write_script'], emergencyReadOnly: false };
+  assert.equal(isToolAllowed('write_script', policy), false);
+  const emergency = { profile: 'full' as const, allowTools: ['play_start_game'], denyTools: [], emergencyReadOnly: true };
+  assert.equal(isToolAllowed('read_script', emergency), true);
+  assert.equal(isToolAllowed('write_script', emergency), false);
+  assert.equal(isToolAllowed('play_start_game', emergency), false);
+  const calls: string[] = [];
+  const guarded = [{ ...tools.find(tool => tool.name === 'list_assets')!, handler: async () => { calls.push('called'); throw new Error('should not run'); } }];
+  const guardedCtx = { ...ctx, permissionPolicy: { profile: 'read-only' as const, allowTools: [], denyTools: ['list_assets'], emergencyReadOnly: false } };
+  const result = await dispatchToolCall(guarded, 'list_assets', {}, guardedCtx);
+  assert.equal(result.isError, true);
+  assert.equal((result.structuredContent as Record<string, any>).error.code, 'PERMISSION_DENIED');
+  assert.deepEqual(calls, []);
+});
+
+function startJsonRpcServer(extraArgs: string[] = []): {
   child: ReturnType<typeof spawn>;
   request: (id: number, method: string, params: unknown) => Promise<any>;
   notify: (method: string, params: unknown) => void;
 } {
-  const child = spawn(process.execPath, ['dist/index.js', '--project-path', projectPath], {
+  const child = spawn(process.execPath, ['dist/index.js', '--project-path', projectPath, ...extraArgs], {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -126,4 +163,36 @@ test('stdio advertises contracts and enforces them at the MCP boundary', async t
   });
   assert.equal(invalid.result.isError, true);
   assert.equal(invalid.result.structuredContent.error.code, 'INVALID_ARGUMENT');
+});
+
+test('tools/list and capabilities reflect the active permission policy', async t => {
+  const server = startJsonRpcServer(['--permission-profile', 'read-only', '--allow-tool', 'code_compile', '--deny-tool', 'list_assets']);
+  t.after(() => server.child.kill());
+  await server.request(1, 'initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'permission-test', version: '1.0.0' } });
+  server.notify('notifications/initialized', {});
+  const listed = await server.request(2, 'tools/list', {});
+  const names = listed.result.tools.map((tool: { name: string }) => tool.name);
+  assert.equal(names.includes('read_script'), true);
+  assert.equal(names.includes('code_compile'), true);
+  assert.equal(names.includes('list_assets'), false);
+  assert.equal(names.includes('write_script'), false);
+  const capabilities = await server.request(3, 'tools/call', { name: 'get_server_capabilities', arguments: {} });
+  assert.equal(capabilities.result.structuredContent.data.permissions.profile, 'read-only');
+  assert.equal(capabilities.result.structuredContent.data.permissions.availableTools.includes('code_compile'), true);
+  assert.equal(capabilities.result.structuredContent.data.permissions.availableTools.includes('list_assets'), false);
+});
+
+test('emergency read-only is reflected in discovery and cannot be overridden', async t => {
+  const server = startJsonRpcServer(['--permission-profile', 'full', '--allow-tool', 'write_script', '--emergency-read-only']);
+  t.after(() => server.child.kill());
+  await server.request(1, 'initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'emergency-test', version: '1.0.0' } });
+  server.notify('notifications/initialized', {});
+  const listed = await server.request(2, 'tools/list', {});
+  const names = listed.result.tools.map((tool: { name: string }) => tool.name);
+  assert.equal(names.includes('read_script'), true);
+  assert.equal(names.includes('write_script'), false);
+  assert.equal(names.includes('play_start_game'), false);
+  const capabilities = await server.request(3, 'tools/call', { name: 'get_server_capabilities', arguments: {} });
+  assert.equal(capabilities.result.structuredContent.data.permissions.emergencyReadOnly, true);
+  assert.equal(capabilities.result.structuredContent.data.permissions.availableTools.includes('write_script'), false);
 });

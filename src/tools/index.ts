@@ -3,6 +3,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { ProjectMeta } from '../projectContext.js';
 import { ToolResponse } from '../errors.js';
+import { assertPermissionRegistryCoverage } from '../permissions.js';
 
 // Existing tools
 import { GetProjectInfoSchema, GetGameSettingsSchema, handleGetProjectInfo, handleGetGameSettings } from './project.js';
@@ -659,7 +660,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
   ];
 
-  return tools.map(tool => {
+  const registry = tools.map(tool => {
     const zodInputSchema = INPUT_SCHEMAS[tool.name];
     if (!zodInputSchema) {
       throw new Error(`Tool "${tool.name}" is missing its Zod input schema.`);
@@ -673,4 +674,6 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       annotations: annotationsFor(tool.name),
     };
   });
+  assertPermissionRegistryCoverage(registry.map(tool => tool.name));
+  return registry;
 }

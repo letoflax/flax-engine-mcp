@@ -25,6 +25,24 @@ claude mcp add flax -- node /path/to/flax-engine-mcp/dist/index.js --project-pat
 
 To use a different project, just change `--project-path`. You can run multiple instances with different project paths under different names (`flax-fps`, `flax-rpg`, etc.).
 
+## Permissions
+
+The default profile is `full`, preserving existing installations. Use a narrower profile for agent sessions that do not need every capability:
+
+```bash
+flax-mcp --project-path /path/to/project --permission-profile read-only
+flax-mcp --project-path /path/to/project --permission-profile code-edit
+flax-mcp --project-path /path/to/project --permission-profile scene-edit
+flax-mcp --project-path /path/to/project --permission-profile full
+```
+
+- `read-only` permits inspection only.
+- `code-edit` adds source generation/patching and compile operations.
+- `scene-edit` adds scene editing and play-mode controls, but not source or asset changes.
+- `full` permits every released tool.
+
+Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a specific server process; deny always wins. `--emergency-read-only` is an immediate safety switch: it blocks every mutation and runtime-control tool even if it was explicitly allowed. Tool discovery and `get_server_capabilities` report the tools available under the active policy.
+
 ## Tools
 
 ### Project Info

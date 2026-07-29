@@ -15,6 +15,7 @@ import { finalizeToolResponse, toolError, ToolDomainError, ToolResponse } from '
 import { ProjectMeta } from './projectContext.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
 import { listFlaxResources, readFlaxResource } from './resources.js';
+import { allowedToolNames, assertPermissionRegistryCoverage, parsePermissionPolicy, policyForContext } from './permissions.js';
 
 export function parseProjectPath(argv = process.argv): string {
   const idx = argv.indexOf('--project-path');
@@ -49,6 +50,13 @@ export async function dispatchToolCall(
     return finalize(toolError(new ToolDomainError('UNKNOWN_TOOL', `Unknown tool: ${name}`)));
   }
 
+  if (!allowedToolNames([name], policyForContext(ctx)).includes(name)) {
+    return finalize(toolError(new ToolDomainError(
+      'PERMISSION_DENIED',
+      `Tool "${name}" is not permitted by the active permission policy.`,
+    )));
+  }
+
   const parsed = tool.zodInputSchema.safeParse(rawArgs ?? {});
   if (!parsed.success) {
     return finalize(toolError(parsed.error));
@@ -64,6 +72,7 @@ export async function dispatchToolCall(
 async function main(): Promise<void> {
   const projectPath = parseProjectPath();
   const ctx = await createProjectContext(projectPath);
+  ctx.permissionPolicy = parsePermissionPolicy(process.argv);
 
   process.stderr.write(`Flax MCP Server — project: ${ctx.projectName} (${ctx.projectPath})\n`);
 
@@ -73,9 +82,10 @@ async function main(): Promise<void> {
   );
 
   const tools = buildToolRegistry(ctx);
+  assertPermissionRegistryCoverage(tools.map(tool => tool.name));
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: tools.map(t => ({
+    tools: tools.filter(t => allowedToolNames([t.name], policyForContext(ctx)).includes(t.name)).map(t => ({
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
