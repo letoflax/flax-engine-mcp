@@ -74,6 +74,32 @@ export const AssetDuplicateSchema = z.object({
   ...CommonWriteShape,
 }).strict().superRefine(exactlyOneSelector);
 
+/**
+ * `asset_delete` is deliberately a quarantine move, never a permanent delete.
+ * A caller must compare the reference count from a dry run to the current
+ * registry before requesting the visible mutation.
+ */
+export const AssetDeleteSchema = z.object({
+  ...SelectorShape,
+  quarantine_destination: ProjectContentFolder,
+  collision_policy: z.enum(['error', 'rename']).optional().default('error'),
+  dry_run: z.boolean().optional().default(true),
+  expected_path: ProjectContentPath.optional(),
+  expected_index_revision: IndexRevision.optional(),
+  confirm_reference_count: z.number().int().min(0).max(10_000).optional(),
+  require_unreferenced: z.boolean().optional().default(false),
+  confirm: z.boolean().optional().default(false),
+  idempotency_key: IdempotencyKey.optional(),
+}).strict().superRefine((value, ctx) => {
+  exactlyOneSelector(value, ctx);
+  if (!value.dry_run && value.confirm !== true) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['confirm'], message: 'Set confirm:true to move the asset into quarantine.' });
+  }
+  if (!value.dry_run && value.confirm_reference_count === undefined && !value.require_unreferenced) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['confirm_reference_count'], message: 'Provide confirm_reference_count from a recent dry run or set require_unreferenced:true.' });
+  }
+});
+
 interface AssetMetadata {
   Id?: string | null;
   Path?: string;
@@ -106,7 +132,7 @@ function organizeError(error: unknown): ToolDomainError {
   if (error.code === 'BRIDGE_REMOTE_ERROR') {
     const remote = error.details as { code?: unknown; details?: unknown } | undefined;
     const code = remote?.code;
-    if (code === 'ASSET_NOT_FOUND' || code === 'FILE_EXISTS' || code === 'EDITOR_BUSY' || code === 'IDEMPOTENCY_KEY_REUSED' || code === 'ASSET_REVISION_CONFLICT' || code === 'ASSET_OPERATION_FAILED') {
+    if (code === 'ASSET_NOT_FOUND' || code === 'FILE_EXISTS' || code === 'EDITOR_BUSY' || code === 'IDEMPOTENCY_KEY_REUSED' || code === 'ASSET_REVISION_CONFLICT' || code === 'ASSET_REFERENCE_CONFLICT' || code === 'ASSET_OPERATION_FAILED') {
       return new ToolDomainError(code, error.message, remote?.details);
     }
     if (code === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, remote?.details);
@@ -120,22 +146,25 @@ function warningsFrom(result: AssetOrganizeResult): string[] {
 }
 
 async function organize(
-  operation: 'move' | 'rename' | 'duplicate',
-  args: z.infer<typeof AssetMoveSchema> | z.infer<typeof AssetRenameSchema> | z.infer<typeof AssetDuplicateSchema>,
+  operation: 'move' | 'rename' | 'duplicate' | 'delete',
+  args: z.infer<typeof AssetMoveSchema> | z.infer<typeof AssetRenameSchema> | z.infer<typeof AssetDuplicateSchema> | z.infer<typeof AssetDeleteSchema>,
   ctx: ProjectMeta,
 ): Promise<ToolResponse> {
   try {
     const response = await callEditorBridge<BridgeMethod, Record<string, unknown>, AssetOrganizeResult>(ctx, `asset.${operation}` as BridgeMethod, {
       AssetId: args.asset_id,
       Path: args.path,
-      Destination: 'destination' in args ? args.destination : undefined,
+      Destination: 'destination' in args ? args.destination : 'quarantine_destination' in args ? args.quarantine_destination : undefined,
       Name: 'name' in args ? args.name : undefined,
       CollisionPolicy: args.collision_policy,
       DryRun: args.dry_run,
       ExpectedPath: args.expected_path,
       ExpectedIndexRevision: args.expected_index_revision,
+      ConfirmReferenceCount: 'confirm_reference_count' in args ? args.confirm_reference_count : undefined,
+      RequireUnreferenced: 'require_unreferenced' in args && args.require_unreferenced ? true : undefined,
+      Confirm: 'confirm' in args && args.confirm ? true : undefined,
       IdempotencyKey: args.idempotency_key,
-    }, { minimumBridgeVersion: 10, deadlineMs: 30_000 });
+    }, { minimumBridgeVersion: operation === 'delete' ? 13 : 10, deadlineMs: 30_000 });
     const result = response.data;
     const warnings = warningsFrom(result);
     const changed = !result.DryRun && result.Source?.Path !== result.Result?.Path;
@@ -181,3 +210,4 @@ async function organize(
 export const handleAssetMove = (args: z.infer<typeof AssetMoveSchema>, ctx: ProjectMeta) => organize('move', args, ctx);
 export const handleAssetRename = (args: z.infer<typeof AssetRenameSchema>, ctx: ProjectMeta) => organize('rename', args, ctx);
 export const handleAssetDuplicate = (args: z.infer<typeof AssetDuplicateSchema>, ctx: ProjectMeta) => organize('duplicate', args, ctx);
+export const handleAssetDelete = (args: z.infer<typeof AssetDeleteSchema>, ctx: ProjectMeta) => organize('delete', args, ctx);

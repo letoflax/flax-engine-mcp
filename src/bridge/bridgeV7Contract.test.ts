@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v12 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v13 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*12/);
-  assert.match(source, /BridgeVersion\s*=\s*12/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*13/);
+  assert.match(source, /BridgeVersion\s*=\s*13/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -97,6 +97,21 @@ test('bridge v10 exposes safe editor Content move, rename, and duplicate operati
   const organizationSource = source.slice(source.indexOf('private McpAssetOrganizeResult OrganizeAsset'), source.indexOf('// v9 imports use only direct public managed APIs'));
   assert.doesNotMatch(organizationSource, /File\.Move\(/);
   assert.doesNotMatch(organizationSource, /File\.Copy\(/);
+});
+
+test('bridge v13 quarantines guarded asset deletion without a filesystem or permanent-delete fallback', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "asset\.delete"/);
+  assert.match(source, /AssetQuarantineDeleteSupported = true/);
+  assert.match(source, /AssetPermanentDeleteSupported = false/);
+  assert.match(source, /ConfirmReferenceCount/);
+  assert.match(source, /RequireUnreferenced/);
+  assert.match(source, /ASSET_REFERENCE_CONFLICT/);
+  const deleteSource = source.slice(source.indexOf('private McpAssetOrganizeResult QuarantineDeleteAsset'), source.indexOf('// v9 imports use only direct public managed APIs'));
+  assert.match(deleteSource, /ContentDatabase\.Move\(contentItem, output\)/);
+  assert.doesNotMatch(deleteSource, /ContentDatabase\.Delete\(/);
+  assert.doesNotMatch(deleteSource, /File\.Delete\(/);
+  assert.doesNotMatch(deleteSource, /Directory\.Delete\(/);
 });
 
 test('bridge v12 exposes only the verified bounded prefab surface and leaves unsafe override mutations unsupported', async () => {

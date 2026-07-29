@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 12
+// MCP-BRIDGE-VERSION: 13
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -23,12 +23,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 12; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 13; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 12; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; }
+    public class McpStatus { public int BridgeVersion = 13; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -106,7 +106,7 @@ namespace Game.MCP
     // v10 asset organization stays intentionally narrow: each request selects a
     // registry asset, provides a Content-relative existing folder and/or a
     // filename-without-extension, and invokes one public Flax Content API.
-    public class McpAssetOrganizeRequest { public string AssetId; public string Path; public string Destination; public string Name; public string CollisionPolicy = "error"; public bool DryRun; public string ExpectedPath; public string ExpectedIndexRevision; public string IdempotencyKey; }
+    public class McpAssetOrganizeRequest { public string AssetId; public string Path; public string Destination; public string Name; public string CollisionPolicy = "error"; public bool DryRun; public string ExpectedPath; public string ExpectedIndexRevision; public int? ConfirmReferenceCount; public bool RequireUnreferenced; public bool Confirm; public string IdempotencyKey; }
     public class McpAssetReferenceImpact { public int DirectReferenceCount; public McpAssetReference[] Sample; public bool Truncated; public string Scope = "direct-public-asset-references"; }
     public class McpAssetOrganizeResult { public string Operation; public McpAssetMetadata Source; public McpAssetMetadata Result; public string IndexRevisionBefore; public string IndexRevisionAfter; public bool DryRun; public bool Renamed; public bool GuidPreserved; public bool ExistingReferencesPreserved; public bool ReferencesRemainBoundToSource; public bool UndoSupported = false; public string Atomicity = "single-content-api-call-not-transactional"; public McpAssetReferenceImpact ReferenceImpact; public string[] Warnings; }
     // Bridge v11's bounded operation record is deliberately generic. It keeps
@@ -141,7 +141,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 12;
+        private const int BridgeVersion = 13;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -258,7 +258,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v12 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v13 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -433,6 +433,7 @@ namespace Game.MCP
                 case "asset.move": { var q = JsonSerializer.Deserialize<McpAssetOrganizeRequest>(p); result = OnMain(() => ExecuteIdempotent("asset.move", q == null ? null : q.IdempotencyKey, q, () => MoveAsset(q)), request.deadlineUnixMs); break; }
                 case "asset.rename": { var q = JsonSerializer.Deserialize<McpAssetOrganizeRequest>(p); result = OnMain(() => ExecuteIdempotent("asset.rename", q == null ? null : q.IdempotencyKey, q, () => RenameAsset(q)), request.deadlineUnixMs); break; }
                 case "asset.duplicate": { var q = JsonSerializer.Deserialize<McpAssetOrganizeRequest>(p); result = OnMain(() => ExecuteIdempotent("asset.duplicate", q == null ? null : q.IdempotencyKey, q, () => DuplicateAsset(q)), request.deadlineUnixMs); break; }
+                case "asset.delete": { var q = JsonSerializer.Deserialize<McpAssetOrganizeRequest>(p); result = OnMain(() => ExecuteIdempotent("asset.delete", q == null ? null : q.IdempotencyKey, q, () => QuarantineDeleteAsset(q)), request.deadlineUnixMs); break; }
                 case "prefab.create_from_actor": { var q = JsonSerializer.Deserialize<McpPrefabCreateFromActor>(p); result = OnMain(() => ExecuteIdempotent("prefab.create_from_actor", q == null ? null : q.IdempotencyKey, q, () => CreatePrefabFromActor(q)), request.deadlineUnixMs); break; }
                 case "prefab.instantiate": { var q = JsonSerializer.Deserialize<McpPrefabInstantiate>(p); result = OnMain(() => ExecuteIdempotent("prefab.instantiate", q == null ? null : q.IdempotencyKey, q, () => InstantiatePrefab(q)), request.deadlineUnixMs); break; }
                 case "prefab.get_instances": result = OnMain(() => GetPrefabInstances(JsonSerializer.Deserialize<McpPrefabGetInstances>(p)), request.deadlineUnixMs); break;
@@ -597,6 +598,14 @@ namespace Game.MCP
             return OrganizeAsset("duplicate", request);
         }
 
+        // Deletion is intentionally a guarded quarantine move. The bridge
+        // never invokes ContentDatabase.Delete or a filesystem delete API:
+        // recovery remains possible through the Content Browser.
+        private McpAssetOrganizeResult QuarantineDeleteAsset(McpAssetOrganizeRequest request)
+        {
+            return OrganizeAsset("delete", request);
+        }
+
         private McpAssetOrganizeResult OrganizeAsset(string operation, McpAssetOrganizeRequest request)
         {
             if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset organization parameters are required.");
@@ -609,6 +618,7 @@ namespace Game.MCP
             ValidateAssetOrganizationExpectation(request, source, indexRevisionBefore);
             var graph = BuildAssetGraphIndex(records);
             var impact = AssetReferenceImpact(source.Id, graph);
+            if (operation == "delete") ValidateAssetDeleteConfirmation(request, impact);
             var sourceMetadata = AssetMetadata(source);
             var sourceAbsolutePath = ResolveExistingContentAssetPath(source);
             var output = ResolveAssetOrganizationOutput(operation, request, source, records, sourceAbsolutePath, out var renamed, out var noChange);
@@ -640,7 +650,7 @@ namespace Game.MCP
             {
                 var contentItem = FEditor.Instance.ContentDatabase.FindAsset(source.Id);
                 if (contentItem == null) throw new McpProtocolException("ASSET_OPERATION_FAILED", "The selected asset is unavailable in the Editor Content database.");
-                if (operation == "move")
+                if (operation == "move" || operation == "delete")
                 {
                     // Public Editor Content Database API. It updates the Editor
                     // Content database rather than performing a raw file rename.
@@ -697,7 +707,7 @@ namespace Game.MCP
         private static void ValidateAssetOrganizeRequest(string operation, McpAssetOrganizeRequest request)
         {
             ValidateAssetSelector(request.AssetId, request.Path);
-            if (operation == "move" || operation == "duplicate") ValidateProjectContentPath(request.Destination, true);
+            if (operation == "move" || operation == "duplicate" || operation == "delete") ValidateProjectContentPath(request.Destination, true);
             if (operation == "rename" || operation == "duplicate") ValidateAssetOrganizationName(request.Name);
             if (!string.Equals(request.CollisionPolicy, "error", StringComparison.Ordinal) && !string.Equals(request.CollisionPolicy, "rename", StringComparison.Ordinal))
                 throw new McpProtocolException("VALIDATION_FAILED", "CollisionPolicy must be error or rename.");
@@ -706,6 +716,19 @@ namespace Game.MCP
                 throw new McpProtocolException("VALIDATION_FAILED", "ExpectedIndexRevision must be a 64-character SHA-256 digest.");
             if (!string.IsNullOrEmpty(request.IdempotencyKey) && (request.IdempotencyKey.Length > 128 || !IsIdempotencyKey(request.IdempotencyKey)))
                 throw new McpProtocolException("VALIDATION_FAILED", "IdempotencyKey must contain only letters, digits, dot, underscore, colon, or hyphen.");
+            if (operation == "delete" && !request.DryRun && !request.Confirm)
+                throw new McpProtocolException("VALIDATION_FAILED", "Confirm must be true before an asset can be moved into quarantine.");
+        }
+
+        private static void ValidateAssetDeleteConfirmation(McpAssetOrganizeRequest request, McpAssetReferenceImpact impact)
+        {
+            if (request.DryRun) return;
+            if (!request.ConfirmReferenceCount.HasValue && !request.RequireUnreferenced)
+                throw new McpProtocolException("VALIDATION_FAILED", "ConfirmReferenceCount or RequireUnreferenced:true is required before an asset can be moved into quarantine.");
+            if (request.RequireUnreferenced && impact.DirectReferenceCount != 0)
+                throw new McpProtocolException("ASSET_REFERENCE_CONFLICT", "The selected asset still has direct public references and cannot be quarantined as unreferenced.", new { RequireUnreferenced = true, CurrentReferenceCount = impact.DirectReferenceCount });
+            if (request.ConfirmReferenceCount.HasValue && request.ConfirmReferenceCount.Value != impact.DirectReferenceCount)
+                throw new McpProtocolException("ASSET_REFERENCE_CONFLICT", "The selected asset's direct reference count changed after confirmation.", new { ConfirmReferenceCount = request.ConfirmReferenceCount.Value, CurrentReferenceCount = impact.DirectReferenceCount });
         }
 
         private static void ValidateAssetOrganizationExpectation(McpAssetOrganizeRequest request, McpAssetRecord source, string currentIndexRevision)
@@ -734,7 +757,7 @@ namespace Game.MCP
             var sourceExtension = Path.GetExtension(source.Path);
             var destination = operation == "rename" ? source.Folder : ValidateProjectContentPath(request.Destination, true);
             var destinationFolder = ResolveExistingContentFolder(destination);
-            var name = operation == "move" ? Path.GetFileNameWithoutExtension(source.Path) : request.Name;
+            var name = operation == "move" || operation == "delete" ? Path.GetFileNameWithoutExtension(source.Path) : request.Name;
             var requested = Path.Combine(destinationFolder, name + sourceExtension);
             var output = Path.GetFullPath(requested);
             if (string.Equals(output, sourceAbsolutePath, PathComparison))
@@ -842,6 +865,7 @@ namespace Game.MCP
                 "The bridge does not save project content automatically.",
             };
             if (operation == "duplicate") warnings.Add("Duplicate creates a distinct asset identity; existing references remain bound to the source asset.");
+            else if (operation == "delete") warnings.Add("asset.delete is a quarantine move, not a permanent deletion. The selected GUID and existing references are preserved; restore it with asset_move or the Content Browser.");
             else warnings.Add("Move/rename is expected to preserve the selected asset GUID and existing references; the bridge verifies the returned Content registry entry.");
             return warnings.ToArray();
         }

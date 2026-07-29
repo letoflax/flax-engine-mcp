@@ -201,6 +201,7 @@ export async function handleGetServerCapabilities(
     const phase6AssetOrganization = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 10;
     const operationHandles = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 11;
     const phase6Prefabs = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 12;
+    const assetQuarantineDelete = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -243,6 +244,8 @@ export async function handleGetServerCapabilities(
           move: phase6AssetOrganization,
           rename: phase6AssetOrganization,
           duplicate: phase6AssetOrganization,
+          quarantineDelete: assetQuarantineDelete,
+          permanentDelete: false,
           undo: false,
           editLeases: false,
           referenceImpact: phase6AssetOrganization,

@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (bridge v12 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v13 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 12, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 13, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -329,3 +329,34 @@ bounded cursors. `prefab.get_overrides`, `prefab.revert_overrides`,
 `prefab.apply_overrides`, and `prefab.break_link` remain explicit stable
 `UNSUPPORTED_FLAX_VERSION` capabilities because Flax 1.12 lacks a reviewed,
 undoable and previewable public path for those operations.
+
+## Bridge v13: guarded asset quarantine deletion
+
+Bridge v13 preserves every v5--v12 method and adds `asset.delete`. The method
+is intentionally named for its user-facing workflow, but it is not a permanent
+delete: it moves exactly one selected registry asset to a caller-provided,
+existing Content-relative `Destination` using the compile-probed public
+`FEditor.Instance.ContentDatabase.Move` API. `status` adds
+`AssetQuarantineDeleteSupported:true` and `AssetPermanentDeleteSupported:false`.
+The bridge never calls `ContentDatabase.Delete`, `File.Delete`, or
+`Directory.Delete` for this method.
+
+The request accepts exactly one `AssetId` or `Path`, an existing normalized
+Content `Destination`, `CollisionPolicy`, `DryRun`, optional `ExpectedPath`,
+optional `ExpectedIndexRevision`, optional `IdempotencyKey`, plus
+`ConfirmReferenceCount`, `RequireUnreferenced`, and `Confirm`. Node defaults
+`dry_run:true`; a dry run returns the bounded direct reverse-reference impact
+without a mutation. A non-dry-run request must set `Confirm:true` and either
+provide the exact `ConfirmReferenceCount` observed during review or set
+`RequireUnreferenced:true`. The bridge rebuilds the public `Asset.GetReferences`
+graph immediately before moving; a changed count or nonzero required count fails
+with `ASSET_REFERENCE_CONFLICT` and bounded expected/current details. The GUID
+and existing references are preserved, so restoration is a normal `asset.move`
+or Content Browser operation.
+
+The quarantine folder is never created through an unmanaged filesystem call;
+callers create/select it through normal Editor workflows before invoking the
+method. As with v10 organization, no verified undo record, asset lease, atomic
+multi-operation rollback, automatic project save, actor/property reference
+location, or permanent deletion capability is claimed. Node records bounded
+Content-relative audit metadata for both successful previews and moves.

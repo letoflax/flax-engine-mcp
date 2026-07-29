@@ -5,9 +5,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { createProjectContext, type ProjectMeta } from '../projectContext.js';
 import {
+  AssetDeleteSchema,
   AssetDuplicateSchema,
   AssetMoveSchema,
   AssetRenameSchema,
+  handleAssetDelete,
   handleAssetDuplicate,
   handleAssetMove,
   handleAssetRename,
@@ -68,7 +70,50 @@ test('asset organization schemas require normalized Content paths, names, and on
   assert.equal(AssetMoveSchema.safeParse({ asset_id: ASSET_ID, path: 'Content/Fixture.scene', destination: 'Content/Destination' }).success, false);
   assert.equal(AssetRenameSchema.safeParse({ path: 'Content/Fixture.scene', name: 'Fixture.scene' }).success, false);
   assert.equal(AssetDuplicateSchema.safeParse({ path: 'Content/Fixture.scene', destination: 'Content/Destination', name: 'Copy', collision_policy: 'overwrite' }).success, false);
+  assert.equal(AssetDeleteSchema.safeParse({ path: 'Content/Fixture.scene', quarantine_destination: 'Content/Destination' }).success, true);
+  assert.equal(AssetDeleteSchema.safeParse({ path: 'Content/Fixture.scene', quarantine_destination: 'Content/Destination', dry_run: true }).success, true);
+  assert.equal(AssetDeleteSchema.safeParse({ path: 'Content/Fixture.scene', quarantine_destination: 'Content/Destination', dry_run: false, confirm: true, confirm_reference_count: 2 }).success, true);
+  assert.equal(AssetDeleteSchema.safeParse({ path: 'Content/Fixture.scene', quarantine_destination: 'Content/Destination', dry_run: false, confirm: true, require_unreferenced: true }).success, true);
   assert.equal(AssetRenameSchema.safeParse({ path: 'Content/Fixture.scene', name: 'Renamed', expected_index_revision: INDEX }).success, true);
+});
+
+test('asset_delete previews and then quarantines through v13 only after reference-count confirmation', async () => {
+  const f = await fixture(13);
+  try {
+    const preview = handleAssetDelete(AssetDeleteSchema.parse({
+      asset_id: ASSET_ID, quarantine_destination: 'Content/Destination', dry_run: true, expected_path: 'Content/Fixture.scene', expected_index_revision: INDEX,
+    }), f.ctx);
+    const previewRequest = await nextRequest(f);
+    assert.equal(previewRequest.body.method, 'asset.delete');
+    assert.deepEqual(JSON.parse(String(previewRequest.body.paramsJson)), {
+      AssetId: ASSET_ID, Destination: 'Content/Destination', CollisionPolicy: 'error', DryRun: true,
+      ExpectedPath: 'Content/Fixture.scene', ExpectedIndexRevision: INDEX,
+    });
+    await reply(f, previewRequest, { ok: true, resultJson: JSON.stringify({
+      Operation: 'delete', Source: { Id: ASSET_ID, Path: 'Content/Fixture.scene' }, Result: { Id: ASSET_ID, Path: 'Content/Destination/Fixture.scene' },
+      IndexRevisionBefore: INDEX, IndexRevisionAfter: INDEX, DryRun: true, GuidPreserved: true,
+      ReferenceImpact: { DirectReferenceCount: 2, Sample: [], Truncated: false }, Warnings: ['Quarantine preview'],
+    }) });
+    assert.equal(((await preview).structuredContent as Record<string, any>).data.result.ReferenceImpact.DirectReferenceCount, 2);
+
+    const confirmed = handleAssetDelete(AssetDeleteSchema.parse({
+      asset_id: ASSET_ID, quarantine_destination: 'Content/Destination', dry_run: false, confirm: true, confirm_reference_count: 2, idempotency_key: 'delete-1',
+    }), f.ctx);
+    const confirmedRequest = await nextRequest(f);
+    assert.deepEqual(JSON.parse(String(confirmedRequest.body.paramsJson)), {
+      AssetId: ASSET_ID, Destination: 'Content/Destination', CollisionPolicy: 'error', DryRun: false,
+      ConfirmReferenceCount: 2, Confirm: true, IdempotencyKey: 'delete-1',
+    });
+    await reply(f, confirmedRequest, { ok: true, resultJson: JSON.stringify({
+      Operation: 'delete', Source: { Id: ASSET_ID, Path: 'Content/Fixture.scene' }, Result: { Id: ASSET_ID, Path: 'Content/Destination/Fixture.scene' },
+      IndexRevisionBefore: INDEX, IndexRevisionAfter: 'c'.repeat(64), DryRun: false, GuidPreserved: true,
+      ReferenceImpact: { DirectReferenceCount: 2, Sample: [], Truncated: false }, Warnings: ['Quarantine move, not permanent delete'],
+    }) });
+    const envelope = (await confirmed).structuredContent as Record<string, any>;
+    assert.equal(envelope.changes[0].kind, 'asset-delete');
+    const audit = await fs.readFile(path.join(f.root, '.flax-mcp', 'audit.jsonl'), 'utf8');
+    assert.match(audit, /asset_delete/);
+  } finally { await f.cleanup(); }
 });
 
 test('asset_move sends strict v10 PascalCase guards and returns a dry-run reference impact', async () => {
@@ -146,4 +191,11 @@ test('asset organization maps conflict and expected-revision errors and gates pr
     assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
     assert.deepEqual(await fs.readdir(old.requests), []);
   } finally { await old.cleanup(); }
+
+  const oldDelete = await fixture(12);
+  try {
+    const result = await handleAssetDelete(AssetDeleteSchema.parse({ path: 'Content/Fixture.scene', quarantine_destination: 'Content/Destination', dry_run: false, confirm: true, confirm_reference_count: 0 }), oldDelete.ctx);
+    assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(oldDelete.requests), []);
+  } finally { await oldDelete.cleanup(); }
 });

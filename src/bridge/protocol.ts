@@ -74,7 +74,8 @@ export type AssetBridgeMethod =
   | 'asset.reimport_status'
   | 'asset.move'
   | 'asset.rename'
-  | 'asset.duplicate';
+  | 'asset.duplicate'
+  | 'asset.delete';
 
 /**
  * Bridge v11 exposes raw, persisted operation handles. This deliberately is
