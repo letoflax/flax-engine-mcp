@@ -28,6 +28,15 @@ import {
   handleGetAssetInfoCompatibility,
   handleListAssetsCompatibility,
 } from './assetLive.js';
+import {
+  AssetImportSchema,
+  AssetOperationStatusSchema,
+  AssetReimportSchema,
+  handleAssetImport,
+  handleAssetImportStatus,
+  handleAssetReimport,
+  handleAssetReimportStatus,
+} from './assetImport.js';
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
 import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyActor } from './sceneWrite.js';
@@ -203,6 +212,10 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   asset_get: AssetGetSchema,
   asset_dependencies: AssetDependenciesSchema,
   asset_find_references: AssetFindReferencesSchema,
+  asset_import: AssetImportSchema,
+  asset_import_status: AssetOperationStatusSchema,
+  asset_reimport: AssetReimportSchema,
+  asset_reimport_status: AssetOperationStatusSchema,
   read_settings: ReadSettingsSchema,
   get_input_actions: GetInputActionsSchema,
   get_physics_settings: GetPhysicsSettingsSchema,
@@ -235,6 +248,8 @@ const WRITE_TOOL_NAMES = new Set([
   'create_actor',
   'modify_actor',
   'reimport_asset',
+  'asset_import',
+  'asset_reimport',
   'install_editor_bridge',
   'scene_save',
   'project_save_all',
@@ -680,6 +695,30 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Finds bounded direct reverse references by scanning public asset references. Returns source asset/scene/prefab kinds only; actor/property locations are unavailable. Requires bridge v8.',
       inputSchema: zodToJsonSchema(AssetFindReferencesSchema),
       handler: (a, c) => handleAssetFindReferences(a as Parameters<typeof handleAssetFindReferences>[0], c),
+    },
+    {
+      name: 'asset_import',
+      description: 'Imports one allowlisted external source into Content/ through Flax Editor. No roots means denied; destination is a .flax file and never overwrites by default. Requires bridge v9.',
+      inputSchema: zodToJsonSchema(AssetImportSchema),
+      handler: (a, c) => handleAssetImport(a as Parameters<typeof handleAssetImport>[0], c),
+    },
+    {
+      name: 'asset_import_status',
+      description: 'Gets the bounded status for one asset_import operation. Requires bridge v9.',
+      inputSchema: zodToJsonSchema(AssetOperationStatusSchema),
+      handler: (a, c) => handleAssetImportStatus(a as Parameters<typeof handleAssetImportStatus>[0], c),
+    },
+    {
+      name: 'asset_reimport',
+      description: 'Reimports one binary Content asset using only its existing Flax source metadata and configured import roots. Requires bridge v9.',
+      inputSchema: zodToJsonSchema(AssetReimportSchema),
+      handler: (a, c) => handleAssetReimport(a as Parameters<typeof handleAssetReimport>[0], c),
+    },
+    {
+      name: 'asset_reimport_status',
+      description: 'Gets the bounded status for one asset_reimport operation. Requires bridge v9.',
+      inputSchema: zodToJsonSchema(AssetOperationStatusSchema),
+      handler: (a, c) => handleAssetReimportStatus(a as Parameters<typeof handleAssetReimportStatus>[0], c),
     },
 
     // ── Settings ──────────────────────────────────────────────────────────────

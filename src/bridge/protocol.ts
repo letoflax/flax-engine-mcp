@@ -67,7 +67,11 @@ export type AssetBridgeMethod =
   | 'asset.search'
   | 'asset.get'
   | 'asset.dependencies'
-  | 'asset.find_references';
+  | 'asset.find_references'
+  | 'asset.import_start'
+  | 'asset.import_status'
+  | 'asset.reimport_start'
+  | 'asset.reimport_status';
 
 export type BridgeMethod =
   | 'status'

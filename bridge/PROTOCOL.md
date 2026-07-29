@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (bridge v8 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v9 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 8, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 9, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -176,3 +176,53 @@ type verifies it; actor and property paths are intentionally absent. Public APIs
 do not verify importer settings, import status, file size, modified time, or
 asset-reference locations, so v8 omits them instead of inferring them from files
 or reflection.
+
+## Bridge v9: allowlisted asset import and reimport
+
+Bridge v9 keeps protocol v1. It adds `AssetImportSupported:true`,
+`AssetReimportSupported:true`, `AssetImportSynchronous:true`, and
+`AssetReimportSynchronous:false` to `status`, plus
+four allowlisted methods: `asset.import_start`, `asset.import_status`,
+`asset.reimport_start`, and `asset.reimport_status`.
+
+The Node server must pass canonical configured roots from repeatable
+`--asset-import-root` options. No roots means the start methods reject with
+`IMPORT_SOURCE_NOT_ALLOWED`; root paths are never emitted in a response. The
+bridge repeats canonical existing-file, root containment, extension, size, and
+post-validation checks immediately before calling Flax. Supported source types
+are Flax 1.12's built-in texture/model/audio extensions, and the hard source
+maximum is 512 MiB. A source path which escapes a root through symlinks or
+junctions is rejected.
+
+`asset.import_start` accepts PascalCase `OperationId`, `IdempotencyKey`,
+`SourcePath`, `SourceSizeBytes`, `SourceLastWriteUnixMs`, `DestinationPath`,
+`CollisionPolicy`, `DryRun`, `AllowedImportRoots`, and `MaxSourceBytes`.
+`DestinationPath` is strictly project-relative `Content/.../*.flax`; absolute
+paths, traversal, and a Content parent resolving through a junction are rejected.
+`CollisionPolicy` is `error` (default) or bounded `rename`, never overwrite.
+The verified direct API is `FlaxEditor.Editor.Import(inputPath, outputPath)`;
+the bridge never substitutes `File.Copy`, opens an import dialog, or launches a
+process. Flax 1.12 returns this call synchronously, so a successful operation is
+terminal (`succeeded` or `dry_run`) before the start response is written.
+
+`asset.reimport_start` accepts the same operation/idempotency/dry-run/root
+guards plus exactly one existing registry selector: `AssetId` or `Path`. The
+selected object must load as `BinaryAsset`; the bridge uses only its public
+`ImportPath` metadata, then queues the verified public
+`ContentImporting.Reimport(..., skipSettingsDialog:true)` API. Its worker
+completion event provides the terminal operation state/progress; no void-returning
+reimport API is misrepresented as synchronous success. Missing or unallowlisted
+metadata sources reject rather than prompting for a file. Importer settings and
+type changes remain unsupported.
+
+Both start methods reject `EDITOR_BUSY` while the Editor is playing, starting
+play, compiling/reloading scripts, or already importing content. They are UI-free
+and can be requested from a headed or headless Editor, but actual headless import
+success remains dependent on the installed Flax importer backend; callers should
+validate that environment. Operation records contain only kind, phase, bounded
+progress, timestamps, Content-relative result path/GUID, collision rename flag,
+and bounded error text--never a source path or configured root. They expire after
+ten minutes and are capped at 512. Reusing an operation ID with a different
+request fingerprint or an idempotency key with a different request yields
+`IDEMPOTENCY_KEY_REUSED`; expired/unknown/mismatched status IDs yield
+`OPERATION_NOT_FOUND`.

@@ -131,14 +131,14 @@ test('replacement requires force or the matching installed hash', async () => {
   }
 });
 
-test('the packaged bridge resolver finds the real version 8 artifact', async () => {
+test('the packaged bridge resolver finds the real version 9 artifact', async () => {
   const f = await fixture();
   try {
     const bundledPath = await locateBundledEditorBridge();
     assert.equal(path.basename(bundledPath), 'FlaxMcpBridge.cs');
     const info = await inspectEditorBridgeInstallation(f.ctx);
     assert.equal(info.bundled.available, true);
-    assert.equal(info.bundled.version, '8');
+    assert.equal(info.bundled.version, '9');
     assert.match(info.bundled.hash ?? '', /^[a-f0-9]{64}$/);
     assert.equal(info.installed.present, false);
   } finally {

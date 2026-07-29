@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v8 contract preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v9 contract preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*8/);
-  assert.match(source, /BridgeVersion\s*=\s*8/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*9/);
+  assert.match(source, /BridgeVersion\s*=\s*9/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -19,7 +19,7 @@ test('bridge v8 contract preserves revisioned edit leases without claiming atomi
   assert.doesNotMatch(source, /edit\.rollback_transaction/);
 });
 
-test('bridge v8 contains bounded revision, lease, and idempotency state guards', async () => {
+test('bridge v9 contains bounded revision, lease, and idempotency state guards', async () => {
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /SCENE_REVISION_CONFLICT/);
   assert.match(source, /CurrentSceneRevision/);
@@ -35,7 +35,7 @@ test('bridge v8 contains bounded revision, lease, and idempotency state guards',
   assert.match(source, /errorDetails/);
 });
 
-test('bridge v8 keeps actor/script editing allowlisted, validated before undo, and bounded', async () => {
+test('bridge v9 keeps actor/script editing allowlisted, validated before undo, and bounded', async () => {
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /McpVector3 LocalPosition/);
   assert.match(source, /int\? Layer/);
@@ -53,7 +53,7 @@ test('bridge v8 keeps actor/script editing allowlisted, validated before undo, a
   assert.doesNotMatch(source, /PropertyInfo\.SetValue/);
 });
 
-test('bridge v8 exposes only verified, bounded public Content APIs for asset registry and graphs', async () => {
+test('bridge v9 exposes only verified, bounded public Content APIs for asset registry and graphs', async () => {
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /case "asset\.search"/);
   assert.match(source, /case "asset\.get"/);
@@ -62,6 +62,13 @@ test('bridge v8 exposes only verified, bounded public Content APIs for asset reg
   assert.match(source, /AssetRegistrySupported = true/);
   assert.match(source, /AssetReferenceGraphSupported = true/);
   assert.match(source, /AssetImportSettingsSupported = false/);
+  assert.match(source, /case "asset\.import_start"/);
+  assert.match(source, /case "asset\.reimport_start"/);
+  assert.match(source, /AssetImportSupported = true/);
+  assert.match(source, /FEditor\.Import\(source, output\)/);
+  assert.match(source, /ContentImporting\.Reimport\(item, null, true\)/);
+  assert.match(source, /ImportFileEnd \+= OnAssetImportFileEnd/);
+  assert.doesNotMatch(source, /Process\.Start\(/);
   assert.match(source, /Content\.GetAllAssets\(\)/);
   assert.match(source, /Content\.GetAssetInfo\(id, out info\)/);
   assert.match(source, /Content\.Load\(record\.Id, AssetLoadTimeoutMs\)/);

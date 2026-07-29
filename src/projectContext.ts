@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { PermissionPolicy } from './permissions.js';
+import type { AssetImportPolicy } from './assetImportPolicy.js';
 
 export interface ProjectMeta {
   projectPath: string;
@@ -12,6 +13,8 @@ export interface ProjectMeta {
   settingsDir: string;
   /** Process-wide, CLI-derived policy. Kept on context for capability reporting. */
   permissionPolicy?: PermissionPolicy;
+  /** Canonical external source policy. Paths are never returned to MCP clients. */
+  assetImportPolicy?: AssetImportPolicy;
 }
 
 export async function createProjectContext(projectPath: string): Promise<ProjectMeta> {

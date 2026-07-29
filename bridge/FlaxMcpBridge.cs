@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 8
+// MCP-BRIDGE-VERSION: 9
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -13,6 +13,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FlaxEditor;
+using FlaxEditor.Content;
+using FlaxEditor.Content.Import;
 using FEditor = FlaxEditor.Editor;
 using FlaxEngine;
 using FlaxEngine.Json;
@@ -21,12 +23,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 8; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 9; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 8; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; }
+    public class McpStatus { public int BridgeVersion = 9; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -94,6 +96,13 @@ namespace Game.MCP
     public class McpAssetDependenciesResult { public McpAssetDto Root; public McpAssetDependency[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
     public class McpAssetReference { public McpAssetDto Asset; public string Kind; }
     public class McpAssetReferencesResult { public McpAssetDto Root; public McpAssetReference[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
+    // Import settings deliberately remain absent. Flax exposes typed options, but
+    // accepting arbitrary serialized settings would require a larger reviewed
+    // allowlist; v9 therefore uses the verified default importer settings only.
+    public class McpAssetImportStart { public string OperationId; public string IdempotencyKey; public string SourcePath; public long SourceSizeBytes; public long SourceLastWriteUnixMs; public string DestinationPath; public string CollisionPolicy = "error"; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; }
+    public class McpAssetReimportStart { public string OperationId; public string IdempotencyKey; public string AssetId; public string Path; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; }
+    public class McpAssetOperationStatusRequest { public string OperationId; }
+    public class McpAssetOperation { public string OperationId; public string Kind; public string Phase; public float Progress; public long StartedUnixMs; public long FinishedUnixMs; public string ResultPath; public string ResultAssetId; public bool Renamed; public bool DryRun; public string ErrorCode; public string Error; }
     internal sealed class McpAssetRecord { public Guid Id; public AssetInfo Info; public string Path; public string Extension; public string Folder; }
     internal sealed class McpAssetGraphIndex { public Dictionary<Guid, McpAssetRecord> ById; public Dictionary<Guid, List<Guid>> Direct; public Dictionary<Guid, int> Missing; public Dictionary<Guid, int> Reverse; }
     internal sealed class McpAssetCursor { public string Method; public string Scope; public string IndexRevision; public int Offset; public long ExpiresUnixMs; }
@@ -105,7 +114,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 8;
+        private const int BridgeVersion = 9;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -141,6 +150,10 @@ namespace Game.MCP
         private const int AssetLoadTimeoutMs = 250;
         private const int AssetCursorTtlMs = 10 * 60 * 1000;
         private const int MaxAssetCursors = 512;
+        private const int MaxAssetImportRoots = 32;
+        private const int MaxAssetImportOperations = 512;
+        private const long MaxAssetImportSourceBytes = 512L * 1024L * 1024L;
+        private const int AssetImportOperationTtlMs = 10 * 60 * 1000;
 
         private volatile bool _running;
         private volatile int _busy;
@@ -172,6 +185,11 @@ namespace Game.MCP
         private readonly Dictionary<string, McpLeaseState> _sceneLeases = new Dictionary<string, McpLeaseState>();
         private readonly Dictionary<string, McpIdempotencyEntry> _idempotency = new Dictionary<string, McpIdempotencyEntry>();
         private readonly Dictionary<string, McpAssetCursor> _assetCursors = new Dictionary<string, McpAssetCursor>();
+        private readonly Dictionary<string, McpAssetOperation> _assetImportOperations = new Dictionary<string, McpAssetOperation>();
+        private readonly Dictionary<string, string> _assetImportOperationFingerprints = new Dictionary<string, string>();
+        // Internal result-path to operation mapping for ContentImporting's worker
+        // completion event. Full paths never leave the bridge response DTO.
+        private readonly Dictionary<string, string> _pendingReimportsByOutputPath = new Dictionary<string, string>();
 
         private static string Root { get { return Path.Combine(Globals.ProjectFolder, "Cache", "MCP"); } }
         private static string Requests { get { return Path.Combine(Root, "requests"); } }
@@ -203,7 +221,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v8 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v9 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -368,6 +386,10 @@ namespace Game.MCP
                 case "asset.get": result = OnMain(() => AssetGet(JsonSerializer.Deserialize<McpAssetGet>(p)), request.deadlineUnixMs); break;
                 case "asset.dependencies": result = OnMain(() => AssetDependencies(JsonSerializer.Deserialize<McpAssetGraphRequest>(p)), request.deadlineUnixMs); break;
                 case "asset.find_references": result = OnMain(() => AssetFindReferences(JsonSerializer.Deserialize<McpAssetGraphRequest>(p)), request.deadlineUnixMs); break;
+                case "asset.import_start": { var q = JsonSerializer.Deserialize<McpAssetImportStart>(p); result = OnMain(() => ExecuteIdempotent("asset.import_start", q == null ? null : q.IdempotencyKey, AssetImportFingerprintInput(q), () => StartAssetImport(q)), request.deadlineUnixMs); break; }
+                case "asset.import_status": result = OnMain(() => GetAssetImportOperation(JsonSerializer.Deserialize<McpAssetOperationStatusRequest>(p), "import"), request.deadlineUnixMs); break;
+                case "asset.reimport_start": { var q = JsonSerializer.Deserialize<McpAssetReimportStart>(p); result = OnMain(() => ExecuteIdempotent("asset.reimport_start", q == null ? null : q.IdempotencyKey, AssetReimportFingerprintInput(q), () => StartAssetReimport(q)), request.deadlineUnixMs); break; }
+                case "asset.reimport_status": result = OnMain(() => GetAssetImportOperation(JsonSerializer.Deserialize<McpAssetOperationStatusRequest>(p), "reimport"), request.deadlineUnixMs); break;
                 default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method is not in the bridge allowlist.");
             }
             var resultJson = JsonSerializer.Serialize(result, true);
@@ -504,6 +526,322 @@ namespace Game.MCP
                 IndexRevision = revision,
                 Warnings = AssetGraphWarnings(),
             };
+        }
+
+        // v9 imports use only direct public managed APIs: Editor.Import for new
+        // assets and BinaryAsset.Reimport for existing assets. No dialog, shell
+        // launch, filesystem-copy fallback, or reflection-based importer call is
+        // used. Both operations finish synchronously in Flax 1.12; operation
+        // records exist solely for safe retry adoption and uniform polling.
+        private static object AssetImportFingerprintInput(McpAssetImportStart request)
+        {
+            if (request == null) return new { Missing = true };
+            return new { request.SourcePath, request.SourceSizeBytes, request.SourceLastWriteUnixMs, request.DestinationPath, request.CollisionPolicy, request.DryRun, request.AllowedImportRoots, request.MaxSourceBytes };
+        }
+
+        private static object AssetReimportFingerprintInput(McpAssetReimportStart request)
+        {
+            if (request == null) return new { Missing = true };
+            return new { request.AssetId, request.Path, request.DryRun, request.AllowedImportRoots, request.MaxSourceBytes };
+        }
+
+        private McpAssetOperation StartAssetImport(McpAssetImportStart request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset import parameters are required.");
+            var fingerprint = Fingerprint(JsonSerializer.Serialize(AssetImportFingerprintInput(request), false));
+            bool adopted;
+            var operation = BeginAssetImportOperation(request.OperationId, "import", fingerprint, request.DryRun, out adopted);
+            if (adopted) return operation;
+            try
+            {
+                EnsureAssetImportEditorReady();
+                var source = ValidateAssetImportSource(request.SourcePath, request.AllowedImportRoots, request.MaxSourceBytes, request.SourceSizeBytes, request.SourceLastWriteUnixMs);
+                bool renamed;
+                var output = ResolveAssetImportOutput(request.DestinationPath, request.CollisionPolicy, out renamed);
+                operation.ResultPath = ProjectContentRelativePath(output);
+                operation.Renamed = renamed;
+                if (request.DryRun)
+                {
+                    FinishAssetImportOperation(operation, "dry_run", null, null);
+                    return CopyAssetImportOperation(operation);
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(output));
+                // A destination directory may have appeared as a junction while
+                // this request was queued. Re-check it immediately before import.
+                EnsureAssetImportOutputParent(output);
+                if (FEditor.Import(source, output))
+                    throw new McpProtocolException("IMPORT_FAILED", "Flax Editor failed to import the allowlisted source.");
+                FinishAssetImportOperation(operation, "succeeded", null, null);
+                return CopyAssetImportOperation(operation);
+            }
+            catch (McpProtocolException ex)
+            {
+                FinishAssetImportOperation(operation, "failed", ex.Code, LimitForLog(ex.Message, 512));
+                throw;
+            }
+            catch (Exception)
+            {
+                FinishAssetImportOperation(operation, "failed", "IMPORT_FAILED", "Flax Editor failed to import the allowlisted source.");
+                throw new McpProtocolException("IMPORT_FAILED", "Flax Editor failed to import the allowlisted source.");
+            }
+        }
+
+        private McpAssetOperation StartAssetReimport(McpAssetReimportStart request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset reimport parameters are required.");
+            var fingerprint = Fingerprint(JsonSerializer.Serialize(AssetReimportFingerprintInput(request), false));
+            bool adopted;
+            var operation = BeginAssetImportOperation(request.OperationId, "reimport", fingerprint, request.DryRun, out adopted);
+            if (adopted) return operation;
+            try
+            {
+                EnsureAssetImportEditorReady();
+                if (request.AllowedImportRoots == null || request.AllowedImportRoots.Length == 0)
+                    throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Asset reimport requires at least one configured import root.");
+                var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, BuildAssetRegistry());
+                Asset loaded = null;
+                try { loaded = Content.Load(record.Id, AssetLoadTimeoutMs); } catch { }
+                var binary = loaded as BinaryAsset;
+                if (binary == null || binary.LastLoadFailed)
+                    throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not a loadable binary asset.");
+                var importPath = binary.ImportPath;
+                if (string.IsNullOrEmpty(importPath))
+                    throw new McpProtocolException("IMPORT_FAILED", "The selected asset has no Flax importer source metadata.");
+                var sourcePath = Path.IsPathRooted(importPath) ? importPath : Path.Combine(Globals.ProjectFolder, importPath);
+                ValidateAssetImportSource(sourcePath, request.AllowedImportRoots, request.MaxSourceBytes, 0, 0);
+                operation.ResultPath = record.Path;
+                operation.ResultAssetId = record.Id.ToString("N");
+                if (request.DryRun)
+                {
+                    FinishAssetImportOperation(operation, "dry_run", null, null);
+                    return CopyAssetImportOperation(operation);
+                }
+                // ContentImporting owns asynchronous reimport completion. It is a
+                // public Editor API and reports the precise queue entry through
+                // ImportFileEnd; avoid treating BinaryAsset.Reimport's void API
+                // as a synchronous success signal.
+                var item = FEditor.Instance.ContentDatabase.FindAsset(record.Id) as BinaryAssetItem;
+                if (item == null) throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not available to the Editor content database.");
+                lock (_stateLock)
+                {
+                    var itemPath = Path.IsPathRooted(item.Path) ? item.Path : Path.Combine(Globals.ProjectFolder, item.Path);
+                    _pendingReimportsByOutputPath[Path.GetFullPath(itemPath)] = operation.OperationId;
+                    operation.Phase = "running";
+                    operation.Progress = 0.0f;
+                }
+                FEditor.Instance.ContentImporting.Reimport(item, null, true);
+                return CopyAssetImportOperation(operation);
+            }
+            catch (McpProtocolException ex)
+            {
+                FinishAssetImportOperation(operation, "failed", ex.Code, LimitForLog(ex.Message, 512));
+                throw;
+            }
+            catch (Exception)
+            {
+                FinishAssetImportOperation(operation, "failed", "IMPORT_FAILED", "Flax Editor failed to reimport the selected asset.");
+                throw new McpProtocolException("IMPORT_FAILED", "Flax Editor failed to reimport the selected asset.");
+            }
+        }
+
+        private McpAssetOperation GetAssetImportOperation(McpAssetOperationStatusRequest request, string kind)
+        {
+            if (request == null || !IsGuidN(request.OperationId))
+                throw new McpProtocolException("OPERATION_NOT_FOUND", "Asset operation ID was not found.");
+            lock (_stateLock)
+            {
+                CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                McpAssetOperation operation;
+                if (!_assetImportOperations.TryGetValue(request.OperationId, out operation) || !string.Equals(operation.Kind, kind, StringComparison.Ordinal))
+                    throw new McpProtocolException("OPERATION_NOT_FOUND", "Asset operation ID was not found.");
+                if (string.Equals(operation.Kind, "reimport", StringComparison.Ordinal) && string.Equals(operation.Phase, "running", StringComparison.Ordinal) && FEditor.Instance.ContentImporting.IsImporting)
+                    operation.Progress = Math.Max(operation.Progress, Math.Min(0.99f, FEditor.Instance.ContentImporting.ImportingProgress));
+                return CopyAssetImportOperation(operation);
+            }
+        }
+
+        private McpAssetOperation BeginAssetImportOperation(string operationId, string kind, string fingerprint, bool dryRun, out bool adopted)
+        {
+            if (!IsGuidN(operationId)) throw new McpProtocolException("INVALID_REQUEST", "OperationId must be a 32-character GUID without separators.");
+            lock (_stateLock)
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                CleanupExpiredStateLocked(now);
+                McpAssetOperation existing;
+                if (_assetImportOperations.TryGetValue(operationId, out existing))
+                {
+                    string existingFingerprint;
+                    if (!_assetImportOperationFingerprints.TryGetValue(operationId, out existingFingerprint) || !string.Equals(existing.Kind, kind, StringComparison.Ordinal) || !string.Equals(existingFingerprint, fingerprint, StringComparison.Ordinal))
+                        throw new McpProtocolException("IDEMPOTENCY_KEY_REUSED", "OperationId was already used for a different asset operation.");
+                    adopted = true;
+                    return CopyAssetImportOperation(existing);
+                }
+                while (_assetImportOperations.Count >= MaxAssetImportOperations)
+                {
+                    string oldest = null;
+                    long oldestTime = long.MaxValue;
+                    foreach (var pair in _assetImportOperations)
+                    {
+                        var time = pair.Value.FinishedUnixMs == 0 ? pair.Value.StartedUnixMs : pair.Value.FinishedUnixMs;
+                        if (time < oldestTime) { oldest = pair.Key; oldestTime = time; }
+                    }
+                    if (oldest == null) break;
+                    _assetImportOperations.Remove(oldest);
+                    _assetImportOperationFingerprints.Remove(oldest);
+                }
+                var created = new McpAssetOperation { OperationId = operationId, Kind = kind, Phase = "requested", Progress = 0.0f, StartedUnixMs = now, DryRun = dryRun };
+                _assetImportOperations[operationId] = created;
+                _assetImportOperationFingerprints[operationId] = fingerprint;
+                adopted = false;
+                return created;
+            }
+        }
+
+        private void FinishAssetImportOperation(McpAssetOperation operation, string phase, string errorCode, string error)
+        {
+            if (operation == null) return;
+            lock (_stateLock)
+            {
+                McpAssetOperation stored;
+                if (!_assetImportOperations.TryGetValue(operation.OperationId, out stored)) return;
+                stored.Phase = phase;
+                stored.Progress = 1.0f;
+                stored.FinishedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                stored.ResultPath = operation.ResultPath;
+                stored.ResultAssetId = operation.ResultAssetId;
+                stored.Renamed = operation.Renamed;
+                stored.ErrorCode = errorCode;
+                stored.Error = error;
+            }
+        }
+
+        private static McpAssetOperation CopyAssetImportOperation(McpAssetOperation value)
+        {
+            return new McpAssetOperation { OperationId = value.OperationId, Kind = value.Kind, Phase = value.Phase, Progress = value.Progress, StartedUnixMs = value.StartedUnixMs, FinishedUnixMs = value.FinishedUnixMs, ResultPath = value.ResultPath, ResultAssetId = value.ResultAssetId, Renamed = value.Renamed, DryRun = value.DryRun, ErrorCode = value.ErrorCode, Error = value.Error };
+        }
+
+        private static void EnsureAssetImportEditorReady()
+        {
+            if (FEditor.IsPlayMode || FEditor.Instance.Simulation.IsPlayModeRequested || ScriptsBuilder.IsCompiling || !ScriptsBuilder.IsReady || FEditor.Instance.ContentImporting.IsImporting)
+                throw new McpProtocolException("EDITOR_BUSY", "Asset import is unavailable while the editor is playing, compiling, reloading, or importing content.");
+        }
+
+        private static string ValidateAssetImportSource(string sourcePath, string[] roots, long requestedMaxBytes, long expectedSize, long expectedModifiedUnixMs)
+        {
+            if (string.IsNullOrEmpty(sourcePath) || sourcePath.Length > 1024)
+                throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Import source is invalid.");
+            if (roots == null || roots.Length == 0 || roots.Length > MaxAssetImportRoots)
+                throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Asset import requires configured import roots.");
+            var source = CanonicalExistingPath(sourcePath, true);
+            var allowed = false;
+            foreach (var rootValue in roots)
+            {
+                if (string.IsNullOrEmpty(rootValue) || rootValue.Length > 1024) continue;
+                string root;
+                try { root = CanonicalExistingPath(rootValue, false); } catch { continue; }
+                if (PathIsWithin(root, source)) { allowed = true; break; }
+            }
+            if (!allowed) throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Import source is outside configured import roots.");
+            var info = new FileInfo(source);
+            if (!info.Exists || !IsSupportedAssetImportExtension(Path.GetExtension(source)))
+                throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Import source extension is not allowlisted.");
+            var maxBytes = requestedMaxBytes > 0 ? Math.Min(requestedMaxBytes, MaxAssetImportSourceBytes) : MaxAssetImportSourceBytes;
+            if (info.Length < 1 || info.Length > maxBytes)
+                throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Import source size exceeds the configured limit.");
+            var modifiedUnixMs = new DateTimeOffset(info.LastWriteTimeUtc).ToUnixTimeMilliseconds();
+            if ((expectedSize > 0 && info.Length != expectedSize) || (expectedModifiedUnixMs > 0 && modifiedUnixMs != expectedModifiedUnixMs))
+                throw new McpProtocolException("IMPORT_FAILED", "Import source changed after validation.");
+            // Final canonical lookup catches a source symlink/junction replacement.
+            if (!string.Equals(source, CanonicalExistingPath(source, true), PathComparison))
+                throw new McpProtocolException("IMPORT_FAILED", "Import source changed after validation.");
+            return source;
+        }
+
+        private static string ResolveAssetImportOutput(string destinationPath, string collisionPolicy, out bool renamed)
+        {
+            var normalized = ValidateProjectContentPath(destinationPath, false);
+            if (!normalized.EndsWith(".flax", StringComparison.OrdinalIgnoreCase))
+                throw new McpProtocolException("VALIDATION_FAILED", "Asset import destination must use the .flax extension.");
+            if (!string.Equals(collisionPolicy, "error", StringComparison.Ordinal) && !string.Equals(collisionPolicy, "rename", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "CollisionPolicy must be error or rename.");
+            var content = CanonicalExistingPath(Path.Combine(Globals.ProjectFolder, "Content"), false);
+            var inside = normalized.Substring("Content/".Length).Replace('/', Path.DirectorySeparatorChar);
+            var output = Path.GetFullPath(Path.Combine(content, inside));
+            if (!PathIsWithin(content, output)) throw new McpProtocolException("VALIDATION_FAILED", "Asset import destination escapes Content.");
+            EnsureAssetImportOutputParent(output);
+            renamed = false;
+            if (!File.Exists(output) && !Directory.Exists(output)) return output;
+            if (string.Equals(collisionPolicy, "error", StringComparison.Ordinal))
+                throw new McpProtocolException("FILE_EXISTS", "An asset already exists at the requested destination.");
+            var extension = Path.GetExtension(output);
+            var stem = output.Substring(0, output.Length - extension.Length);
+            for (var i = 1; i <= 999; i++)
+            {
+                var candidate = stem + "-" + i + extension;
+                if (!File.Exists(candidate) && !Directory.Exists(candidate)) { renamed = true; return candidate; }
+            }
+            throw new McpProtocolException("FILE_EXISTS", "Could not find a collision-free asset destination.");
+        }
+
+        private static void EnsureAssetImportOutputParent(string output)
+        {
+            var content = CanonicalExistingPath(Path.Combine(Globals.ProjectFolder, "Content"), false);
+            var parent = Path.GetDirectoryName(output);
+            while (!Directory.Exists(parent))
+            {
+                var next = Path.GetDirectoryName(parent);
+                if (string.IsNullOrEmpty(next) || string.Equals(next, parent, PathComparison))
+                    throw new McpProtocolException("VALIDATION_FAILED", "Asset import destination parent is invalid.");
+                parent = next;
+            }
+            if (!PathIsWithin(content, CanonicalExistingPath(parent, false)))
+                throw new McpProtocolException("VALIDATION_FAILED", "Asset import destination parent resolves outside Content.");
+        }
+
+        private static string ProjectContentRelativePath(string absolutePath)
+        {
+            var relative = Path.GetRelativePath(Path.GetFullPath(Globals.ProjectFolder), absolutePath).Replace('\\', '/');
+            if (!relative.StartsWith("Content/", StringComparison.OrdinalIgnoreCase))
+                throw new McpProtocolException("IMPORT_FAILED", "Imported asset result is outside project Content.");
+            return relative;
+        }
+
+        private static readonly StringComparison PathComparison = Path.DirectorySeparatorChar == '\\' ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        private static bool PathIsWithin(string root, string candidate)
+        {
+            var relative = Path.GetRelativePath(root, candidate);
+            return string.IsNullOrEmpty(relative) || (!relative.Equals("..", PathComparison) && !relative.StartsWith(".." + Path.DirectorySeparatorChar, PathComparison) && !Path.IsPathRooted(relative));
+        }
+
+        private static string CanonicalExistingPath(string value, bool requireFile)
+        {
+            var full = Path.GetFullPath(value);
+            var root = Path.GetPathRoot(full);
+            if (string.IsNullOrEmpty(root)) throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Path cannot be resolved.");
+            var current = root;
+            var parts = full.Substring(root.Length).Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i < parts.Length; i++)
+            {
+                current = Path.Combine(current, parts[i]);
+                var last = i == parts.Length - 1;
+                FileSystemInfo info = last && requireFile ? (FileSystemInfo)new FileInfo(current) : new DirectoryInfo(current);
+                if (!info.Exists) throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Path does not exist.");
+                var target = info.ResolveLinkTarget(true);
+                if (target != null) current = target.FullName;
+            }
+            return Path.GetFullPath(current);
+        }
+
+        private static bool IsSupportedAssetImportExtension(string extension)
+        {
+            switch ((extension ?? "").ToLowerInvariant())
+            {
+                case ".png": case ".jpg": case ".jpeg": case ".tga": case ".bmp": case ".gif": case ".tif": case ".tiff": case ".dds": case ".hdr": case ".raw": case ".exr":
+                case ".obj": case ".fbx": case ".x": case ".dae": case ".gltf": case ".glb": case ".blend": case ".bvh": case ".ase": case ".ply": case ".dxf": case ".ifc": case ".nff": case ".smd": case ".vta": case ".mdl": case ".md2": case ".md3": case ".md5mesh": case ".q3o": case ".q3s": case ".ac": case ".stl": case ".lwo": case ".lws": case ".lxo":
+                case ".wav": case ".mp3": case ".ogg": return true;
+                default: return false;
+            }
         }
 
         private static void ValidateAssetSearch(McpAssetSearch request)
@@ -1577,6 +1915,20 @@ namespace Game.MCP
             var expiredCursors = new List<string>();
             foreach (var item in _assetCursors) if (item.Value.ExpiresUnixMs <= now) expiredCursors.Add(item.Key);
             foreach (var key in expiredCursors) _assetCursors.Remove(key);
+            var expiredImportOperations = new List<string>();
+            foreach (var item in _assetImportOperations)
+            {
+                var completed = item.Value.FinishedUnixMs == 0 ? item.Value.StartedUnixMs : item.Value.FinishedUnixMs;
+                if (completed + AssetImportOperationTtlMs <= now) expiredImportOperations.Add(item.Key);
+            }
+            foreach (var key in expiredImportOperations)
+            {
+                _assetImportOperations.Remove(key);
+                _assetImportOperationFingerprints.Remove(key);
+                var pendingOutputs = new List<string>();
+                foreach (var pending in _pendingReimportsByOutputPath) if (string.Equals(pending.Value, key, StringComparison.Ordinal)) pendingOutputs.Add(pending.Key);
+                foreach (var output in pendingOutputs) _pendingReimportsByOutputPath.Remove(output);
+            }
         }
 
         private object ExecuteIdempotent(string method, string key, object request, Func<object> mutation)
@@ -1691,6 +2043,29 @@ namespace Game.MCP
             return tcs.Task.GetAwaiter().GetResult();
         }
 
+        // ContentImporting raises this from its worker thread. Only the opaque
+        // operation ID and sanitized terminal state are retained; the source or
+        // full output path is never placed in an MCP DTO.
+        private void OnAssetImportFileEnd(IFileEntryAction entry, bool failed)
+        {
+            if (entry == null || string.IsNullOrEmpty(entry.ResultUrl)) return;
+            string output;
+            try { output = Path.GetFullPath(entry.ResultUrl); } catch { return; }
+            lock (_stateLock)
+            {
+                string operationId;
+                if (!_pendingReimportsByOutputPath.TryGetValue(output, out operationId)) return;
+                _pendingReimportsByOutputPath.Remove(output);
+                McpAssetOperation operation;
+                if (!_assetImportOperations.TryGetValue(operationId, out operation)) return;
+                operation.Phase = failed ? "failed" : "succeeded";
+                operation.Progress = 1.0f;
+                operation.FinishedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                operation.ErrorCode = failed ? "IMPORT_FAILED" : null;
+                operation.Error = failed ? "Flax Editor failed to reimport the selected asset." : null;
+            }
+        }
+
         private void SubscribeEvents()
         {
             ScriptsBuilder.CompilationBegin += OnCompilationBegin;
@@ -1704,6 +2079,7 @@ namespace Game.MCP
             FEditor.Instance.PlayModeEnd += OnPlayModeEnd;
             FEditor.Instance.Simulation.BreakpointHangBegin += OnBreakpointHangBegin;
             FEditor.Instance.Simulation.BreakpointHangEnd += OnBreakpointHangEnd;
+            FEditor.Instance.ContentImporting.ImportFileEnd += OnAssetImportFileEnd;
             _logHandler = Debug.Logger == null ? null : Debug.Logger.LogHandler;
             if (_logHandler != null)
             {
@@ -1726,7 +2102,8 @@ namespace Game.MCP
                 FEditor.Instance.PlayModeEnding -= OnPlayModeEnding;
                 FEditor.Instance.PlayModeEnd -= OnPlayModeEnd;
                 FEditor.Instance.Simulation.BreakpointHangBegin -= OnBreakpointHangBegin;
-                FEditor.Instance.Simulation.BreakpointHangEnd -= OnBreakpointHangEnd;
+            FEditor.Instance.Simulation.BreakpointHangEnd -= OnBreakpointHangEnd;
+            FEditor.Instance.ContentImporting.ImportFileEnd -= OnAssetImportFileEnd;
             }
             if (_logHandler != null)
             {

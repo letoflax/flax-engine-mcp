@@ -26,7 +26,7 @@ const TOOL_FAMILIES = {
     'log_get_runtime_errors', 'get_project_info', 'get_game_settings', 'get_project_summary',
     'list_scripts', 'read_script', 'get_audit_entries', 'get_script_classes',
     'find_references', 'list_networked_scripts', 'search_in_files', 'get_scene_actors',
-    'get_asset_info', 'list_assets', 'asset_search', 'asset_get', 'asset_dependencies', 'asset_find_references', 'read_settings', 'get_input_actions',
+    'get_asset_info', 'list_assets', 'asset_search', 'asset_get', 'asset_dependencies', 'asset_find_references', 'asset_import_status', 'asset_reimport_status', 'read_settings', 'get_input_actions',
     'get_physics_settings', 'get_compiler_errors', 'validate_project', 'list_docs',
     'read_doc', 'get_latest_log',
   ],
@@ -39,7 +39,7 @@ const TOOL_FAMILIES = {
     'actor_duplicate', 'actor_reparent', 'script_attach', 'script_detach',
     'script_instance_update', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'create_actor', 'modify_actor',
   ],
-  asset: ['reimport_asset'],
+  asset: ['reimport_asset', 'asset_import', 'asset_reimport'],
   runtime: [
     'play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume',
     'play_step_frame', 'play_run_for', 'viewport_capture', 'runtime_inspect_actor',

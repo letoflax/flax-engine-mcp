@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 72 tools for reading and patching code, editing live scenes, searching the live asset registry, compiling, running bounded play-mode checks, inspecting logs, and more.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 76 tools for reading and patching code, editing live scenes, searching the live asset registry, importing allowlisted assets, compiling, running bounded play-mode checks, inspecting logs, and more.
 
 ## Requirements
 
@@ -42,6 +42,16 @@ flax-mcp --project-path /path/to/project --permission-profile full
 - `full` permits every released tool.
 
 Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a specific server process; deny always wins. `--emergency-read-only` is an immediate safety switch: it blocks every mutation and runtime-control tool even if it was explicitly allowed. Tool discovery and `get_server_capabilities` report the tools available under the active policy.
+
+Asset import is separately opt-in. By default no external file can be imported or reimported. Configure one or more canonical source roots when starting the server; the root locations themselves are never returned by MCP:
+
+```bash
+flax-mcp --project-path /path/to/flax/project \
+  --asset-import-root /path/to/approved-art \
+  --asset-import-root /path/to/approved-audio
+```
+
+Only the built-in Flax 1.12 texture, model, and audio source extensions are accepted, source files are capped at 512 MiB, and destination paths must be `Content/.../*.flax`. Symlinks and junctions are resolved before every import; collisions fail by default or can use the bounded `rename` policy.
 
 ## Tools
 
@@ -131,12 +141,14 @@ Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a sp
 | Tool | What it does |
 |------|-------------|
 | `get_asset_info` | Inspect JSON assets or the type, GUID, and version header of binary `.flax` assets |
-| `reimport_asset` | Inspect reimport intent and optionally launch Flax Editor for manual reimport |
+| `reimport_asset` | Compatibility alias: delegates to `asset_reimport` with a v9 bridge; otherwise gives safe manual instructions and never launches an OS process |
 | `list_assets` | List Content/ assets by type (scene, material, settings, other) with GUIDs |
 | `asset_search` | Search the connected Content registry with filters, dependency/reference counts, and opaque cursor pagination (bridge v8) |
 | `asset_get` | Read stable metadata for one Content asset selected by GUID or project-relative path (bridge v8) |
 | `asset_dependencies` | Read direct or cycle-safe transitive dependency edges, depth-bounded to 16 (bridge v8) |
 | `asset_find_references` | Find direct reverse references from source assets/scenes/prefabs without property paths (bridge v8) |
+| `asset_import` / `asset_import_status` | Start or poll an allowlisted external import with dry-run, collision, and idempotency guards (bridge v9) |
+| `asset_reimport` / `asset_reimport_status` | Start or poll a reimport using only Flax asset metadata and configured import roots (bridge v9) |
 
 ### Settings & Config
 | Tool | What it does |
@@ -162,6 +174,7 @@ Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a sp
 
 - **Asset registry and graph reads** -- `asset_search`, `asset_get`, `asset_dependencies`, and `asset_find_references` require bridge v8. They use only public Flax 1.12 `Content` registry metadata and `Asset.GetReferences`; result pages are at most 200 entries, dependency depth is at most 16, registry scans are capped at 10,000 assets, and opaque cursors expire after ten minutes or invalidate when filters or registry metadata change. Paths/GUIDs are project-scoped. The bridge does not expose importer settings, file size/modified time/import status, actor/property reference locations, or inferred prefab overrides because public APIs do not verify them.
 - **Asset compatibility aliases** -- `list_assets` delegates safe all/scene requests to `asset_search` with a v8 bridge; `get_asset_info` delegates `Content/...` paths to `asset_get`. Other legacy filters, bare filenames, offline projects, and bridges older than v8 keep their original filesystem-backed behavior.
+- **Safe asset imports** -- `asset_import` and `asset_reimport` require bridge v9, the `full` permission profile (or an explicit tool allow override), and at least one `--asset-import-root`. They invoke only Flax's verified `Editor.Import`, `ContentImporting.Reimport`, and `BinaryAsset.ImportPath` APIs, never copy source files or launch editor processes. Importer settings/type conversion are intentionally not exposed. New imports finish synchronously in Flax 1.12; reimports use Flax's queue and must be polled by operation ID (ten-minute retention, at most 512 records). Imports are rejected while Flax is playing, compiling/reloading, or already importing. The direct APIs are UI-free; headless availability still depends on the installed Flax Editor importer backend and should be verified in the target CI/editor setup.
 
 - **Foundation contracts** — every tool validates arguments, advertises an output schema and annotations, and returns structured results with operation metadata.
 - **Editor status** — `get_server_capabilities` and `editor_get_status` validate a matching live heartbeat at `Cache/MCP/bridge.json`; otherwise the server reports offline mode. Project identity includes an explicit project ID when present and an opaque SHA-256 path fingerprint, never the full project path.

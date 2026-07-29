@@ -16,6 +16,7 @@ import { ProjectMeta } from './projectContext.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
 import { listFlaxResources, readFlaxResource } from './resources.js';
 import { allowedToolNames, assertPermissionRegistryCoverage, parsePermissionPolicy, policyForContext } from './permissions.js';
+import { createAssetImportPolicy } from './assetImportPolicy.js';
 
 export function parseProjectPath(argv = process.argv): string {
   const idx = argv.indexOf('--project-path');
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
   const projectPath = parseProjectPath();
   const ctx = await createProjectContext(projectPath);
   ctx.permissionPolicy = parsePermissionPolicy(process.argv);
+  ctx.assetImportPolicy = await createAssetImportPolicy(process.argv);
 
   process.stderr.write(`Flax MCP Server — project: ${ctx.projectName} (${ctx.projectPath})\n`);
 

@@ -6,6 +6,7 @@ import { ProjectMeta, safeReadFile } from '../projectContext.js';
 import { toolError, toolResult, ToolMode, ToolResponse } from '../errors.js';
 import { SERVER_VERSION } from '../version.js';
 import { classifiedToolNames, permissionSummary } from '../permissions.js';
+import { assetImportPolicyForContext } from '../assetImportPolicy.js';
 
 export const GetServerCapabilitiesSchema = z.object({});
 export const EditorGetStatusSchema = z.object({});
@@ -196,6 +197,8 @@ export async function handleGetServerCapabilities(
     const phase2 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 6;
     const phase3 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 7;
     const phase4Assets = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 8;
+    const phase5AssetImport = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 9;
+    const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
       project: identity,
@@ -224,6 +227,14 @@ export async function handleGetServerCapabilities(
         assetReverseReferences: phase4Assets,
         assetImportSettings: false,
         assetReferenceLocations: false,
+        assetImport: {
+          available: phase5AssetImport,
+          enabled: phase5AssetImport && assetImportPolicy.roots.length > 0,
+          configuredRootCount: assetImportPolicy.roots.length,
+          maxSourceBytes: assetImportPolicy.maxSourceBytes,
+          allowedExtensionCount: assetImportPolicy.extensions.length,
+          settings: false,
+        },
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
         profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false,
