@@ -134,6 +134,48 @@ test('asset validation excludes actor IDs used in scene-reference-shaped fields'
   }
 });
 
+test('validation findings have stable rule IDs, filters, suppressions, and bounded pages', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(path.join(f.ctx.flaxprojPath), JSON.stringify({ Name: 'Fixture', DefaultScene: 'f'.repeat(32) }));
+    await fs.writeFile(path.join(f.ctx.sourceDir, 'Game', 'Broken.cs'), '[NetworkRpc]\npublic class Broken : Script {');
+    await fs.writeFile(path.join(f.ctx.logsDir, 'Editor.txt'), 'Build FAILED\nerror CS1002');
+    await fs.mkdir(f.ctx.settingsDir, { recursive: true });
+    await fs.writeFile(path.join(f.ctx.settingsDir, 'Input Settings.json'), JSON.stringify({ Data: {
+      ActionMappings: [
+        { Name: 'Jump', Mode: 0, Key: 32, MouseButton: 0, GamepadButton: 0, Gamepad: 0 },
+        { Name: 'Jump', Mode: 0, Key: 32, MouseButton: 0, GamepadButton: 0, Gamepad: 0 },
+      ],
+    } }));
+    await fs.writeFile(path.join(f.ctx.contentDir, 'BrokenRef.json'), JSON.stringify({ ID: '1'.repeat(32), MaterialAsset: '2'.repeat(32) }));
+
+    const result = await handleValidateProject({ limit: 2 }, f.ctx);
+    const envelope = result.structuredContent as { data: { findings: Array<any>; totalFindings: number; nextCursor?: string; rules: Array<{ id: string }>; limits: { maxPageSize: number } }; warnings: string[] };
+    assert.equal(envelope.data.findings.length, 2);
+    assert.ok(envelope.data.totalFindings > 2);
+    assert.ok(envelope.data.nextCursor);
+    assert.equal(envelope.data.limits.maxPageSize, 200);
+    assert.equal(envelope.data.rules.some(rule => rule.id === 'FLAX001'), true);
+    assert.equal(envelope.warnings.some(warning => warning.includes('Offline validation')), true);
+    for (const item of envelope.data.findings) {
+      assert.match(item.ruleId, /^FLAX\d{3}$/);
+      assert.equal(typeof item.suggestedFix, 'string');
+      assert.equal(item.autoFixAvailable, false);
+      assert.ok(item.location.kind === 'file' || item.location.kind === 'project');
+    }
+
+    const onlyNetwork = await handleValidateProject({ rule_ids: ['FLAX005'] }, f.ctx);
+    const networkData = (onlyNetwork.structuredContent as { data: { findings: Array<{ ruleId: string }> } }).data;
+    assert.deepEqual(networkData.findings.map(item => item.ruleId), ['FLAX005']);
+    const suppressed = await handleValidateProject({ rule_ids: ['FLAX005'], suppressions: ['FLAX005'] }, f.ctx);
+    const suppressedData = (suppressed.structuredContent as { data: { findings: unknown[]; suppressedCount: number } }).data;
+    assert.deepEqual(suppressedData.findings, []);
+    assert.equal(suppressedData.suppressedCount, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('script class filtering can match class name when filename differs', async () => {
   const f = await fixture();
   try {
