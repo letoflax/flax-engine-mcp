@@ -8,9 +8,11 @@ import { assertWritePathWithinRoot } from './writeSafety.js';
 const AUDIT_DIR = '.flax-mcp';
 const AUDIT_FILE = 'audit.jsonl';
 
+export type AuditOperation = 'write_script' | 'apply_script_patch' | 'asset_move' | 'asset_rename' | 'asset_duplicate';
+
 export interface ScriptAuditEntry {
   timestamp: string;
-  operation: 'write_script' | 'apply_script_patch';
+  operation: AuditOperation;
   target: string;
   dry_run: boolean;
   success: boolean;
@@ -21,6 +23,9 @@ export interface ScriptAuditEntry {
   bytes_after?: number;
   lines_added?: number;
   lines_removed?: number;
+  result_path?: string;
+  guid_preserved?: boolean;
+  reference_count?: number;
   error?: string;
 }
 
@@ -48,14 +53,25 @@ export async function appendScriptAudit(ctx: ProjectMeta, entry: Omit<ScriptAudi
     ...(entry.bytes_after !== undefined ? { bytes_after: entry.bytes_after } : {}),
     ...(entry.lines_added !== undefined ? { lines_added: entry.lines_added } : {}),
     ...(entry.lines_removed !== undefined ? { lines_removed: entry.lines_removed } : {}),
+    ...(entry.result_path !== undefined ? { result_path: entry.result_path } : {}),
+    ...(entry.guid_preserved !== undefined ? { guid_preserved: entry.guid_preserved } : {}),
+    ...(entry.reference_count !== undefined ? { reference_count: entry.reference_count } : {}),
     ...(entry.error !== undefined ? { error: entry.error.slice(0, 240) } : {}),
   };
   await fs.appendFile(file, `${JSON.stringify(record)}\n`, 'utf8');
 }
 
+/** Writes only bounded Content-relative asset organization metadata to audit. */
+export async function appendAssetOrganizationAudit(
+  ctx: ProjectMeta,
+  entry: Omit<ScriptAuditEntry, 'timestamp' | 'created' | 'before_hash' | 'after_hash' | 'bytes_before' | 'bytes_after' | 'lines_added' | 'lines_removed' | 'error'>,
+): Promise<void> {
+  await appendScriptAudit(ctx, entry);
+}
+
 export const GetAuditEntriesSchema = z.object({
   limit: z.number().int().min(1).max(100).optional().default(25).describe('Maximum most-recent entries to return (1-100).'),
-  operation: z.enum(['write_script', 'apply_script_patch']).optional().describe('Optional mutation operation filter.'),
+  operation: z.enum(['write_script', 'apply_script_patch', 'asset_move', 'asset_rename', 'asset_duplicate']).optional().describe('Optional mutation operation filter.'),
 });
 
 export async function handleGetAuditEntries(
@@ -78,12 +94,14 @@ export async function handleGetAuditEntries(
         // safe public fields rather than echoing arbitrary JSONL payloads.
         const entry: ScriptAuditEntry = {
           timestamp: typeof value.timestamp === 'string' ? value.timestamp : '',
-          operation: value.operation === 'apply_script_patch' ? 'apply_script_patch' : 'write_script',
+          operation: value.operation === 'apply_script_patch' || value.operation === 'asset_move' || value.operation === 'asset_rename' || value.operation === 'asset_duplicate'
+            ? value.operation
+            : 'write_script',
           target: typeof value.target === 'string' ? value.target : '',
           dry_run: value.dry_run === true,
           success: value.success === true,
         };
-        for (const key of ['created', 'before_hash', 'after_hash', 'bytes_before', 'bytes_after', 'lines_added', 'lines_removed', 'error'] as const) {
+        for (const key of ['created', 'before_hash', 'after_hash', 'bytes_before', 'bytes_after', 'lines_added', 'lines_removed', 'result_path', 'guid_preserved', 'reference_count', 'error'] as const) {
           const candidate = value[key];
           if (typeof candidate === 'boolean' || typeof candidate === 'string' || typeof candidate === 'number' || candidate === null) {
             Object.assign(entry, { [key]: candidate });

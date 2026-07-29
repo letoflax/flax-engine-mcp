@@ -71,7 +71,10 @@ export type AssetBridgeMethod =
   | 'asset.import_start'
   | 'asset.import_status'
   | 'asset.reimport_start'
-  | 'asset.reimport_status';
+  | 'asset.reimport_status'
+  | 'asset.move'
+  | 'asset.rename'
+  | 'asset.duplicate';
 
 export type BridgeMethod =
   | 'status'

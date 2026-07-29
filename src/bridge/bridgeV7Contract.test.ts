@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v9 contract preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v10 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*9/);
-  assert.match(source, /BridgeVersion\s*=\s*9/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*10/);
+  assert.match(source, /BridgeVersion\s*=\s*10/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -78,4 +78,23 @@ test('bridge v9 exposes only verified, bounded public Content APIs for asset reg
   assert.match(source, /CURSOR_INVALID/);
   assert.match(source, /ASSET_NOT_FOUND/);
   assert.match(source, /AssetImportSettingsSupported = false/);
+});
+
+test('bridge v10 exposes safe editor Content move, rename, and duplicate operations', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "asset\.move"/);
+  assert.match(source, /case "asset\.rename"/);
+  assert.match(source, /case "asset\.duplicate"/);
+  assert.match(source, /AssetOrganizationSupported = true/);
+  assert.match(source, /AssetOrganizationUndoSupported = false/);
+  assert.match(source, /AssetOrganizationLeaseSupported = false/);
+  assert.match(source, /ContentDatabase\.Move\(contentItem, output\)/);
+  assert.match(source, /Content\.RenameAsset\(sourceAbsolutePath, output\)/);
+  assert.match(source, /ContentDatabase\.Copy\(contentItem, output\)/);
+  assert.match(source, /ASSET_REVISION_CONFLICT/);
+  assert.match(source, /MaxAssetReferenceImpactEntries = 50/);
+  assert.match(source, /ExpectedIndexRevision/);
+  const organizationSource = source.slice(source.indexOf('private McpAssetOrganizeResult OrganizeAsset'), source.indexOf('// v9 imports use only direct public managed APIs'));
+  assert.doesNotMatch(organizationSource, /File\.Move\(/);
+  assert.doesNotMatch(organizationSource, /File\.Copy\(/);
 });

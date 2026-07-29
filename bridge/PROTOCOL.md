@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (bridge v9 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v10 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 9, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 10, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -245,3 +245,47 @@ ten minutes and are capped at 512. Reusing an operation ID with a different
 request fingerprint or an idempotency key with a different request yields
 `IDEMPOTENCY_KEY_REUSED`; expired/unknown/mismatched status IDs yield
 `OPERATION_NOT_FOUND`.
+
+## Bridge v10: safe Content asset organization
+
+Bridge v10 keeps protocol v1 and preserves every v5--v9 method. `status` adds
+`AssetOrganizationSupported:true`, `AssetOrganizationUndoSupported:false`,
+`AssetOrganizationLeaseSupported:false`, and
+`AssetOrganizationAtomicity:"single-content-api-call-not-transactional"`.
+The v7 edit lease is scene-scoped, so it cannot guard an asset organization
+operation and is deliberately not accepted by these methods.
+
+The new allowlisted methods are `asset.move`, `asset.rename`, and
+`asset.duplicate`. Each accepts exactly one `AssetId` or Content-relative
+`Path`, `CollisionPolicy` (`error` or bounded `rename`), `DryRun`, optional
+`ExpectedPath`, optional `ExpectedIndexRevision`, and optional
+`IdempotencyKey`. `asset.move` additionally requires an existing Content
+`Destination` folder. `asset.rename` requires `Name`; `asset.duplicate`
+requires both `Destination` and `Name`. Names are filenames without an
+extension; the source extension is retained. Paths use normalized
+project-relative `Content/...` notation; absolute paths, traversal, junction
+escapes, nonexistent destination folders, extension changes, and overwrite
+requests are rejected.
+
+The bridge validates source identity and Content index revision before the
+write. A stale `ExpectedPath` or `ExpectedIndexRevision` fails with
+`ASSET_REVISION_CONFLICT` and bounded current details. An occupied destination
+fails with `FILE_EXISTS` unless `CollisionPolicy:"rename"` can find one of at
+most 999 `-N` suffixes. Reused idempotency keys retain the normal ten-minute,
+512-entry v7 cache behavior.
+
+These methods invoke only compile-probed public Flax 1.12 APIs:
+`FEditor.Instance.ContentDatabase.Move`, `Content.RenameAsset`, and
+`FEditor.Instance.ContentDatabase.Copy`. The bridge never performs a raw
+`File.Move`/`File.Copy` fallback and never uses reflection. The returned
+`ReferenceImpact` contains at most 50 direct reverse sources obtained from the
+public `Asset.GetReferences` graph; actor and property locations remain
+unavailable. Move/rename verify that the source GUID remains in the registry;
+duplicate verifies a different destination GUID and reports that existing
+references remain bound to the source asset.
+
+Flax 1.12 does not expose a verified public undo record for these Content APIs,
+so each result and status capability explicitly reports `UndoSupported:false`.
+The operation is one Editor Content API call, not a multi-operation transaction
+or rollback guarantee. No project content is saved automatically. Successful
+and dry-run Node calls write only bounded Content-relative audit metadata.

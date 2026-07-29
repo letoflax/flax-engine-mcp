@@ -198,6 +198,7 @@ export async function handleGetServerCapabilities(
     const phase3 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 7;
     const phase4Assets = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 8;
     const phase5AssetImport = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 9;
+    const phase6AssetOrganization = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 10;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -234,6 +235,15 @@ export async function handleGetServerCapabilities(
           maxSourceBytes: assetImportPolicy.maxSourceBytes,
           allowedExtensionCount: assetImportPolicy.extensions.length,
           settings: false,
+        },
+        assetOrganization: {
+          available: phase6AssetOrganization,
+          move: phase6AssetOrganization,
+          rename: phase6AssetOrganization,
+          duplicate: phase6AssetOrganization,
+          undo: false,
+          editLeases: false,
+          referenceImpact: phase6AssetOrganization,
         },
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
