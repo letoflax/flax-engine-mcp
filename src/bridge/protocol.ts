@@ -73,6 +73,14 @@ export type AssetBridgeMethod =
   | 'asset.reimport_start'
   | 'asset.reimport_status';
 
+/**
+ * Bridge v11 exposes raw, persisted operation handles. This deliberately is
+ * not MCP Tasks: callers poll or cancel an operation by its exact ID.
+ */
+export type OperationBridgeMethod =
+  | 'operation.status'
+  | 'operation.cancel';
+
 export type BridgeMethod =
   | 'status'
   | SceneBridgeMethod
@@ -82,7 +90,8 @@ export type BridgeMethod =
   | CodeBridgeMethod
   | PlayBridgeMethod
   | ObservabilityBridgeMethod
-  | AssetBridgeMethod;
+  | AssetBridgeMethod
+  | OperationBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */
 export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {

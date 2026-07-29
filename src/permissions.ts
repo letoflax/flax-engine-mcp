@@ -28,11 +28,11 @@ const TOOL_FAMILIES = {
     'list_scripts', 'read_script', 'get_audit_entries', 'get_script_classes',
     'find_references', 'list_networked_scripts', 'search_in_files', 'get_scene_actors',
     'get_asset_info', 'list_assets', 'asset_search', 'asset_get', 'asset_dependencies', 'asset_find_references', 'asset_import_status', 'asset_reimport_status', 'read_settings', 'get_input_actions',
-    'get_physics_settings', 'get_compiler_errors', 'validate_project', 'list_docs',
+    'get_physics_settings', 'get_compiler_errors', 'validate_project', 'operation_get_status', 'list_docs',
     'read_doc', 'get_latest_log',
   ],
   code: [
-    'install_editor_bridge', 'code_compile', 'code_generate_project', 'write_script',
+    'install_editor_bridge', 'code_compile', 'code_generate_project', 'operation_cancel', 'write_script',
     'apply_script_patch', 'generate_script',
   ],
   scene: [

@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test dist/contracts.test.js dist/prompts.test.js dist/resources.test.js dist/tools/serverStatus.test.js dist/tools/serverObservability.test.js dist/tools/readTools.test.js dist/tools/scripts.test.js dist/tools/bridgeInstaller.test.js dist/bridge/fileRpcClient.test.js dist/bridge/bridgeV7Contract.test.js dist/tools/assetLive.test.js dist/tools/assetImport.test.js dist/tools/editorLive.test.js dist/tools/sceneWrite.test.js dist/tools/liveObservability.test.js dist/tools/runtimeLive.test.js dist/tools/legacyCompatibility.test.js dist/integration/editorIntegration.test.js",
+    "test": "npm run build && node --test dist/contracts.test.js dist/prompts.test.js dist/resources.test.js dist/operations.test.js dist/tools/serverStatus.test.js dist/tools/serverObservability.test.js dist/tools/readTools.test.js dist/tools/scripts.test.js dist/tools/bridgeInstaller.test.js dist/bridge/fileRpcClient.test.js dist/bridge/bridgeV7Contract.test.js dist/tools/assetLive.test.js dist/tools/assetImport.test.js dist/tools/editorLive.test.js dist/tools/sceneWrite.test.js dist/tools/liveObservability.test.js dist/tools/runtimeLive.test.js dist/tools/legacyCompatibility.test.js dist/integration/editorIntegration.test.js",
     "dev": "tsc --watch",
     "start": "node dist/index.js"
   },
