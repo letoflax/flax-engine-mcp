@@ -170,6 +170,12 @@ Only the built-in Flax 1.12 texture, model, and audio source extensions are acce
 | `read_doc` | Read a doc file by name or partial name |
 | `get_latest_log` | Compatibility alias to the live log ring with an offline file fallback; prefer `log_get_recent` or `log_search` |
 
+## MCP Prompts
+
+The server advertises five read-only guided workflows through MCP `prompts/list` and `prompts/get`: `create_gameplay_feature`, `fix_compile_errors`, `create_scene_from_description`, `debug_runtime_exception`, and `prepare_release_build`. Prompt arguments follow MCP's `Record<string,string>` contract; unknown, missing, malformed boolean, and out-of-range integer values are rejected. Getting a prompt never calls a tool, changes project state, or saves content.
+
+Each workflow first asks the client to inspect safe MCP resources (and read-only tools when a needed resource is unavailable), honor the active permission profile, preview supported writes with `dry_run:true`, and get explicit confirmation before mutations, saves, builds, or destructive actions. The guidance uses bounded compile/play retries and reports unsupported transaction, property-editing, prefab, and build/cook operations instead of implying they occurred.
+
 ## Notes
 
 - **Asset registry and graph reads** -- `asset_search`, `asset_get`, `asset_dependencies`, and `asset_find_references` require bridge v8. They use only public Flax 1.12 `Content` registry metadata and `Asset.GetReferences`; result pages are at most 200 entries, dependency depth is at most 16, registry scans are capped at 10,000 assets, and opaque cursors expire after ten minutes or invalidate when filters or registry metadata change. Paths/GUIDs are project-scoped. The bridge does not expose importer settings, file size/modified time/import status, actor/property reference locations, or inferred prefab overrides because public APIs do not verify them.
