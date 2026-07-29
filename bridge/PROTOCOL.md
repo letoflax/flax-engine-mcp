@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (bridge v11 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v12 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 11, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 12, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -314,3 +314,18 @@ API (including compilation and content importing). The only currently safe
 checkpoint is queued project generation before it runs; cancellation then
 returns terminal `cancelled` with `OPERATION_CANCELLED`. These raw handles are
 not a claim of MCP Tasks support.
+
+## Bridge v12: bounded prefab editor workflows
+
+Bridge v12 keeps protocol v1 and preserves all v5--v11 methods. It adds
+`prefab.create_from_actor`, `prefab.instantiate`, and `prefab.get_instances`,
+backed only by verified public Flax 1.12 APIs (`PrefabManager.CreatePrefab`,
+`PrefabManager.SpawnPrefab`, `Actor.IsPrefabRoot`, and prefab link metadata).
+Creation requires a new project-relative `Content/.../*.prefab` path and never
+overwrites; instantiation requires a loaded `ParentId` so scene revision and edit
+lease guards can be checked before mutation. Instance enumeration scans loaded
+scene actor trees only, capped at 10,000 actors and 200 results per page with
+bounded cursors. `prefab.get_overrides`, `prefab.revert_overrides`,
+`prefab.apply_overrides`, and `prefab.break_link` remain explicit stable
+`UNSUPPORTED_FLAX_VERSION` capabilities because Flax 1.12 lacks a reviewed,
+undoable and previewable public path for those operations.

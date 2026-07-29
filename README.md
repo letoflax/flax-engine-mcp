@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 79 tools for reading and patching code, editing live scenes, searching/importing assets, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 91 tools for reading and patching code, editing live scenes, searching/importing assets, working with safe live-prefab primitives, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
 
 ## Requirements
 
@@ -187,6 +187,16 @@ For example, first preview a move and then repeat the same request without
 `asset_rename` takes `name` instead of `destination`; `asset_duplicate` takes
 both. The name excludes the extension, which remains the source extension.
 
+### Prefabs
+| Tool | What it does |
+|------|-------------|
+| `prefab_create_from_actor` | Create a new `Content/.../*.prefab` from a loaded actor hierarchy; never overwrites and defaults `auto_link` to false (bridge v12) |
+| `prefab_instantiate` | Instantiate a prefab under a required loaded parent with bounded world transform/name, dry-run, revision, lease, and idempotency guards (bridge v12) |
+| `prefab_get_instances` | List instance roots in currently loaded scenes with opaque cursor pagination (bridge v12) |
+| `prefab_get_overrides` | Stable unsupported capability: Flax 1.12 has no verified public override-diff API (bridge v12) |
+| `prefab_revert_overrides` | Stable unsupported capability; dry-run defaults to true because no verified public revert API exists (bridge v12) |
+| `prefab_apply_overrides` / `prefab_break_link` | Stable unsupported capabilities until an undoable, previewable, confirmation-safe Editor path is verified (bridge v12) |
+
 ### Settings & Config
 | Tool | What it does |
 |------|-------------|
@@ -219,6 +229,9 @@ Each workflow first asks the client to inspect safe MCP resources (and read-only
 - **Asset compatibility aliases** -- `list_assets` delegates safe all/scene requests to `asset_search` with a v8 bridge; `get_asset_info` delegates `Content/...` paths to `asset_get`. Other legacy filters, bare filenames, offline projects, and bridges older than v8 keep their original filesystem-backed behavior.
 - **Safe asset imports** -- `asset_import` and `asset_reimport` require bridge v9, the `full` permission profile (or an explicit tool allow override), and at least one `--asset-import-root`. They invoke only Flax's verified `Editor.Import`, `ContentImporting.Reimport`, and `BinaryAsset.ImportPath` APIs, never copy source files or launch editor processes. Importer settings/type conversion are intentionally not exposed. New imports finish synchronously in Flax 1.12; reimports use Flax's queue and must be polled by operation ID (ten-minute retention, at most 512 records). Imports are rejected while Flax is playing, compiling/reloading, or already importing. The direct APIs are UI-free; headless availability still depends on the installed Flax Editor importer backend and should be verified in the target CI/editor setup.
 - **Safe asset organization** -- `asset_move`, `asset_rename`, and `asset_duplicate` require bridge v10 and the `full` permission profile (or an explicit tool allow override). They select exactly one registry asset by GUID or `Content/...` path; destinations must be normalized existing folders inside `Content`, names cannot change an extension, and collisions either fail or receive a bounded `-N` suffix. Use `dry_run:true` before writing and pass `expected_path` and/or `expected_index_revision` from a recent asset read/search to reject stale state. The bridge calls only public Flax 1.12 `ContentDatabase.Move`, `Content.RenameAsset`, and `ContentDatabase.Copy` APIs—never a raw filesystem move/copy or reflection. Results include no more than 50 direct reverse references; actor/property locations remain unavailable. Move and rename verify that the source GUID remains; duplicate reports its new GUID while existing references continue to target the source. Flax exposes no verified undo record for these APIs, and v7 leases are scene-only, so results explicitly warn that undo and asset leases are unsupported. Calls do not save project content automatically.
+
+- **Safe prefab workflows** -- `prefab_create_from_actor`, `prefab_instantiate`, and `prefab_get_instances` require bridge v12. They use only the public Flax 1.12 `PrefabManager.CreatePrefab`, `PrefabManager.SpawnPrefab`, `Actor.IsPrefabRoot`, and `SceneObject.PrefabID` APIs. Creation accepts only a new project-relative `Content/.../*.prefab` path and never overwrites; it defaults `auto_link:false`. Instantiation requires a loaded `parent_id`, so the bridge can check the target scene revision/lease before it writes; top-level placement is deliberately deferred because Flax's unparented spawn selects its first loaded scene. Instance results are limited to currently loaded scenes, capped at 10,000 scanned actors and 200 entries/page; cursors expire after ten minutes. The bridge does not inspect or edit prefab files, use reflection, or claim unloaded-scene coverage.
+- **Prefab limitations** -- Flax 1.12 has no verified public API for reading property-level overrides or reverting them. Although public engine APIs expose apply and break-link operations, bridge v12 does not expose them because it has not verified a reviewed undo, semantic preview, and confirmation path. `prefab_get_overrides`, `prefab_revert_overrides`, `prefab_apply_overrides`, and `prefab_break_link` therefore return the stable `UNSUPPORTED_FLAX_VERSION` capability error with an explicit reason instead of inferring state from serialization.
 
 - **Foundation contracts** — every tool validates arguments, advertises an output schema and annotations, and returns structured results with operation metadata.
 - **Validation rules** — `validate_project` keeps its legacy text summary, while `structuredContent.data.findings` exposes stable rule IDs, severities, project-relative locations, suggested fixes, auto-fix metadata, filters (`rule_ids`, `severities`), per-call suppressions, and cursor pagination (maximum 200 findings/page). Offline rules cover missing first scenes/assets, compiler log failures, duplicate input mappings, statically suspicious network attributes, optional required-camera checks, invalid Flax headers, settings, and scene JSON. Editor/cooker-only checks are explicitly reported as capability gaps rather than inferred.

@@ -200,6 +200,7 @@ export async function handleGetServerCapabilities(
     const phase5AssetImport = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 9;
     const phase6AssetOrganization = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 10;
     const operationHandles = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 11;
+    const phase6Prefabs = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 12;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -250,6 +251,16 @@ export async function handleGetServerCapabilities(
         operationProgress: operationHandles,
         operationCancel: operationHandles,
         mcpTasks: false,
+        prefab: {
+          available: phase6Prefabs,
+          create: phase6Prefabs,
+          instantiate: phase6Prefabs,
+          loadedSceneInstances: phase6Prefabs,
+          overrides: false,
+          applyOverrides: false,
+          revertOverrides: false,
+          breakLink: false,
+        },
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
         profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false,

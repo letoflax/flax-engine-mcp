@@ -51,6 +51,22 @@ import {
   handleAssetMove,
   handleAssetRename,
 } from './assetOrganize.js';
+import {
+  PrefabApplyOverridesSchema,
+  PrefabBreakLinkSchema,
+  PrefabCreateFromActorSchema,
+  PrefabGetInstancesSchema,
+  PrefabGetOverridesSchema,
+  PrefabInstantiateSchema,
+  PrefabRevertOverridesSchema,
+  handlePrefabApplyOverrides,
+  handlePrefabBreakLink,
+  handlePrefabCreateFromActor,
+  handlePrefabGetInstances,
+  handlePrefabGetOverrides,
+  handlePrefabInstantiate,
+  handlePrefabRevertOverrides,
+} from './prefabLive.js';
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
 import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyActor } from './sceneWrite.js';
@@ -246,6 +262,13 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   asset_move: AssetMoveSchema,
   asset_rename: AssetRenameSchema,
   asset_duplicate: AssetDuplicateSchema,
+  prefab_create_from_actor: PrefabCreateFromActorSchema,
+  prefab_instantiate: PrefabInstantiateSchema,
+  prefab_get_instances: PrefabGetInstancesSchema,
+  prefab_get_overrides: PrefabGetOverridesSchema,
+  prefab_apply_overrides: PrefabApplyOverridesSchema,
+  prefab_revert_overrides: PrefabRevertOverridesSchema,
+  prefab_break_link: PrefabBreakLinkSchema,
   read_settings: ReadSettingsSchema,
   get_input_actions: GetInputActionsSchema,
   get_physics_settings: GetPhysicsSettingsSchema,
@@ -283,6 +306,11 @@ const WRITE_TOOL_NAMES = new Set([
   'asset_move',
   'asset_rename',
   'asset_duplicate',
+  'prefab_create_from_actor',
+  'prefab_instantiate',
+  'prefab_apply_overrides',
+  'prefab_revert_overrides',
+  'prefab_break_link',
   'install_editor_bridge',
   'scene_save',
   'project_save_all',
@@ -322,7 +350,10 @@ function annotationsFor(name: string): ToolAnnotations {
       name === 'modify_actor' ||
       name === 'install_editor_bridge' ||
       name === 'actor_delete' ||
-      name === 'script_detach',
+      name === 'script_detach' ||
+      name === 'prefab_apply_overrides' ||
+      name === 'prefab_revert_overrides' ||
+      name === 'prefab_break_link',
     idempotentHint: !writes,
     openWorldHint: false,
   };
@@ -801,6 +832,50 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Duplicates one Content registry asset into an existing Content-relative folder through the Flax Editor Content database. Existing references remain bound to the source asset. Requires bridge v10.',
       inputSchema: zodToJsonSchema(AssetDuplicateSchema),
       handler: (a, c) => handleAssetDuplicate(a as Parameters<typeof handleAssetDuplicate>[0], c),
+    },
+
+    // ── Prefabs ───────────────────────────────────────────────────────────────
+    {
+      name: 'prefab_create_from_actor',
+      description: 'Creates a new Content/*.prefab from one loaded actor hierarchy using Flax’s public PrefabManager API. Existing files are never overwritten; auto_link defaults to false. Requires bridge v12.',
+      inputSchema: zodToJsonSchema(PrefabCreateFromActorSchema),
+      handler: (a, c) => handlePrefabCreateFromActor(a as Parameters<typeof handlePrefabCreateFromActor>[0], c),
+    },
+    {
+      name: 'prefab_instantiate',
+      description: 'Instantiates one prefab below a required loaded parent actor with bounded world transform and optional name. Supports dry-run, scene revision, lease, and idempotency guards. Requires bridge v12.',
+      inputSchema: zodToJsonSchema(PrefabInstantiateSchema),
+      handler: (a, c) => handlePrefabInstantiate(a as Parameters<typeof handlePrefabInstantiate>[0], c),
+    },
+    {
+      name: 'prefab_get_instances',
+      description: 'Lists prefab instance roots in currently loaded scenes with opaque cursor pagination. It cannot enumerate unloaded-scene instances. Requires bridge v12.',
+      inputSchema: zodToJsonSchema(PrefabGetInstancesSchema),
+      handler: (a, c) => handlePrefabGetInstances(a as Parameters<typeof handlePrefabGetInstances>[0], c),
+    },
+    {
+      name: 'prefab_get_overrides',
+      description: 'Reports a stable unsupported capability in Flax 1.12: public APIs do not expose a verified prefab override-diff reader. Requires bridge v12.',
+      inputSchema: zodToJsonSchema(PrefabGetOverridesSchema),
+      handler: (a, c) => handlePrefabGetOverrides(a as Parameters<typeof handlePrefabGetOverrides>[0], c),
+    },
+    {
+      name: 'prefab_apply_overrides',
+      description: 'Reports a stable unsupported capability. Although Flax exposes apply APIs, bridge v12 has no reviewed undo/preview/confirmation-safe path. Requires bridge v12.',
+      inputSchema: zodToJsonSchema(PrefabApplyOverridesSchema),
+      handler: (a, c) => handlePrefabApplyOverrides(a as Parameters<typeof handlePrefabApplyOverrides>[0], c),
+    },
+    {
+      name: 'prefab_revert_overrides',
+      description: 'Reports a stable unsupported capability. Dry-run defaults to true because Flax 1.12 has no verified public revert-overrides API. Requires bridge v12.',
+      inputSchema: zodToJsonSchema(PrefabRevertOverridesSchema),
+      handler: (a, c) => handlePrefabRevertOverrides(a as Parameters<typeof handlePrefabRevertOverrides>[0], c),
+    },
+    {
+      name: 'prefab_break_link',
+      description: 'Reports a stable unsupported capability. Link breaking needs an audited undo/preview/confirmation path before it can be exposed. Requires bridge v12.',
+      inputSchema: zodToJsonSchema(PrefabBreakLinkSchema),
+      handler: (a, c) => handlePrefabBreakLink(a as Parameters<typeof handlePrefabBreakLink>[0], c),
     },
 
     // ── Settings ──────────────────────────────────────────────────────────────

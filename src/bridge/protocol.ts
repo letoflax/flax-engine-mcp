@@ -84,6 +84,16 @@ export type OperationBridgeMethod =
   | 'operation.status'
   | 'operation.cancel';
 
+/** Additive bridge v12 prefab workflows backed by verified Flax 1.12 APIs. */
+export type PrefabBridgeMethod =
+  | 'prefab.create_from_actor'
+  | 'prefab.instantiate'
+  | 'prefab.get_instances'
+  | 'prefab.get_overrides'
+  | 'prefab.apply_overrides'
+  | 'prefab.revert_overrides'
+  | 'prefab.break_link';
+
 export type BridgeMethod =
   | 'status'
   | SceneBridgeMethod
@@ -94,7 +104,8 @@ export type BridgeMethod =
   | PlayBridgeMethod
   | ObservabilityBridgeMethod
   | AssetBridgeMethod
-  | OperationBridgeMethod;
+  | OperationBridgeMethod
+  | PrefabBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */
 export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {
