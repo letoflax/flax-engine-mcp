@@ -44,9 +44,11 @@ import {
   handleAssetReimportStatus,
 } from './assetImport.js';
 import {
+  AssetDeleteSchema,
   AssetDuplicateSchema,
   AssetMoveSchema,
   AssetRenameSchema,
+  handleAssetDelete,
   handleAssetDuplicate,
   handleAssetMove,
   handleAssetRename,
@@ -262,6 +264,7 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   asset_move: AssetMoveSchema,
   asset_rename: AssetRenameSchema,
   asset_duplicate: AssetDuplicateSchema,
+  asset_delete: AssetDeleteSchema,
   prefab_create_from_actor: PrefabCreateFromActorSchema,
   prefab_instantiate: PrefabInstantiateSchema,
   prefab_get_instances: PrefabGetInstancesSchema,
@@ -306,6 +309,7 @@ const WRITE_TOOL_NAMES = new Set([
   'asset_move',
   'asset_rename',
   'asset_duplicate',
+  'asset_delete',
   'prefab_create_from_actor',
   'prefab_instantiate',
   'prefab_apply_overrides',
@@ -832,6 +836,12 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Duplicates one Content registry asset into an existing Content-relative folder through the Flax Editor Content database. Existing references remain bound to the source asset. Requires bridge v10.',
       inputSchema: zodToJsonSchema(AssetDuplicateSchema),
       handler: (a, c) => handleAssetDuplicate(a as Parameters<typeof handleAssetDuplicate>[0], c),
+    },
+    {
+      name: 'asset_delete',
+      description: 'Moves one Content asset into a caller-selected existing quarantine folder; it never permanently deletes files. A non-dry run requires explicit confirmation and the current direct reference count. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(AssetDeleteSchema),
+      handler: (a, c) => handleAssetDelete(a as Parameters<typeof handleAssetDelete>[0], c),
     },
 
     // ── Prefabs ───────────────────────────────────────────────────────────────
