@@ -390,3 +390,33 @@ and content import, Flax 1.12 exposes `GameCooker.Cancel`; `build.cancel` and
 generic `operation.cancel` request it asynchronously. A cancellation request is
 terminal only after the cooker reports completion, so callers must poll rather
 than treating acknowledgement as proof of cleanup.
+## Bridge v13: bounded material and animation inspection
+
+Bridge v13 keeps protocol v1. It adds public, read-only Flax 1.12 inspection
+methods: material.get_parameters, animation.list_clips,
+animation.get_graph_parameters, and animation.validate_bindings.
+
+material.get_parameters selects exactly one registry Material or
+MaterialInstance by 32-character GUID or Content/... path. It exposes a
+bounded safe projection of the public MaterialBase.Parameters collection:
+parameter ID/name/type/public/override flags and scalar, vector, color, asset,
+or otherwise type-only value information. It never reflects arbitrary Variant
+contents. A material-instance result may identify its public base material.
+
+animation.list_clips lists registry assets whose verified type is
+FlaxEngine.Animation, with public length, duration, frames-per-second, and
+clip-info counts. It uses the existing 10,000-asset registry cap, 200-result
+page maximum, and ten-minute opaque cursor rules. animation.get_graph_parameters
+requires one loaded AnimatedModel actor and reports its live public Parameters
+collection. animation.validate_bindings compares that actor's public
+SkinnedModel, AnimationGraph, and graph BaseModel references; it does not infer
+skeleton compatibility beyond matching public asset IDs.
+
+The v13 method names material.set_parameters, material.create_instance,
+material.assign_to_actor, and animation.set_graph_parameter are present only to
+return stable UNSUPPORTED_FLAX_VERSION capabilities. Flax 1.12 exposes runtime
+setters and virtual material instances, but this bridge has no reviewed Editor
+undo, durable-save, actor-slot targeting, semantic-preview, and confirmation
+path for those mutations. It therefore never calls SetParameterValue or
+CreateVirtualInstance, nor does it mutate material slots or animation graph
+state.

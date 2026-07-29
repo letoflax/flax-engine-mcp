@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 98 tools for reading and patching code, editing live scenes, searching/importing assets, working with safe live-prefab primitives, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 106 tools for reading and patching code, editing live scenes, searching/importing assets, working with safe live-prefab primitives, inspecting materials and animation state, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
 
 ## Requirements
 
@@ -206,6 +206,16 @@ both. The name excludes the extension, which remains the source extension.
 | `build_cook` | Start a bounded GameCooker build into an empty project-relative `Builds/...` directory, with dry-run and an operation handle (bridge v13) |
 | `build_get_status` / `build_get_result` | Poll a build handle or retrieve its terminal result; result rejects a non-terminal build (bridge v13) |
 | `build_cancel` | Request GameCooker cancellation; poll to confirm terminal cleanup (bridge v13) |
+
+### Materials & Animation
+| Tool | What it does |
+|------|-------------|
+| material_get_parameters | Read bounded public Material/MaterialInstance parameter metadata and safe value projections (bridge v13) |
+| material_set_parameters / material_create_instance / material_assign_to_actor | Stable unsupported capabilities until a reviewed Editor undo, persistence, slot-targeting, and preview path is verified (bridge v13) |
+| animation_list_clips | List registered Animation clips with public metadata and opaque cursor pagination (bridge v13) |
+| animation_get_graph_parameters | Read live graph parameters from one loaded AnimatedModel (bridge v13) |
+| animation_set_graph_parameter | Stable unsupported capability until an Editor-safe persistence, undo, and preview path is verified (bridge v13) |
+| animation_validate_bindings | Compare a loaded AnimatedModel's public SkinnedModel, AnimationGraph, and graph BaseModel references (bridge v13) |
 
 ### Settings & Config
 | Tool | What it does |

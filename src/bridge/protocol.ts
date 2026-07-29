@@ -104,6 +104,19 @@ export type BuildBridgeMethod =
   | 'build.result'
   | 'build.cancel';
 
+/** Additive bridge v13 material and animation inspection surface. */
+export type MaterialBridgeMethod =
+  | 'material.get_parameters'
+  | 'material.set_parameters'
+  | 'material.create_instance'
+  | 'material.assign_to_actor';
+
+export type AnimationBridgeMethod =
+  | 'animation.list_clips'
+  | 'animation.get_graph_parameters'
+  | 'animation.set_graph_parameter'
+  | 'animation.validate_bindings';
+
 export type BridgeMethod =
   | 'status'
   | SceneBridgeMethod
@@ -116,7 +129,9 @@ export type BridgeMethod =
   | AssetBridgeMethod
   | OperationBridgeMethod
   | PrefabBridgeMethod
-  | BuildBridgeMethod;
+  | BuildBridgeMethod
+  | MaterialBridgeMethod
+  | AnimationBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */
 export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {

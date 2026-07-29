@@ -28,7 +28,7 @@ namespace Game.MCP
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 13; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; }
+    public class McpStatus { public int BridgeVersion = 13; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -138,6 +138,21 @@ namespace Game.MCP
     public class McpPrefabInstantiateResult { public bool DryRun; public McpAssetMetadata Prefab; public McpActorDto Actor; public bool VerifiedLink; public long ProjectRevision; public string SceneId; public long SceneRevision; }
     public class McpPrefabInstanceDto { public string ActorId; public string SceneId; public string ParentId; public string Name; public string PrefabId; public string PrefabObjectId; public bool IsPrefabRoot; }
     public class McpPrefabInstancesResult { public McpAssetMetadata Prefab; public McpPrefabInstanceDto[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
+    public class McpMaterialAssetRequest { public string AssetId; public string Path; public bool IncludeNonPublic; }
+    public class McpMaterialMutationRequest { public string AssetId; public string Path; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    public class McpMaterialTypedValue { public string Kind; public bool? Boolean; public long? Integer; public double? Number; public string Text; public McpVector2 Vector2; public McpVector3 Vector3; public McpVector4 Vector4; public string AssetId; public string TypeName; }
+    public class McpVector2 { public float X; public float Y; }
+    public class McpVector4 { public float X; public float Y; public float Z; public float W; }
+    public class McpMaterialParameterDto { public string Id; public string Name; public string Type; public bool IsPublic; public bool IsOverride; public McpMaterialTypedValue Value; }
+    public class McpMaterialParametersResult { public McpAssetMetadata Material; public bool IsInstance; public McpAssetMetadata BaseMaterial; public McpMaterialParameterDto[] Parameters; public bool NonPublicIncluded; public string[] Warnings; }
+    public class McpAnimationListClips { public int Limit = 50; public string Cursor; public string Folder; }
+    public class McpAnimationClipDto { public McpAssetMetadata Asset; public float Length; public float Duration; public float FramesPerSecond; public int FramesCount; public int ChannelsCount; public int KeyframesCount; public long MemoryUsage; }
+    public class McpAnimationClipsResult { public McpAnimationClipDto[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
+    public class McpAnimationActorRequest { public string ActorId; }
+    public class McpAnimationGraphParameterDto { public string Id; public string Name; public string Type; public string TypeName; public bool IsPublic; public McpMaterialTypedValue Value; }
+    public class McpAnimationGraphParametersResult { public string ActorId; public McpAssetMetadata AnimationGraph; public McpAnimationGraphParameterDto[] Parameters; public string[] Warnings; }
+    public class McpAnimationGraphMutationRequest { public string ActorId; public string ParameterId; public string ParameterName; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    public class McpAnimationBindingValidationResult { public string ActorId; public McpAssetMetadata SkinnedModel; public McpAssetMetadata AnimationGraph; public McpAssetMetadata GraphBaseModel; public bool HasSkinnedModel; public bool HasAnimationGraph; public bool HasGraphBaseModel; public bool BaseModelMatchesActor; public bool Valid; public string[] Warnings; }
     internal sealed class McpAssetRecord { public Guid Id; public AssetInfo Info; public string Path; public string Extension; public string Folder; }
     internal sealed class McpAssetGraphIndex { public Dictionary<Guid, McpAssetRecord> ById; public Dictionary<Guid, List<Guid>> Direct; public Dictionary<Guid, int> Missing; public Dictionary<Guid, int> Reverse; }
     internal sealed class McpAssetCursor { public string Method; public string Scope; public string IndexRevision; public int Offset; public long ExpiresUnixMs; }
@@ -458,6 +473,14 @@ namespace Game.MCP
                 case "prefab.revert_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_revert_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
                 case "prefab.apply_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_apply_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
                 case "prefab.break_link": result = OnMain(() => UnsupportedPrefabOperation("prefab_break_link", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
+                case "material.get_parameters": result = OnMain(() => GetMaterialParameters(JsonSerializer.Deserialize<McpMaterialAssetRequest>(p)), request.deadlineUnixMs); break;
+                case "material.set_parameters": result = OnMain(() => UnsupportedMaterialOperation("material_set_parameters", JsonSerializer.Deserialize<McpMaterialMutationRequest>(p)), request.deadlineUnixMs); break;
+                case "material.create_instance": result = OnMain(() => UnsupportedMaterialOperation("material_create_instance", JsonSerializer.Deserialize<McpMaterialMutationRequest>(p)), request.deadlineUnixMs); break;
+                case "material.assign_to_actor": result = OnMain(() => UnsupportedMaterialOperation("material_assign_to_actor", JsonSerializer.Deserialize<McpMaterialMutationRequest>(p)), request.deadlineUnixMs); break;
+                case "animation.list_clips": result = OnMain(() => ListAnimationClips(JsonSerializer.Deserialize<McpAnimationListClips>(p)), request.deadlineUnixMs); break;
+                case "animation.get_graph_parameters": result = OnMain(() => GetAnimationGraphParameters(JsonSerializer.Deserialize<McpAnimationActorRequest>(p)), request.deadlineUnixMs); break;
+                case "animation.set_graph_parameter": result = OnMain(() => UnsupportedAnimationOperation("animation_set_graph_parameter", JsonSerializer.Deserialize<McpAnimationGraphMutationRequest>(p)), request.deadlineUnixMs); break;
+                case "animation.validate_bindings": result = OnMain(() => ValidateAnimationBindings(JsonSerializer.Deserialize<McpAnimationActorRequest>(p)), request.deadlineUnixMs); break;
                 default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method is not in the bridge allowlist.");
             }
             var resultJson = JsonSerializer.Serialize(result, true);
@@ -1163,6 +1186,221 @@ namespace Game.MCP
                 IndexRevision = revision,
                 Warnings = new[] { "Only currently loaded scenes are scanned. Flax 1.12 exposes no verified global prefab-instance registry; external Editor changes require a refresh." },
             };
+        }
+
+        // Bridge v13 material/animation reads use public Flax 1.12 managed
+        // APIs only. Writes are not exposed: the public runtime setters do not
+        // provide a reviewed Editor undo, durable-save, or preview boundary.
+        private McpMaterialParametersResult GetMaterialParameters(McpMaterialAssetRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Material parameters are required.");
+            var records = BuildAssetRegistry();
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, records);
+            if (!string.Equals(record.Info.TypeName, "FlaxEngine.Material", StringComparison.Ordinal) && !string.Equals(record.Info.TypeName, "FlaxEngine.MaterialInstance", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "The selected Content asset is not a Flax material or material instance.");
+            Asset loaded = null;
+            try { loaded = Content.Load(record.Id, AssetLoadTimeoutMs); } catch { }
+            var material = loaded as MaterialBase;
+            if (material == null || material.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The selected material could not be loaded by Flax Editor.");
+            var parameters = material.Parameters ?? new MaterialParameter[0];
+            var entries = new List<McpMaterialParameterDto>(parameters.Length);
+            foreach (var parameter in parameters)
+            {
+                if (parameter == null || (!request.IncludeNonPublic && !parameter.IsPublic)) continue;
+                entries.Add(new McpMaterialParameterDto
+                {
+                    Id = parameter.ParameterID.ToString("N"),
+                    Name = Limit(parameter.Name, 256, "Material parameter"),
+                    Type = parameter.ParameterType.ToString(),
+                    IsPublic = parameter.IsPublic,
+                    IsOverride = parameter.IsOverride,
+                    Value = SafeMaterialAnimationValue(parameter.Value),
+                });
+            }
+            entries.Sort((left, right) => string.Compare(left.Name, right.Name, StringComparison.Ordinal));
+            var instance = material as MaterialInstance;
+            return new McpMaterialParametersResult
+            {
+                Material = AssetMetadata(record),
+                IsInstance = instance != null,
+                BaseMaterial = instance == null ? null : AssetMetadataForLoadedAsset(instance.BaseMaterial),
+                Parameters = entries.ToArray(),
+                NonPublicIncluded = request.IncludeNonPublic,
+                Warnings = new[] { "Values are a bounded safe projection of public material parameters. Unsupported Variant shapes are reported by type only; material writes and persistent instance creation are intentionally unavailable." },
+            };
+        }
+
+        private object UnsupportedMaterialOperation(string capability, McpMaterialMutationRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Material operation parameters are required.");
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, BuildAssetRegistry());
+            if (!string.Equals(record.Info.TypeName, "FlaxEngine.Material", StringComparison.Ordinal) && !string.Equals(record.Info.TypeName, "FlaxEngine.MaterialInstance", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "The selected Content asset is not a Flax material or material instance.");
+            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", capability + " is intentionally unavailable: Flax 1.12 exposes runtime material setters and virtual instances, but this bridge has no reviewed undo, durable-save, actor-slot targeting, and preview/confirmation path for an Editor mutation.", new { Capability = capability, BridgeVersion = BridgeVersion, DryRun = request.DryRun });
+        }
+
+        private McpAnimationClipsResult ListAnimationClips(McpAnimationListClips request)
+        {
+            if (request == null) request = new McpAnimationListClips();
+            ValidateAssetLimit(request.Limit);
+            if (!string.IsNullOrEmpty(request.Cursor) && !IsGuidN(request.Cursor)) throw new McpProtocolException("CURSOR_INVALID", "Animation cursor is invalid.");
+            if (!string.IsNullOrEmpty(request.Folder)) ValidateProjectContentPath(request.Folder, true);
+            var records = BuildAssetRegistry();
+            var clips = new List<McpAssetRecord>();
+            foreach (var record in records)
+            {
+                if (!string.Equals(record.Info.TypeName, "FlaxEngine.Animation", StringComparison.Ordinal)) continue;
+                if (!string.IsNullOrEmpty(request.Folder) && !IsAssetInFolder(record.Folder, request.Folder)) continue;
+                clips.Add(record);
+            }
+            var revision = AssetIndexRevision(records);
+            var scope = "animation.list_clips|" + (request.Folder ?? "");
+            var offset = GetAssetCursorOffset(request.Cursor, "animation.list_clips", scope, revision);
+            if (offset < 0 || offset > clips.Count) throw new McpProtocolException("CURSOR_INVALID", "Animation cursor offset is invalid.");
+            var count = Math.Min(request.Limit, clips.Count - offset);
+            var entries = new McpAnimationClipDto[count];
+            for (var i = 0; i < count; i++) entries[i] = AnimationClipDto(clips[offset + i]);
+            var hasMore = offset + count < clips.Count;
+            return new McpAnimationClipsResult
+            {
+                Entries = entries,
+                HasMore = hasMore,
+                NextCursor = hasMore ? CreateAssetCursor("animation.list_clips", scope, revision, offset + count) : null,
+                IndexRevision = revision,
+                Warnings = new[] { "Clip metadata is read from public Animation properties. The registry scan is capped at 10000 Content assets and cursors expire after ten minutes or when registry metadata changes." },
+            };
+        }
+
+        private McpAnimationGraphParametersResult GetAnimationGraphParameters(McpAnimationActorRequest request)
+        {
+            var model = RequireAnimatedModel(request);
+            var parameters = model.Parameters ?? new AnimGraphParameter[0];
+            var entries = new List<McpAnimationGraphParameterDto>(parameters.Length);
+            foreach (var parameter in parameters)
+            {
+                if (parameter == null) continue;
+                object value = null;
+                try { value = model.GetParameterValue(parameter.Identifier); } catch { value = parameter.Value; }
+                entries.Add(new McpAnimationGraphParameterDto
+                {
+                    Id = parameter.Identifier.ToString("N"),
+                    Name = Limit(parameter.Name, 256, "Animation graph parameter"),
+                    Type = parameter.Type.ToString(),
+                    TypeName = Limit(parameter.TypeTypeName, 256, "Animation graph parameter type"),
+                    IsPublic = parameter.IsPublic,
+                    Value = SafeMaterialAnimationValue(value),
+                });
+            }
+            entries.Sort((left, right) => string.Compare(left.Name, right.Name, StringComparison.Ordinal));
+            return new McpAnimationGraphParametersResult
+            {
+                ActorId = model.ID.ToString("N"),
+                AnimationGraph = AssetMetadataForLoadedAsset(model.AnimationGraph),
+                Parameters = entries.ToArray(),
+                Warnings = new[] { "Parameters are the live instance values for one loaded AnimatedModel. Flax 1.12 does not expose a reviewed Editor-safe way to persist or undo graph-parameter writes, so mutation is unavailable." },
+            };
+        }
+
+        private object UnsupportedAnimationOperation(string capability, McpAnimationGraphMutationRequest request)
+        {
+            var model = RequireAnimatedModel(new McpAnimationActorRequest { ActorId = request == null ? null : request.ActorId });
+            if (request == null || (string.IsNullOrEmpty(request.ParameterId) && string.IsNullOrEmpty(request.ParameterName)) || (!string.IsNullOrEmpty(request.ParameterId) && !string.IsNullOrEmpty(request.ParameterName)))
+                throw new McpProtocolException("INVALID_REQUEST", "Provide exactly one graph ParameterId or ParameterName.");
+            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", capability + " is intentionally unavailable: Flax 1.12 exposes AnimatedModel.SetParameterValue for runtime state, but this bridge has no reviewed Editor undo, persistence, and semantic preview path for it.", new { Capability = capability, BridgeVersion = BridgeVersion, ActorId = model.ID.ToString("N"), DryRun = request.DryRun });
+        }
+
+        private McpAnimationBindingValidationResult ValidateAnimationBindings(McpAnimationActorRequest request)
+        {
+            var model = RequireAnimatedModel(request);
+            var skinnedModel = model.SkinnedModel;
+            var graph = model.AnimationGraph;
+            var graphBaseModel = graph == null || graph.LastLoadFailed ? null : graph.BaseModel;
+            var hasSkinnedModel = skinnedModel != null && !skinnedModel.LastLoadFailed;
+            var hasAnimationGraph = graph != null && !graph.LastLoadFailed;
+            var hasGraphBaseModel = graphBaseModel != null && !graphBaseModel.LastLoadFailed;
+            var modelsMatch = hasSkinnedModel && hasGraphBaseModel && skinnedModel.ID == graphBaseModel.ID;
+            var warnings = new List<string>();
+            if (!hasSkinnedModel) warnings.Add("The loaded AnimatedModel has no valid public SkinnedModel reference.");
+            if (!hasAnimationGraph) warnings.Add("The loaded AnimatedModel has no valid public AnimationGraph reference.");
+            else if (!hasGraphBaseModel) warnings.Add("The AnimationGraph has no valid public BaseModel reference to compare against the actor.");
+            else if (!modelsMatch) warnings.Add("The AnimationGraph BaseModel does not match the AnimatedModel SkinnedModel.");
+            return new McpAnimationBindingValidationResult
+            {
+                ActorId = model.ID.ToString("N"),
+                SkinnedModel = AssetMetadataForLoadedAsset(skinnedModel),
+                AnimationGraph = AssetMetadataForLoadedAsset(graph),
+                GraphBaseModel = AssetMetadataForLoadedAsset(graphBaseModel),
+                HasSkinnedModel = hasSkinnedModel,
+                HasAnimationGraph = hasAnimationGraph,
+                HasGraphBaseModel = hasGraphBaseModel,
+                BaseModelMatchesActor = modelsMatch,
+                Valid = hasSkinnedModel && hasAnimationGraph && hasGraphBaseModel && modelsMatch,
+                Warnings = warnings.ToArray(),
+            };
+        }
+
+        private static AnimatedModel RequireAnimatedModel(McpAnimationActorRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(request.ActorId)) throw new McpProtocolException("INVALID_REQUEST", "ActorId is required.");
+            var model = RequireActor(request.ActorId) as AnimatedModel;
+            if (model == null) throw new McpProtocolException("VALIDATION_FAILED", "ActorId must identify a loaded FlaxEngine.AnimatedModel.");
+            return model;
+        }
+
+        private static McpAnimationClipDto AnimationClipDto(McpAssetRecord record)
+        {
+            Asset loaded = null;
+            try { loaded = Content.Load(record.Id, AssetLoadTimeoutMs); } catch { }
+            var animation = loaded as Animation;
+            if (animation == null || animation.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "A registered animation clip could not be loaded by Flax Editor.");
+            var info = animation.Info;
+            return new McpAnimationClipDto
+            {
+                Asset = AssetMetadata(record),
+                Length = animation.Length,
+                Duration = animation.Duration,
+                FramesPerSecond = animation.FramesPerSecond,
+                FramesCount = info.FramesCount,
+                ChannelsCount = info.ChannelsCount,
+                KeyframesCount = info.KeyframesCount,
+                MemoryUsage = info.MemoryUsage,
+            };
+        }
+
+        private static McpAssetMetadata AssetMetadataForLoadedAsset(Asset asset)
+        {
+            if (asset == null) return null;
+            AssetInfo info;
+            if (Content.GetAssetInfo(asset.ID, out info))
+            {
+                var path = AssetProjectRelativePath(info.Path);
+                var extension = string.IsNullOrEmpty(path) ? null : Path.GetExtension(path).ToLowerInvariant();
+                var folder = string.IsNullOrEmpty(path) ? null : (Path.GetDirectoryName(path) ?? "Content").Replace('\\', '/');
+                return new McpAssetMetadata { Id = asset.ID.ToString("N"), Path = path, TypeName = info.TypeName, Extension = extension, Folder = folder };
+            }
+            return new McpAssetMetadata { Id = asset.ID.ToString("N"), TypeName = asset.GetType().FullName };
+        }
+
+        private static McpMaterialTypedValue SafeMaterialAnimationValue(object value)
+        {
+            if (value == null) return new McpMaterialTypedValue { Kind = "null" };
+            if (value is bool) return new McpMaterialTypedValue { Kind = "boolean", Boolean = (bool)value };
+            if (value is byte) return new McpMaterialTypedValue { Kind = "integer", Integer = (byte)value };
+            if (value is short) return new McpMaterialTypedValue { Kind = "integer", Integer = (short)value };
+            if (value is int) return new McpMaterialTypedValue { Kind = "integer", Integer = (int)value };
+            if (value is long) return new McpMaterialTypedValue { Kind = "integer", Integer = (long)value };
+            if (value is float) return new McpMaterialTypedValue { Kind = "number", Number = (float)value };
+            if (value is double) return new McpMaterialTypedValue { Kind = "number", Number = (double)value };
+            if (value is string) return new McpMaterialTypedValue { Kind = "string", Text = Limit((string)value, 512, "Parameter value") };
+            if (value is Guid) return new McpMaterialTypedValue { Kind = "asset_id", AssetId = ((Guid)value).ToString("N") };
+            if (value is Asset) return new McpMaterialTypedValue { Kind = "asset", AssetId = ((Asset)value).ID.ToString("N"), TypeName = ((Asset)value).GetType().FullName };
+            if (value is Float2) { var v = (Float2)value; return new McpMaterialTypedValue { Kind = "vector2", Vector2 = new McpVector2 { X = v.X, Y = v.Y } }; }
+            if (value is Float3) { var v = (Float3)value; return new McpMaterialTypedValue { Kind = "vector3", Vector3 = new McpVector3 { X = v.X, Y = v.Y, Z = v.Z } }; }
+            if (value is Float4) { var v = (Float4)value; return new McpMaterialTypedValue { Kind = "vector4", Vector4 = new McpVector4 { X = v.X, Y = v.Y, Z = v.Z, W = v.W } }; }
+            if (value is Color) { var c = (Color)value; return new McpMaterialTypedValue { Kind = "color", Vector4 = new McpVector4 { X = c.R, Y = c.G, Z = c.B, W = c.A } }; }
+            return new McpMaterialTypedValue { Kind = "unavailable", TypeName = Limit(value.GetType().FullName, 256, "Parameter value type") };
         }
 
         private object UnsupportedPrefabOperation(string capability, McpPrefabActorRequest request)

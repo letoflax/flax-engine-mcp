@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(FlaxEngineCSharpPath)' == ''">
+    <FlaxEngineCSharpPath>D:\Apps\Flax\Flax_1.12\Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll</FlaxEngineCSharpPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="FlaxEngine.CSharp" HintPath="$(FlaxEngineCSharpPath)" Private="false" />
+    <Compile Include="MaterialAnimationApiCompileProbe.cs" />
+  </ItemGroup>
+</Project>

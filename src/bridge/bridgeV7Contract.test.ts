@@ -150,3 +150,26 @@ test('bridge v13 exposes only bounded public GameCooker build/cook workflows', a
   assert.match(source, /BUILD_NOT_COMPLETE/);
   assert.doesNotMatch(source, /Process\.Start\(/);
 });
+
+test('bridge v13 exposes only verified public material and animation reads and keeps unreviewed mutations unsupported', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "material\.get_parameters"/);
+  assert.match(source, /case "material\.set_parameters"/);
+  assert.match(source, /case "material\.create_instance"/);
+  assert.match(source, /case "material\.assign_to_actor"/);
+  assert.match(source, /case "animation\.list_clips"/);
+  assert.match(source, /case "animation\.get_graph_parameters"/);
+  assert.match(source, /case "animation\.set_graph_parameter"/);
+  assert.match(source, /case "animation\.validate_bindings"/);
+  assert.match(source, /MaterialParameterReadSupported = true/);
+  assert.match(source, /MaterialParameterWriteSupported = false/);
+  assert.match(source, /AnimationClipEnumerationSupported = true/);
+  assert.match(source, /AnimationGraphParameterReadSupported = true/);
+  assert.match(source, /AnimationGraphParameterWriteSupported = false/);
+  assert.match(source, /material\.Parameters/);
+  assert.match(source, /model\.Parameters/);
+  assert.match(source, /animation\.Info/);
+  assert.match(source, /UNSUPPORTED_FLAX_VERSION/);
+  assert.doesNotMatch(source, /\.SetParameterValue\(/);
+  assert.doesNotMatch(source, /\.CreateVirtualInstance\(/);
+});
