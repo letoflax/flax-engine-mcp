@@ -21,6 +21,7 @@ export const DEFAULT_PERMISSION_POLICY: PermissionPolicy = {
 const TOOL_FAMILIES = {
   read: [
     'get_server_capabilities', 'editor_get_status', 'get_editor_bridge_installation',
+    'server_get_health', 'server_get_metrics', 'server_get_recent_errors',
     'scene_list_loaded', 'scene_get_tree', 'actor_get', 'actor_find', 'script_instance_get', 'edit_get_lease',
     'code_get_diagnostics', 'play_get_status', 'log_get_recent', 'log_search',
     'log_get_runtime_errors', 'get_project_info', 'get_game_settings', 'get_project_summary',

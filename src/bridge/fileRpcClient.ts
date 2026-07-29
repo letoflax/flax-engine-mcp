@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ProjectMeta } from '../projectContext.js';
 import { EditorBridgeStatus, inspectEditorBridge } from '../tools/serverStatus.js';
+import { recordIpcFailure } from '../observability.js';
 import {
   BRIDGE_CACHE_DIRECTORY,
   BRIDGE_REQUESTS_DIRECTORY,
@@ -135,6 +136,9 @@ export class FileRpcClient {
     FileRpcClient.inFlightProjects.add(projectLockKey);
     try {
       return await this.callExclusive<M, P, R>(method, params, options);
+    } catch (error) {
+      recordIpcFailure(error);
+      throw error;
     } finally {
       this.inFlight = false;
       FileRpcClient.inFlightProjects.delete(projectLockKey);

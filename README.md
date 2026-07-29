@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 72 tools for reading and patching code, editing live scenes, searching the live asset registry, compiling, running bounded play-mode checks, inspecting logs, and more.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 75 tools for reading and patching code, editing live scenes, searching the live asset registry, compiling, running bounded play-mode checks, inspecting logs, and more.
 
 ## Requirements
 
@@ -43,6 +43,19 @@ flax-mcp --project-path /path/to/project --permission-profile full
 
 Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a specific server process; deny always wins. `--emergency-read-only` is an immediate safety switch: it blocks every mutation and runtime-control tool even if it was explicitly allowed. Tool discovery and `get_server_capabilities` report the tools available under the active policy.
 
+## Doctor and local observability
+
+Run a read-only diagnostic before connecting a client:
+
+```bash
+flax-mcp doctor --project-path /path/to/project
+flax-mcp doctor --project-path /path/to/project --json
+```
+
+`doctor` checks Node, project metadata, declared Flax version, bridge installation and heartbeat/protocol, active permission flags, and cache/source/settings readability. It never reads the bridge token or prints the project path. Exit codes are stable: `0` means no failed checks (warnings are allowed), `1` means a check failed, and `2` means invalid doctor usage.
+
+The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_errors` tools provide bounded, in-process health data. Metrics include tool counts, error codes/rate, P50/P95 duration, and observable IPC failures; recent errors have a maximum of 100 entries and redact token-like values. They reset when the MCP process restarts. Cloud telemetry is disabled and no metrics leave the process.
+
 ## Tools
 
 ### Project Info
@@ -50,6 +63,9 @@ Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a sp
 |------|-------------|
 | `get_server_capabilities` | Server/project identity, feature flags, mode, and Editor Bridge availability |
 | `editor_get_status` | Validates the live bridge heartbeat, project identity, process, and freshness |
+| `server_get_health` | Process-local health and bridge availability without secrets or cloud telemetry |
+| `server_get_metrics` | Bounded in-process tool timing, error, and IPC-failure metrics |
+| `server_get_recent_errors` | Up to 100 recent redacted in-process tool and IPC errors |
 | `get_editor_bridge_installation` | Compare bundled and installed Editor Bridge versions and hashes |
 | `install_editor_bridge` | Preview or safely install the bridge into the editor target's detected game module; accepts `module` when targets are ambiguous |
 | `get_project_info` | Project config from `.flaxproj` — name, version, default scene, directory layout |
