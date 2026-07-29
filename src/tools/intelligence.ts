@@ -7,6 +7,7 @@ import { readTextFile } from '../textEncoding.js';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
 import { BridgeMethod } from '../bridge/protocol.js';
 import { inspectEditorBridge } from './serverStatus.js';
+import { handleValidateProjectEnhanced } from './validation.js';
 
 export const GetProjectSummarySchema = z.object({
   sections: z.array(z.enum(['scripts', 'scenes', 'assets', 'settings', 'docs']))
@@ -23,6 +24,18 @@ export const ValidateProjectSchema = z.object({
   checks: z.array(z.enum(['scripts', 'assets', 'settings', 'scenes']))
     .optional()
     .describe('Which checks to run. Omit to run all.'),
+  rule_ids: z.array(z.string().regex(/^FLAX\d{3}$/i)).max(32).optional()
+    .describe('Optional stable validation rule IDs to include.'),
+  severities: z.array(z.enum(['error', 'warning', 'info'])).max(3).optional()
+    .describe('Optional finding severities to include.'),
+  suppressions: z.array(z.string().regex(/^FLAX\d{3}$/i)).max(64).optional()
+    .describe('Stable rule IDs suppressed for this invocation; suppressions are not persisted.'),
+  cursor: z.string().max(256).optional()
+    .describe('Opaque cursor returned by a previous identical validation page.'),
+  limit: z.number().int().min(1).max(200).optional()
+    .describe('Maximum findings to return (1-200).'),
+  required_camera: z.boolean().optional()
+    .describe('Opt in to checking parsed scenes for an active Camera actor. Offline parsing cannot infer whether a camera is required.'),
 });
 
 // ---------- get_project_summary ----------
@@ -269,7 +282,7 @@ async function readAssetId(filePath: string): Promise<string | null> {
   return null;
 }
 
-export async function handleValidateProject(
+async function handleValidateProjectLegacy(
   args: z.infer<typeof ValidateProjectSchema>,
   ctx: ProjectMeta
 ): Promise<ToolResponse> {
@@ -370,4 +383,12 @@ export async function handleValidateProject(
   } catch (e) {
     return toolError(e);
   }
+}
+
+/** Compatibility entry point: legacy text is preserved while findings are structured. */
+export async function handleValidateProject(
+  args: z.infer<typeof ValidateProjectSchema>,
+  ctx: ProjectMeta,
+): Promise<ToolResponse> {
+  return handleValidateProjectEnhanced(args, ctx);
 }
