@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (bridge v10 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v11 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 10, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 11, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -289,3 +289,28 @@ so each result and status capability explicitly reports `UndoSupported:false`.
 The operation is one Editor Content API call, not a multi-operation transaction
 or rollback guarantee. No project content is saved automatically. Successful
 and dry-run Node calls write only bounded Content-relative audit metadata.
+
+## Bridge v11: generic persisted operation handles
+
+Bridge v11 keeps protocol v1 and adds `OperationStatusSupported:true`,
+`OperationCancelSupported:true`, and
+`OperationHandleSemantics:"raw-handles-no-mcp-tasks"` to `status`. It exposes
+`operation.status` and `operation.cancel`, both with a PascalCase
+`OperationId` (a 32-character GUID without separators).
+
+Operation records are bounded to 512 and atomically persisted beneath
+`Cache/MCP/operations/<operationId>.json`. A record contains only the operation
+ID/kind, phase, progress, bounded message, steps, timestamps, a bounded result
+summary, diagnostics, and error fields. It never includes request tokens,
+import source paths, configured roots, or arbitrary result payloads. Records
+expire after ten minutes. A reload restores only the exact persisted ID and
+marks a non-terminal operation `interrupted`; clients must not blindly repeat a
+start request after a lost response.
+
+Current compile, project-generation, import, and reimport handles are mirrored
+into this common status surface. `operation.cancel` is truthful: it returns
+`CANCELLATION_UNSUPPORTED` when Flax's public backend has no safe cancellation
+API (including compilation and content importing). The only currently safe
+checkpoint is queued project generation before it runs; cancellation then
+returns terminal `cancelled` with `OPERATION_CANCELLED`. These raw handles are
+not a claim of MCP Tasks support.

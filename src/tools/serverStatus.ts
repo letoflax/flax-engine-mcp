@@ -199,6 +199,7 @@ export async function handleGetServerCapabilities(
     const phase4Assets = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 8;
     const phase5AssetImport = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 9;
     const phase6AssetOrganization = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 10;
+    const operationHandles = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 11;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -245,6 +246,10 @@ export async function handleGetServerCapabilities(
           editLeases: false,
           referenceImpact: phase6AssetOrganization,
         },
+        operationHandles,
+        operationProgress: operationHandles,
+        operationCancel: operationHandles,
+        mcpTasks: false,
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
         profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false,

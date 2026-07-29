@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v10 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v11 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*10/);
-  assert.match(source, /BridgeVersion\s*=\s*10/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*11/);
+  assert.match(source, /BridgeVersion\s*=\s*11/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);

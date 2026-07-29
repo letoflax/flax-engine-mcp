@@ -6,6 +6,7 @@ import { callEditorBridge } from '../bridge/fileRpcClient.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
+import { startHeavyOperation } from '../operations.js';
 
 type RuntimeBridgeMethod =
   | 'code.status' | 'code.compile_start' | 'code.diagnostics'
@@ -272,7 +273,7 @@ async function gatePlayStart(ctx: ProjectMeta, allowDirty: boolean, allowFailedC
 }
 
 async function generateProjectBeforeCompile(ctx: ProjectMeta, timeoutMs: number): Promise<RuntimeCall> {
-  const started = await callRuntime(ctx, 'code.generate_project_start', {});
+  const started = await startHeavyOperation(ctx, () => callRuntime(ctx, 'code.generate_project_start', {}));
   const operationId = operationIdOf(started.data);
   const completed = await pollOperation(ctx, 'code.generate_project_status', operationId, timeoutMs);
   if (!['succeeded', 'success'].includes(stateOf(completed.data))) {
@@ -361,7 +362,7 @@ export async function handleCodeCompile(args: z.infer<typeof CodeCompileSchema>,
     }
     const generated = args.generate_project_first ? await generateProjectBeforeCompile(ctx, args.timeout_ms) : undefined;
     const baseline = await callRuntime(ctx, 'code.status', {});
-    const started = await startCompileWithAdoption(ctx, baseline, args.timeout_ms);
+    const started = await startHeavyOperation(ctx, () => startCompileWithAdoption(ctx, baseline, args.timeout_ms));
     const operationId = operationIdOf(started.data);
     const generationData = generated ? { projectGeneration: generated.data } : {};
     const priorWarnings = generated?.warnings ?? [];
@@ -399,7 +400,7 @@ export async function handleCodeGenerateProject(args: z.infer<typeof CodeGenerat
       const current = await callRuntime(ctx, 'code.status', {});
       return success({ dryRun: true, current: current.data, preview: { action: 'generate_project' } }, current.bridge, ['Dry-run did not generate project files.']);
     }
-    const started = await callRuntime(ctx, 'code.generate_project_start', {});
+    const started = await startHeavyOperation(ctx, () => callRuntime(ctx, 'code.generate_project_start', {}));
     const operationId = operationIdOf(started.data);
     if (!args.wait) return success({ started: true, operationId, result: started.data }, started.bridge, started.warnings, [{ kind: 'code.project_generation.started', operationId }]);
     const completed = await pollOperation(ctx, 'code.generate_project_status', operationId, args.timeout_ms);

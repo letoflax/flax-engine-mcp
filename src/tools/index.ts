@@ -4,6 +4,12 @@ import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { ProjectMeta } from '../projectContext.js';
 import { ToolResponse } from '../errors.js';
 import { assertPermissionRegistryCoverage } from '../permissions.js';
+import {
+  OperationCancelSchema,
+  OperationGetStatusSchema,
+  handleOperationCancel,
+  handleOperationGetStatus,
+} from '../operations.js';
 
 // Existing tools
 import { GetProjectInfoSchema, GetGameSettingsSchema, handleGetProjectInfo, handleGetGameSettings } from './project.js';
@@ -200,6 +206,8 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   code_compile: CodeCompileSchema,
   code_get_diagnostics: CodeGetDiagnosticsSchema,
   code_generate_project: CodeGenerateProjectSchema,
+  operation_get_status: OperationGetStatusSchema,
+  operation_cancel: OperationCancelSchema,
   play_get_status: PlayGetStatusSchema,
   play_start_scenes: PlayStartScenesSchema,
   play_start_game: PlayStartGameSchema,
@@ -294,6 +302,7 @@ const WRITE_TOOL_NAMES = new Set([
   'viewport_capture',
   'code_compile',
   'code_generate_project',
+  'operation_cancel',
   'play_start_scenes',
   'play_start_game',
   'play_stop',
@@ -506,6 +515,18 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Starts generation of Flax solution/project files and optionally waits for completion.',
       inputSchema: zodToJsonSchema(CodeGenerateProjectSchema),
       handler: (a, c) => handleCodeGenerateProject(a as Parameters<typeof handleCodeGenerateProject>[0], c),
+    },
+    {
+      name: 'operation_get_status',
+      description: 'Reads one bounded persisted Bridge v11 operation by its exact handle. Raw operation handles are used; this is not MCP Tasks.',
+      inputSchema: zodToJsonSchema(OperationGetStatusSchema),
+      handler: (a, c) => handleOperationGetStatus(a as Parameters<typeof handleOperationGetStatus>[0], c),
+    },
+    {
+      name: 'operation_cancel',
+      description: 'Requests cancellation only when the active Bridge v11 backend advertises a safe cancellation checkpoint. Unsupported backends are reported accurately.',
+      inputSchema: zodToJsonSchema(OperationCancelSchema),
+      handler: (a, c) => handleOperationCancel(a as Parameters<typeof handleOperationCancel>[0], c),
     },
     {
       name: 'play_get_status',

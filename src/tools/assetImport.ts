@@ -5,6 +5,7 @@ import { callEditorBridge } from '../bridge/fileRpcClient.js';
 import { BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, type ToolResponse } from '../errors.js';
 import type { ProjectMeta } from '../projectContext.js';
+import { startHeavyOperation } from '../operations.js';
 
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
 const OperationId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character operation ID.');
@@ -153,7 +154,7 @@ export async function handleAssetImport(args: z.infer<typeof AssetImportSchema>,
     const source = await verifyAssetImportSource(args.source_path, policy);
     const requested = await verifyAssetImportDestination(args.destination, ctx);
     const destination = await chooseAssetImportDestination(requested, args.collision_policy);
-    const started = await startImport({
+    const started = await startHeavyOperation(ctx, () => startImport({
       OperationId: operationId(args.operation_id),
       IdempotencyKey: args.idempotency_key,
       SourcePath: source.canonicalPath,
@@ -164,7 +165,7 @@ export async function handleAssetImport(args: z.infer<typeof AssetImportSchema>,
       DryRun: args.dry_run,
       AllowedImportRoots: policy.roots,
       MaxSourceBytes: policy.maxSourceBytes,
-    }, ctx);
+    }, ctx));
     const waited = await maybeWait('import', started.data, args.wait, args.timeout_ms, ctx);
     return response('import', waited.data, waited.bridge ?? started.bridge, !terminal(waited.data));
   } catch (error) {
@@ -178,7 +179,7 @@ export async function handleAssetReimport(args: z.infer<typeof AssetReimportSche
     if (policy.roots.length === 0) {
       throw new ToolDomainError('IMPORT_SOURCE_NOT_ALLOWED', 'Asset reimport is disabled because no --asset-import-root is configured.');
     }
-    const started = await startReimport({
+    const started = await startHeavyOperation(ctx, () => startReimport({
       OperationId: operationId(args.operation_id),
       IdempotencyKey: args.idempotency_key,
       AssetId: args.asset_id,
@@ -186,7 +187,7 @@ export async function handleAssetReimport(args: z.infer<typeof AssetReimportSche
       DryRun: args.dry_run,
       AllowedImportRoots: policy.roots,
       MaxSourceBytes: policy.maxSourceBytes,
-    }, ctx);
+    }, ctx));
     const waited = await maybeWait('reimport', started.data, args.wait, args.timeout_ms, ctx);
     return response('reimport', waited.data, waited.bridge ?? started.bridge, !terminal(waited.data));
   } catch (error) {

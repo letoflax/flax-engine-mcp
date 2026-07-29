@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 10
+// MCP-BRIDGE-VERSION: 11
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -23,12 +23,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 10; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 11; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 10; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; }
+    public class McpStatus { public int BridgeVersion = 11; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -109,6 +109,19 @@ namespace Game.MCP
     public class McpAssetOrganizeRequest { public string AssetId; public string Path; public string Destination; public string Name; public string CollisionPolicy = "error"; public bool DryRun; public string ExpectedPath; public string ExpectedIndexRevision; public string IdempotencyKey; }
     public class McpAssetReferenceImpact { public int DirectReferenceCount; public McpAssetReference[] Sample; public bool Truncated; public string Scope = "direct-public-asset-references"; }
     public class McpAssetOrganizeResult { public string Operation; public McpAssetMetadata Source; public McpAssetMetadata Result; public string IndexRevisionBefore; public string IndexRevisionAfter; public bool DryRun; public bool Renamed; public bool GuidPreserved; public bool ExistingReferencesPreserved; public bool ReferencesRemainBoundToSource; public bool UndoSupported = false; public string Atomicity = "single-content-api-call-not-transactional"; public McpAssetReferenceImpact ReferenceImpact; public string[] Warnings; }
+    // Bridge v11's bounded operation record is deliberately generic. It keeps
+    // only safe metadata below Cache/MCP/operations; caller input, source paths,
+    // tokens, and arbitrary result payloads are never persisted here.
+    public class McpOperationRequest { public string OperationId; }
+    public class McpOperationCancelRequest { public string OperationId; }
+    public class McpOperation
+    {
+        public string OperationId; public string Kind; public string Phase; public float Progress;
+        public string Message; public int Step; public int TotalSteps;
+        public long StartedUnixMs; public long UpdatedUnixMs; public long FinishedUnixMs;
+        public bool CanCancel; public bool CancelRequested; public string ResultSummary;
+        public string ErrorCode; public string Error; public string[] Diagnostics;
+    }
     internal sealed class McpAssetRecord { public Guid Id; public AssetInfo Info; public string Path; public string Extension; public string Folder; }
     internal sealed class McpAssetGraphIndex { public Dictionary<Guid, McpAssetRecord> ById; public Dictionary<Guid, List<Guid>> Direct; public Dictionary<Guid, int> Missing; public Dictionary<Guid, int> Reverse; }
     internal sealed class McpAssetCursor { public string Method; public string Scope; public string IndexRevision; public int Offset; public long ExpiresUnixMs; }
@@ -120,7 +133,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 10;
+        private const int BridgeVersion = 11;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -161,6 +174,10 @@ namespace Game.MCP
         private const int MaxAssetImportOperations = 512;
         private const long MaxAssetImportSourceBytes = 512L * 1024L * 1024L;
         private const int AssetImportOperationTtlMs = 10 * 60 * 1000;
+        private const int OperationTtlMs = 10 * 60 * 1000;
+        private const int MaxOperations = 512;
+        private const int MaxOperationMessageChars = 512;
+        private const int MaxOperationDiagnostics = 32;
 
         private volatile bool _running;
         private volatile int _busy;
@@ -197,6 +214,7 @@ namespace Game.MCP
         // Internal result-path to operation mapping for ContentImporting's worker
         // completion event. Full paths never leave the bridge response DTO.
         private readonly Dictionary<string, string> _pendingReimportsByOutputPath = new Dictionary<string, string>();
+        private readonly Dictionary<string, McpOperation> _operations = new Dictionary<string, McpOperation>();
 
         private static string Root { get { return Path.Combine(Globals.ProjectFolder, "Cache", "MCP"); } }
         private static string Requests { get { return Path.Combine(Root, "requests"); } }
@@ -206,6 +224,7 @@ namespace Game.MCP
         private static string TokenPath { get { return Path.Combine(Root, "token"); } }
         private static string CompileStatePath { get { return Path.Combine(Root, "compile-state.json"); } }
         private static string GenerateStatePath { get { return Path.Combine(Root, "generate-project-state.json"); } }
+        private static string Operations { get { return Path.Combine(Root, "operations"); } }
         private static string Captures { get { return Path.Combine(Root, "captures"); } }
         private static string ProjectLogs { get { return Path.Combine(Globals.ProjectFolder, "Logs"); } }
 
@@ -218,6 +237,7 @@ namespace Game.MCP
                 Directory.CreateDirectory(Processing);
                 Directory.CreateDirectory(Responses);
                 Directory.CreateDirectory(Captures);
+                Directory.CreateDirectory(Operations);
                 CleanupOldProcessing();
                 CleanupCaptures();
                 RestorePersistentState();
@@ -228,7 +248,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v9 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v11 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -243,6 +263,7 @@ namespace Game.MCP
             UnsubscribeEvents();
             PersistCompileState();
             PersistGenerateState();
+            PersistOperations();
             TryDelete(BridgePath);
             TryDelete(TokenPath);
             base.DeinitializeEditor();
@@ -378,6 +399,8 @@ namespace Game.MCP
                 case "code.diagnostics": result = GetDiagnostics(JsonSerializer.Deserialize<McpDiagnosticsRequest>(p)); break;
                 case "code.generate_project_start": result = OnMain(StartGenerateProject, request.deadlineUnixMs); break;
                 case "code.generate_project_status": result = GetGenerateProjectStatus(); break;
+                case "operation.status": result = OnMain(() => GetOperation(JsonSerializer.Deserialize<McpOperationRequest>(p)), request.deadlineUnixMs); break;
+                case "operation.cancel": result = OnMain(() => CancelOperation(JsonSerializer.Deserialize<McpOperationCancelRequest>(p)), request.deadlineUnixMs); break;
                 case "play.status": result = OnMain(PlayStatus, request.deadlineUnixMs); break;
                 case "play.start_scenes": result = OnMain(() => StartPlayScenes(JsonSerializer.Deserialize<McpPlayStart>(p)), request.deadlineUnixMs); break;
                 case "play.start_game": result = OnMain(() => StartPlayGame(JsonSerializer.Deserialize<McpPlayStart>(p)), request.deadlineUnixMs); break;
@@ -940,6 +963,7 @@ namespace Game.MCP
                     throw new McpProtocolException("OPERATION_NOT_FOUND", "Asset operation ID was not found.");
                 if (string.Equals(operation.Kind, "reimport", StringComparison.Ordinal) && string.Equals(operation.Phase, "running", StringComparison.Ordinal) && FEditor.Instance.ContentImporting.IsImporting)
                     operation.Progress = Math.Max(operation.Progress, Math.Min(0.99f, FEditor.Instance.ContentImporting.ImportingProgress));
+                UpdateOperationLocked(operation.OperationId, operation.Phase, operation.Progress, operation.Phase == "running" ? "Importing content" : "Processing asset operation", operation.ErrorCode, operation.Error, operation.ResultPath);
                 return CopyAssetImportOperation(operation);
             }
         }
@@ -976,6 +1000,7 @@ namespace Game.MCP
                 var created = new McpAssetOperation { OperationId = operationId, Kind = kind, Phase = "requested", Progress = 0.0f, StartedUnixMs = now, DryRun = dryRun };
                 _assetImportOperations[operationId] = created;
                 _assetImportOperationFingerprints[operationId] = fingerprint;
+                BeginOperationLocked(operationId, kind == "import" ? "asset_import" : "asset_reimport", false, "Asset operation requested", 1);
                 adopted = false;
                 return created;
             }
@@ -996,6 +1021,7 @@ namespace Game.MCP
                 stored.Renamed = operation.Renamed;
                 stored.ErrorCode = errorCode;
                 stored.Error = error;
+                UpdateOperationLocked(stored.OperationId, phase, stored.Progress, phase == "succeeded" ? "Asset operation completed" : "Asset operation failed", errorCode, error, stored.ResultPath);
             }
         }
 
@@ -1437,6 +1463,11 @@ namespace Game.MCP
                     changed = true;
                 }
                 if (changed) PersistCompileStateLocked();
+                if (!string.IsNullOrEmpty(_compile.OperationId))
+                    UpdateOperationLocked(_compile.OperationId, _compile.Phase, IsTerminalOperationPhase(_compile.Phase) ? 1.0f : 0.5f,
+                        _compile.Phase == "reloading" ? "Reloading scripts" : "Compiling scripts",
+                        _compile.Phase == "failed" ? "COMPILATION_FAILED" : null,
+                        _compile.Phase == "failed" ? "Flax script compilation failed." : null);
                 return CopyCompileStatus(_compile);
             }
         }
@@ -1460,6 +1491,7 @@ namespace Game.MCP
                 };
                 _compileLogPath = null;
                 _compileLogOffset = 0;
+                BeginOperationLocked(operationId, "compile", false, "Compilation requested", 3);
                 PersistCompileStateLocked();
             }
             // This is an asynchronous editor request. Do not wait for CompilationEnd:
@@ -1501,6 +1533,7 @@ namespace Game.MCP
                     throw new McpProtocolException("EDITOR_BUSY", "Project-file generation is already running.");
                 _generate = new McpGenerateProjectState { OperationId = Guid.NewGuid().ToString("N"), Phase = "running", StartedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
                 operationId = _generate.OperationId;
+                BeginOperationLocked(operationId, "project_generation", true, "Project generation queued", 1);
                 PersistGenerateStateLocked();
             }
             // GenerateProject is an editor/build API and must remain on the main
@@ -1519,6 +1552,8 @@ namespace Game.MCP
                     // The operation may have been superseded while this callback was
                     // waiting in the editor queue.
                     if (!_running || !string.Equals(_generate.OperationId, operationId, StringComparison.Ordinal) || _generate.Phase != "running") return;
+                    McpOperation operation;
+                    if (_operations.TryGetValue(operationId, out operation) && operation.CancelRequested) return;
                 }
                 var failed = ScriptsBuilder.GenerateProject();
                 lock (_stateLock)
@@ -1527,6 +1562,7 @@ namespace Game.MCP
                     _generate.Failed = failed;
                     _generate.Phase = failed ? "failed" : "succeeded";
                     _generate.FinishedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    UpdateOperationLocked(operationId, _generate.Phase, 1.0f, "Project generation completed", _generate.Failed ? "GENERATION_FAILED" : null, _generate.Error);
                     PersistGenerateStateLocked();
                 }
             }
@@ -1538,6 +1574,7 @@ namespace Game.MCP
                     _generate.Failed = true; _generate.Phase = "failed";
                     _generate.Error = LimitForLog(ex.Message, 1024);
                     _generate.FinishedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    UpdateOperationLocked(operationId, "failed", 1.0f, "Project generation failed", "GENERATION_FAILED", _generate.Error);
                     PersistGenerateStateLocked();
                 }
             }
@@ -2219,6 +2256,13 @@ namespace Game.MCP
                 foreach (var pending in _pendingReimportsByOutputPath) if (string.Equals(pending.Value, key, StringComparison.Ordinal)) pendingOutputs.Add(pending.Key);
                 foreach (var output in pendingOutputs) _pendingReimportsByOutputPath.Remove(output);
             }
+            var expiredOperations = new List<string>();
+            foreach (var item in _operations)
+            {
+                var completed = item.Value.FinishedUnixMs == 0 ? item.Value.UpdatedUnixMs : item.Value.FinishedUnixMs;
+                if (completed + OperationTtlMs <= now) expiredOperations.Add(item.Key);
+            }
+            foreach (var key in expiredOperations) { _operations.Remove(key); TryDelete(OperationPath(key)); }
         }
 
         private object ExecuteIdempotent(string method, string key, object request, Func<object> mutation)
@@ -2660,6 +2704,7 @@ namespace Game.MCP
         {
             lock (_stateLock)
             {
+                RestoreOperations();
                 var savedCompile = ReadPersistent<McpPersistedCompileState>(CompileStatePath);
                 if (savedCompile != null)
                 {
@@ -2685,6 +2730,131 @@ namespace Game.MCP
                     _generate = savedGenerate;
                 }
             }
+        }
+
+        // Operation handles are persisted individually so a script reload can
+        // adopt only the exact caller-selected ID. They are never inferred from
+        // a later start request, which prevents blind retry of side effects.
+        private McpOperation BeginOperationLocked(string operationId, string kind, bool canCancel, string message, int totalSteps)
+        {
+            if (!IsGuidN(operationId)) throw new McpProtocolException("INVALID_REQUEST", "OperationId must be a 32-character GUID without separators.");
+            McpOperation existing;
+            if (_operations.TryGetValue(operationId, out existing))
+            {
+                if (!string.Equals(existing.Kind, kind, StringComparison.Ordinal))
+                    throw new McpProtocolException("IDEMPOTENCY_KEY_REUSED", "OperationId was already used for a different operation kind.");
+                return CopyOperation(existing);
+            }
+            CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            while (_operations.Count >= MaxOperations)
+            {
+                string oldest = null; long oldestTime = long.MaxValue;
+                foreach (var entry in _operations) { var t = entry.Value.FinishedUnixMs == 0 ? entry.Value.UpdatedUnixMs : entry.Value.FinishedUnixMs; if (t < oldestTime) { oldest = entry.Key; oldestTime = t; } }
+                if (oldest == null) break;
+                _operations.Remove(oldest); TryDelete(OperationPath(oldest));
+            }
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var operation = new McpOperation { OperationId = operationId, Kind = kind, Phase = "requested", Progress = 0.0f, Message = LimitForLog(message, MaxOperationMessageChars), Step = 0, TotalSteps = Math.Max(0, totalSteps), StartedUnixMs = now, UpdatedUnixMs = now, CanCancel = canCancel, Diagnostics = new string[0] };
+            _operations[operationId] = operation;
+            PersistOperationLocked(operation);
+            return CopyOperation(operation);
+        }
+
+        private void UpdateOperationLocked(string operationId, string phase, float progress, string message, string errorCode = null, string error = null, string resultSummary = null)
+        {
+            McpOperation operation;
+            if (!_operations.TryGetValue(operationId, out operation)) return;
+            if (operation.CancelRequested && phase == "succeeded") phase = "cancelled";
+            operation.Phase = phase;
+            operation.Progress = Math.Max(0.0f, Math.Min(1.0f, progress));
+            operation.Message = LimitForLog(message, MaxOperationMessageChars);
+            operation.ErrorCode = errorCode;
+            operation.Error = LimitForLog(error, MaxOperationMessageChars);
+            operation.ResultSummary = LimitForLog(resultSummary, MaxOperationMessageChars);
+            operation.UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (IsTerminalOperationPhase(phase)) { operation.FinishedUnixMs = operation.UpdatedUnixMs; operation.CanCancel = false; }
+            PersistOperationLocked(operation);
+        }
+
+        private McpOperation GetOperation(McpOperationRequest request)
+        {
+            if (request == null || !IsGuidN(request.OperationId)) throw new McpProtocolException("OPERATION_NOT_FOUND", "Operation ID was not found.");
+            lock (_stateLock)
+            {
+                CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                McpOperation operation;
+                if (!_operations.TryGetValue(request.OperationId, out operation)) throw new McpProtocolException("OPERATION_NOT_FOUND", "Operation ID was not found or has expired.");
+                ReconcileOperationLocked(operation);
+                return CopyOperation(operation);
+            }
+        }
+
+        private McpOperation CancelOperation(McpOperationCancelRequest request)
+        {
+            if (request == null || !IsGuidN(request.OperationId)) throw new McpProtocolException("OPERATION_NOT_FOUND", "Operation ID was not found.");
+            lock (_stateLock)
+            {
+                CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                McpOperation operation;
+                if (!_operations.TryGetValue(request.OperationId, out operation)) throw new McpProtocolException("OPERATION_NOT_FOUND", "Operation ID was not found or has expired.");
+                ReconcileOperationLocked(operation);
+                if (IsTerminalOperationPhase(operation.Phase)) return CopyOperation(operation);
+                // Flax 1.12 exposes no safe public cancellation for compilation
+                // or ContentImporting. Never claim cancellation merely because a
+                // client disconnected; only queued project generation is safe.
+                if (!operation.CanCancel) throw new McpProtocolException("CANCELLATION_UNSUPPORTED", "The active backend does not expose safe cancellation for this operation.");
+                if (string.Equals(operation.Kind, "project_generation", StringComparison.Ordinal))
+                {
+                    operation.CancelRequested = true;
+                    UpdateOperationLocked(operation.OperationId, "cancelled", operation.Progress, "Project generation was cancelled before execution.", "OPERATION_CANCELLED", "Cancelled at a safe queue checkpoint.");
+                    return CopyOperation(operation);
+                }
+                throw new McpProtocolException("CANCELLATION_UNSUPPORTED", "The active backend does not expose safe cancellation for this operation.");
+            }
+        }
+
+        private void ReconcileOperationLocked(McpOperation operation)
+        {
+            if (operation == null || IsTerminalOperationPhase(operation.Phase)) return;
+            if (operation.Kind == "compile" && string.Equals(_compile.OperationId, operation.OperationId, StringComparison.Ordinal))
+            {
+                _compile.IsCompiling = ScriptsBuilder.IsCompiling; _compile.IsReady = ScriptsBuilder.IsReady; _compile.LastCompilationFailed = ScriptsBuilder.LastCompilationFailed;
+                var phase = _compile.Phase;
+                if (phase == "reloading" && !_compile.IsCompiling && _compile.IsReady) phase = _compile.LastCompilationFailed ? "failed" : "succeeded";
+                UpdateOperationLocked(operation.OperationId, phase, IsTerminalOperationPhase(phase) ? 1.0f : 0.5f, phase == "reloading" ? "Reloading scripts" : "Compiling scripts", phase == "failed" ? "COMPILATION_FAILED" : null, phase == "failed" ? "Flax script compilation failed." : null);
+            }
+            else if (operation.Kind == "project_generation" && string.Equals(_generate.OperationId, operation.OperationId, StringComparison.Ordinal))
+                UpdateOperationLocked(operation.OperationId, _generate.Phase, IsTerminalOperationPhase(_generate.Phase) ? 1.0f : 0.5f, "Generating project files", _generate.Failed ? "GENERATION_FAILED" : null, _generate.Error);
+            else if ((operation.Kind == "asset_import" || operation.Kind == "asset_reimport"))
+            {
+                McpAssetOperation asset;
+                if (_assetImportOperations.TryGetValue(operation.OperationId, out asset))
+                    UpdateOperationLocked(operation.OperationId, asset.Phase, asset.Progress, asset.Phase == "running" ? "Importing content" : "Processing asset operation", asset.ErrorCode, asset.Error, asset.ResultPath);
+            }
+        }
+
+        private static bool IsTerminalOperationPhase(string phase) { return phase == "succeeded" || phase == "failed" || phase == "cancelled" || phase == "interrupted" || phase == "dry_run"; }
+        private static string OperationPath(string operationId) { return Path.Combine(Operations, operationId + ".json"); }
+        private void PersistOperations() { lock (_stateLock) foreach (var operation in _operations.Values) PersistOperationLocked(operation); }
+        private void PersistOperationLocked(McpOperation operation) { if (operation != null && IsGuidN(operation.OperationId)) TryWritePersistent(OperationPath(operation.OperationId), CopyOperation(operation)); }
+        private static McpOperation CopyOperation(McpOperation value) { return new McpOperation { OperationId = value.OperationId, Kind = value.Kind, Phase = value.Phase, Progress = value.Progress, Message = value.Message, Step = value.Step, TotalSteps = value.TotalSteps, StartedUnixMs = value.StartedUnixMs, UpdatedUnixMs = value.UpdatedUnixMs, FinishedUnixMs = value.FinishedUnixMs, CanCancel = value.CanCancel, CancelRequested = value.CancelRequested, ResultSummary = value.ResultSummary, ErrorCode = value.ErrorCode, Error = value.Error, Diagnostics = value.Diagnostics == null ? new string[0] : (string[])value.Diagnostics.Clone() }; }
+
+        private void RestoreOperations()
+        {
+            try
+            {
+                if (!Directory.Exists(Operations)) return;
+                foreach (var file in Directory.GetFiles(Operations, "*.json"))
+                {
+                    var operation = ReadPersistent<McpOperation>(file);
+                    if (operation == null || !IsGuidN(operation.OperationId) || string.IsNullOrEmpty(operation.Kind)) { TryDelete(file); continue; }
+                    var completed = operation.FinishedUnixMs == 0 ? operation.UpdatedUnixMs : operation.FinishedUnixMs;
+                    if (completed + OperationTtlMs <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) { TryDelete(file); continue; }
+                    if (!IsTerminalOperationPhase(operation.Phase)) { operation.Phase = "interrupted"; operation.CanCancel = false; operation.FinishedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); operation.Message = "Bridge reloaded before operation completed."; }
+                    if (_operations.Count < MaxOperations) _operations[operation.OperationId] = operation;
+                }
+            }
+            catch { }
         }
 
         private void PersistCompileState() { lock (_stateLock) PersistCompileStateLocked(); }
