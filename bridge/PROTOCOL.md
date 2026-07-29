@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (bridge v6 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v7 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 6, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 7, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -20,7 +20,7 @@ bridge instance. A response is atomically written to `responses/<id>.json`.
 Request fields are lowercase `id`, `token`, `method`, `paramsJson`, and `deadlineUnixMs`.
 `paramsJson` is a JSON string, not an arbitrary object, and is capped at 64 KiB.
 `deadlineUnixMs` is Unix milliseconds; it may be zero or within the next 60 s.
-Response fields are lowercase `id`, `token`, `ok`, `errorCode`, `error`, `resultJson`, and `timestamp`.
+Response fields are lowercase `id`, `token`, `ok`, `errorCode`, `error`, optional `errorDetails`, `resultJson`, and `timestamp`. `errorDetails` is an optional JSON string added in bridge v7; clients that do not understand it can ignore it. The v7 revision conflict uses it to return the current bridge-known revision.
 The client rejects a response unless its token matches the active session token
 using a constant-time comparison. Failure responses echo the request token; an
 unauthorized request never receives the active session token.
@@ -84,3 +84,48 @@ them through `flax://capture/<id>` with bounded MCP `resources/list` and
 `actor.duplicate` delegates to Flax's undoable editor command. Flax 1.12 does not
 return the new actor ID from that public command, so the response reports
 `Verified:false` and `NewActorId:null`; clients must refresh the scene tree.
+
+## Bridge v7: revisions, edit leases, and idempotency
+
+Bridge v7 keeps protocol v1 because all wire additions are optional/additive. Its
+status result adds `ProjectRevision`, `RevisionScope:"bridge-session-known-mutations"`,
+`EditLeasesSupported:true`, and `EditLeaseSemantics:"visible-immediately-no-rollback"`.
+Loaded scene results add `ProjectRevision` and `SceneRevision`; actor and script
+snapshots, and scene actor/script mutation results, carry the same relevant values.
+
+`ProjectRevision` and each `SceneRevision` begin at zero when this bridge Editor
+session initializes. They advance only after a mutation executed through this
+bridge. The bridge deliberately does not claim to observe unsaved manual Editor
+edits or arbitrary third-party plugin changes: Flax 1.12 has no verified event
+used by this bridge for that detection. A caller must read again after any
+out-of-band change it knows about.
+
+The live write DTOs (`actor.create`, `actor.update`, `actor.delete`,
+`actor.duplicate`, `actor.reparent`, `script.attach`, `script.detach`, and
+`script.instance_update`) accept optional PascalCase `ExpectedSceneRevision` and
+`LeaseId`. When a target scene can be identified before the mutation, a mismatched
+revision fails with `SCENE_REVISION_CONFLICT`; `errorDetails` includes
+`SceneId`, `ExpectedSceneRevision`, `CurrentSceneRevision`, and `ProjectRevision`.
+An active lease held by a different ID fails with `EDIT_LEASE_CONFLICT`; an
+expired/missing supplied lease fails with `EDIT_LEASE_EXPIRED`. `actor.create`
+cannot identify Flax's editor-default spawn scene before `Spawn` when `ParentId`
+is absent, so it rejects guarded (`ExpectedSceneRevision` or `LeaseId`) creates
+without a parent. Cross-scene reparenting is not supported by the v7 lease scope.
+
+The lease RPC methods are `edit.lease_begin` (`SceneId`, `Owner`, `TtlMs`),
+`edit.lease_get` (`SceneId` or `LeaseId`), `edit.lease_commit` (`LeaseId`), and
+`edit.lease_release` (`LeaseId`). TTL is 1,000 through 300,000 ms. Only one lease
+per loaded scene is active. `commit` and `release` both end the lease; they do not
+commit or roll back an atomic transaction. Writes are visible immediately, and
+play start fails with `EDIT_LEASE_ACTIVE` while any unexpired bridge lease exists.
+`TransactionsSupported` stays `false` because the verified public Flax 1.12 API
+provides undo record/action methods but no safe arbitrary multi-operation
+transaction with commit/rollback semantics.
+
+Those live write DTOs also accept optional `IdempotencyKey` (1--128 characters).
+For ten minutes, with a maximum of 512 retained entries, a repeated key with the
+same method and serialized request returns the original result without performing
+the side effect or advancing revisions. Reusing a retained key for different input
+fails with `IDEMPOTENCY_KEY_REUSED`. The cache is bridge-session-local and is not a
+durable request journal; clients should use it for retry recovery, especially for
+create, duplicate, and script attach.

@@ -35,7 +35,11 @@ export type ScriptBridgeMethod =
 
 export type EditBridgeMethod =
   | 'edit.undo'
-  | 'edit.redo';
+  | 'edit.redo'
+  | 'edit.lease_begin'
+  | 'edit.lease_get'
+  | 'edit.lease_commit'
+  | 'edit.lease_release';
 
 export type CodeBridgeMethod =
   | 'code.status'
@@ -91,6 +95,8 @@ export interface BridgeResponse {
   ok: boolean;
   errorCode?: string;
   error?: string;
+  /** Optional JSON string containing structured bridge error details (v7+). */
+  errorDetails?: string | null;
   resultJson?: string | null;
   timestamp?: string | number;
 }

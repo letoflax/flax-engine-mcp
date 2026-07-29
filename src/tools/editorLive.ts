@@ -10,6 +10,14 @@ const Vector3 = z.object({
   y: z.number().finite(),
   z: z.number().finite(),
 });
+const RevisionedLiveWrite = {
+  expected_scene_revision: z.number().int().nonnegative().optional()
+    .describe('Bridge-known revision required before writing. Requires bridge v7 and rejects stale scene state.'),
+  lease_id: z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character edit lease ID.').optional()
+    .describe('Active v7 edit lease for the target scene.'),
+  idempotency_key: z.string().min(1).max(128).optional()
+    .describe('Optional v7 retry key. Replays the original result without another side effect for ten minutes.'),
+};
 
 export const SceneListLoadedSchema = z.object({});
 export const SceneGetTreeSchema = z.object({ scene_id: FlaxId });
@@ -27,6 +35,7 @@ export const ActorCreateSchema = z.object({
   active: z.boolean().optional().default(true),
   position: Vector3.optional(),
   dry_run: z.boolean().optional().default(false),
+  ...RevisionedLiveWrite,
 });
 export const ActorUpdateSchema = z.object({
   actor_id: FlaxId,
@@ -36,38 +45,58 @@ export const ActorUpdateSchema = z.object({
   scale: Vector3.optional(),
   euler_angles: Vector3.optional(),
   dry_run: z.boolean().optional().default(false),
+  ...RevisionedLiveWrite,
 });
 export const ActorDeleteSchema = z.object({
   actor_id: FlaxId,
   dry_run: z.boolean().optional().default(false),
+  ...RevisionedLiveWrite,
 });
 export const ActorDuplicateSchema = z.object({
   actor_id: FlaxId,
   dry_run: z.boolean().optional().default(false),
+  ...RevisionedLiveWrite,
 });
 export const ActorReparentSchema = z.object({
   actor_id: FlaxId,
   parent_id: FlaxId.optional(),
   keep_world_transform: z.boolean().optional().default(true),
   dry_run: z.boolean().optional().default(false),
+  ...RevisionedLiveWrite,
 });
 export const ScriptAttachSchema = z.object({
   actor_id: FlaxId,
   script_type: z.string().min(1).max(256),
   dry_run: z.boolean().optional().default(false),
+  ...RevisionedLiveWrite,
 });
 export const ScriptDetachSchema = z.object({
   script_id: FlaxId,
   dry_run: z.boolean().optional().default(false),
+  ...RevisionedLiveWrite,
 });
 export const ScriptInstanceGetSchema = z.object({ script_id: FlaxId });
 export const ScriptInstanceUpdateSchema = z.object({
   script_id: FlaxId,
   enabled: z.boolean(),
   dry_run: z.boolean().optional().default(false),
+  ...RevisionedLiveWrite,
 });
 export const EditUndoSchema = z.object({});
 export const EditRedoSchema = z.object({});
+export const EditLeaseBeginSchema = z.object({
+  scene_id: FlaxId,
+  owner: z.string().min(1).max(128),
+  ttl_ms: z.number().int().min(1_000).max(300_000).optional().default(30_000),
+});
+export const EditLeaseGetSchema = z.object({
+  scene_id: FlaxId.optional(),
+  lease_id: z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character edit lease ID.').optional(),
+});
+export const EditLeaseCommitSchema = z.object({
+  lease_id: z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character edit lease ID.'),
+});
+export const EditLeaseReleaseSchema = EditLeaseCommitSchema;
 
 type AnyRecord = Record<string, unknown>;
 
@@ -92,7 +121,9 @@ function bridgeError(error: unknown): ToolDomainError {
     return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, error.details);
   }
   if (error.code === 'BRIDGE_REMOTE_ERROR') {
-    const remoteCode = (error.details as { code?: unknown } | undefined)?.code;
+    const remote = error.details as { code?: unknown; details?: unknown } | undefined;
+    const remoteCode = remote?.code;
+    const remoteDetails = remote?.details;
     if (remoteCode === 'NOT_FOUND') return new ToolDomainError('NOT_FOUND', error.message, error.details);
     if (remoteCode === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, error.details);
     if (remoteCode === 'RESPONSE_TOO_LARGE' || remoteCode === 'REQUEST_TOO_LARGE') {
@@ -103,6 +134,21 @@ function bridgeError(error: unknown): ToolDomainError {
     }
     if (remoteCode === 'VALIDATION_FAILED' || remoteCode === 'INVALID_REQUEST') {
       return new ToolDomainError('VALIDATION_FAILED', error.message, error.details);
+    }
+    if (remoteCode === 'SCENE_REVISION_CONFLICT') {
+      return new ToolDomainError('SCENE_REVISION_CONFLICT', error.message, remoteDetails);
+    }
+    if (remoteCode === 'EDIT_LEASE_CONFLICT') {
+      return new ToolDomainError('EDIT_LEASE_CONFLICT', error.message, remoteDetails);
+    }
+    if (remoteCode === 'EDIT_LEASE_EXPIRED') {
+      return new ToolDomainError('EDIT_LEASE_EXPIRED', error.message, remoteDetails);
+    }
+    if (remoteCode === 'EDIT_LEASE_ACTIVE') {
+      return new ToolDomainError('EDIT_LEASE_ACTIVE', error.message, remoteDetails);
+    }
+    if (remoteCode === 'IDEMPOTENCY_KEY_REUSED') {
+      return new ToolDomainError('IDEMPOTENCY_KEY_REUSED', error.message, remoteDetails);
     }
   }
   return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
@@ -115,7 +161,8 @@ async function liveCall(
   changes: unknown[] = [],
 ): Promise<ToolResponse> {
   try {
-    const response = await callEditorBridge(ctx, method, params);
+    const requiresV7 = params.ExpectedSceneRevision !== undefined || params.LeaseId !== undefined || params.IdempotencyKey !== undefined;
+    const response = await callEditorBridge(ctx, method, params, requiresV7 ? { minimumBridgeVersion: 7 } : {});
     const data = { result: response.data, bridge: response.bridge };
     return toolResult(JSON.stringify(data, null, 2), {
       mode: response.mode,
@@ -167,6 +214,9 @@ export async function handleActorCreate(args: z.infer<typeof ActorCreateSchema>,
     ParentId: args.parent_id,
     Active: args.active,
     Position: toBridgeVector(args.position),
+    ExpectedSceneRevision: args.expected_scene_revision,
+    LeaseId: args.lease_id,
+    IdempotencyKey: args.idempotency_key,
   };
   if (args.dry_run) return dryRunLookup(ctx, 'actor.validate_create', params, params);
   return liveCall(ctx, 'actor.create', params, [{ kind: 'actor.created', name: args.name }]);
@@ -189,19 +239,22 @@ export async function handleActorUpdate(args: z.infer<typeof ActorUpdateSchema>,
     Position: toBridgeVector(args.position),
     Scale: toBridgeVector(args.scale),
     EulerAngles: toBridgeVector(args.euler_angles),
+    ExpectedSceneRevision: args.expected_scene_revision,
+    LeaseId: args.lease_id,
+    IdempotencyKey: args.idempotency_key,
   };
   if (args.dry_run) return dryRunLookup(ctx, 'actor.get', { ActorId: args.actor_id }, params);
   return liveCall(ctx, 'actor.update', params, [{ kind: 'actor.updated', id: args.actor_id }]);
 }
 
 export async function handleActorDelete(args: z.infer<typeof ActorDeleteSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
-  const params = { ActorId: args.actor_id };
+  const params = { ActorId: args.actor_id, ExpectedSceneRevision: args.expected_scene_revision, LeaseId: args.lease_id, IdempotencyKey: args.idempotency_key };
   if (args.dry_run) return dryRunLookup(ctx, 'actor.get', params, { action: 'delete' });
   return liveCall(ctx, 'actor.delete', params, [{ kind: 'actor.deleted', id: args.actor_id }]);
 }
 
 export async function handleActorDuplicate(args: z.infer<typeof ActorDuplicateSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
-  const params = { ActorId: args.actor_id };
+  const params = { ActorId: args.actor_id, ExpectedSceneRevision: args.expected_scene_revision, LeaseId: args.lease_id, IdempotencyKey: args.idempotency_key };
   if (args.dry_run) return dryRunLookup(ctx, 'actor.get', params, { action: 'duplicate' });
   return liveCall(ctx, 'actor.duplicate', params, [{ kind: 'actor.duplicated', sourceId: args.actor_id }]);
 }
@@ -211,19 +264,22 @@ export async function handleActorReparent(args: z.infer<typeof ActorReparentSche
     ActorId: args.actor_id,
     ParentId: args.parent_id,
     KeepWorldTransform: args.keep_world_transform,
+    ExpectedSceneRevision: args.expected_scene_revision,
+    LeaseId: args.lease_id,
+    IdempotencyKey: args.idempotency_key,
   };
   if (args.dry_run) return dryRunLookup(ctx, 'actor.get', { ActorId: args.actor_id }, params);
   return liveCall(ctx, 'actor.reparent', params, [{ kind: 'actor.reparented', id: args.actor_id, parentId: args.parent_id ?? null }]);
 }
 
 export async function handleScriptAttach(args: z.infer<typeof ScriptAttachSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
-  const params = { ActorId: args.actor_id, ScriptType: args.script_type };
+  const params = { ActorId: args.actor_id, ScriptType: args.script_type, ExpectedSceneRevision: args.expected_scene_revision, LeaseId: args.lease_id, IdempotencyKey: args.idempotency_key };
   if (args.dry_run) return dryRunLookup(ctx, 'actor.get', { ActorId: args.actor_id }, params);
   return liveCall(ctx, 'script.attach', params, [{ kind: 'script.attached', actorId: args.actor_id, type: args.script_type }]);
 }
 
 export async function handleScriptDetach(args: z.infer<typeof ScriptDetachSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
-  const params = { ScriptId: args.script_id };
+  const params = { ScriptId: args.script_id, ExpectedSceneRevision: args.expected_scene_revision, LeaseId: args.lease_id, IdempotencyKey: args.idempotency_key };
   if (args.dry_run) return dryRunLookup(ctx, 'script.instance_get', params, { action: 'detach' });
   return liveCall(ctx, 'script.detach', params, [{ kind: 'script.detached', id: args.script_id }]);
 }
@@ -235,7 +291,7 @@ export async function handleScriptInstanceUpdate(
   args: z.infer<typeof ScriptInstanceUpdateSchema>,
   ctx: ProjectMeta,
 ): Promise<ToolResponse> {
-  const params = { ScriptId: args.script_id, Enabled: args.enabled };
+  const params = { ScriptId: args.script_id, Enabled: args.enabled, ExpectedSceneRevision: args.expected_scene_revision, LeaseId: args.lease_id, IdempotencyKey: args.idempotency_key };
   if (args.dry_run) return dryRunLookup(ctx, 'script.instance_get', { ScriptId: args.script_id }, params);
   return liveCall(ctx, 'script.instance_update', params, [{ kind: 'script.updated', id: args.script_id }]);
 }
@@ -244,3 +300,16 @@ export const handleEditUndo = (_: unknown, ctx: ProjectMeta) =>
   liveCall(ctx, 'edit.undo', {}, [{ kind: 'edit.undo' }]);
 export const handleEditRedo = (_: unknown, ctx: ProjectMeta) =>
   liveCall(ctx, 'edit.redo', {}, [{ kind: 'edit.redo' }]);
+
+export const handleEditLeaseBegin = (args: z.infer<typeof EditLeaseBeginSchema>, ctx: ProjectMeta) =>
+  liveCall(ctx, 'edit.lease_begin', { SceneId: args.scene_id, Owner: args.owner, TtlMs: args.ttl_ms }, [{ kind: 'edit.lease.begun', sceneId: args.scene_id }]);
+export const handleEditLeaseGet = (args: z.infer<typeof EditLeaseGetSchema>, ctx: ProjectMeta) => {
+  if (args.scene_id === undefined && args.lease_id === undefined) {
+    return Promise.resolve(toolError(new ToolDomainError('VALIDATION_FAILED', 'Provide scene_id or lease_id.')));
+  }
+  return liveCall(ctx, 'edit.lease_get', { SceneId: args.scene_id, LeaseId: args.lease_id });
+};
+export const handleEditLeaseCommit = (args: z.infer<typeof EditLeaseCommitSchema>, ctx: ProjectMeta) =>
+  liveCall(ctx, 'edit.lease_commit', { LeaseId: args.lease_id }, [{ kind: 'edit.lease.committed', leaseId: args.lease_id }]);
+export const handleEditLeaseRelease = (args: z.infer<typeof EditLeaseReleaseSchema>, ctx: ProjectMeta) =>
+  liveCall(ctx, 'edit.lease_release', { LeaseId: args.lease_id }, [{ kind: 'edit.lease.released', leaseId: args.lease_id }]);

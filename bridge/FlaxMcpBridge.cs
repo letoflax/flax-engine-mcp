@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 6
+// MCP-BRIDGE-VERSION: 7
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -21,34 +21,41 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 6; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 7; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
-    public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 6; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public string LogSessionId; }
-    public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; }
+    public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
+    public class McpStatus { public int BridgeVersion = 7; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; }
+    public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
     {
         public string Id; public string TypeName; public string Name; public bool Active; public string ParentId;
         public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles;
-        public string[] ScriptIds; public McpActorDto[] Children;
+        public string[] ScriptIds; public McpActorDto[] Children; public long ProjectRevision; public long SceneRevision;
     }
-    public class McpScriptDto { public string Id; public string TypeName; public string ActorId; public bool Enabled; }
-    public class McpDeletedDto { public string DeletedId; }
-    public class McpDetachedDto { public string DetachedId; }
-    public class McpDuplicatedDto { public string SourceId; public string NewActorId; public bool Verified; }
+    public class McpScriptDto { public string Id; public string TypeName; public string ActorId; public bool Enabled; public long ProjectRevision; public long SceneRevision; }
+    public class McpDeletedDto { public string DeletedId; public long ProjectRevision; public string SceneId; public long SceneRevision; }
+    public class McpDetachedDto { public string DetachedId; public long ProjectRevision; public string SceneId; public long SceneRevision; }
+    public class McpDuplicatedDto { public string SourceId; public string NewActorId; public bool Verified; public long ProjectRevision; public string SceneId; public long SceneRevision; }
+    internal sealed class McpRevision { public long ProjectRevision; public long SceneRevision; }
+    public class McpLeaseBegin { public string SceneId; public string Owner; public int TtlMs = 30000; }
+    public class McpLeaseGet { public string SceneId; public string LeaseId; }
+    public class McpLeaseRelease { public string LeaseId; }
+    public class McpEditLease { public string LeaseId; public string SceneId; public string Owner; public long AcquiredUnixMs; public long ExpiresUnixMs; public string State; public string Semantics = "visible-immediately-no-rollback"; public long ProjectRevision; public long SceneRevision; }
+    internal sealed class McpLeaseState { public string LeaseId; public string SceneId; public string Owner; public long AcquiredUnixMs; public long ExpiresUnixMs; }
+    internal sealed class McpIdempotencyEntry { public string Method; public string Fingerprint; public object Result; public long ExpiresUnixMs; }
     internal sealed class McpTreeBudget { public int Count; }
-    public class McpActorId { public string ActorId; }
+    public class McpActorId { public string ActorId; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpActorFind { public string Name; public int MaxResults = 50; }
-    public class McpActorCreate { public string TypeName = "FlaxEngine.EmptyActor"; public string Name; public string ParentId; public bool Active = true; public McpVector3 Position; }
+    public class McpActorCreate { public string TypeName = "FlaxEngine.EmptyActor"; public string Name; public string ParentId; public bool Active = true; public McpVector3 Position; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpActorCreateValidation { public string TypeName; public string ParentId; }
-    public class McpActorUpdate { public string ActorId; public string Name; public bool? Active; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; }
-    public class McpActorReparent { public string ActorId; public string ParentId; public bool KeepWorldTransform = true; }
-    public class McpScriptAttach { public string ActorId; public string ScriptType; }
-    public class McpScriptId { public string ScriptId; }
-    public class McpScriptUpdate { public string ScriptId; public bool? Enabled; }
+    public class McpActorUpdate { public string ActorId; public string Name; public bool? Active; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpActorReparent { public string ActorId; public string ParentId; public bool KeepWorldTransform = true; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpScriptAttach { public string ActorId; public string ScriptType; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpScriptId { public string ScriptId; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpScriptUpdate { public string ScriptId; public bool? Enabled; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpSceneSave { public string SceneId; }
     public class McpCompileStart { public string OperationId; public bool GenerateProjectFirst; }
     public class McpCompileStatus
@@ -79,7 +86,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 6;
+        private const int BridgeVersion = 7;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -97,6 +104,10 @@ namespace Game.MCP
         private const int CaptureCleanupIntervalMs = 60 * 1000;
         private const int MaxCompileLogReadBytes = 2 * 1024 * 1024;
         private const int StaleCompileOperationMs = 5 * 1000;
+        private const int MinLeaseTtlMs = 1 * 1000;
+        private const int MaxLeaseTtlMs = 5 * 60 * 1000;
+        private const int IdempotencyTtlMs = 10 * 60 * 1000;
+        private const int MaxIdempotencyEntries = 512;
 
         private volatile bool _running;
         private volatile int _busy;
@@ -120,6 +131,13 @@ namespace Game.MCP
         private string _playMode;
         private long _playStartedUnixMs;
         private long _playEndedUnixMs;
+        // Revision counters are scoped to this bridge Editor session. They advance
+        // only for mutations executed through this bridge; no verified Flax 1.12
+        // editor event exists here for unsaved manual edits made outside the bridge.
+        private long _projectRevision;
+        private readonly Dictionary<string, long> _sceneRevisions = new Dictionary<string, long>();
+        private readonly Dictionary<string, McpLeaseState> _sceneLeases = new Dictionary<string, McpLeaseState>();
+        private readonly Dictionary<string, McpIdempotencyEntry> _idempotency = new Dictionary<string, McpIdempotencyEntry>();
 
         private static string Root { get { return Path.Combine(Globals.ProjectFolder, "Cache", "MCP"); } }
         private static string Requests { get { return Path.Combine(Root, "requests"); } }
@@ -151,7 +169,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v6 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v7 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -234,7 +252,7 @@ namespace Game.MCP
             }
             catch (McpProtocolException ex)
             {
-                response = Failure(request == null ? null : request.id, request == null ? null : request.token, ex.Code, ex.Message);
+                response = Failure(request == null ? null : request.id, request == null ? null : request.token, ex.Code, ex.Message, ex.Details);
             }
             catch (Exception ex)
             {
@@ -278,17 +296,21 @@ namespace Game.MCP
                 case "actor.get": result = OnMain(() => ActorDto(RequireActor(JsonSerializer.Deserialize<McpActorId>(p).ActorId), true), request.deadlineUnixMs); break;
                 case "actor.find": result = OnMain(() => FindActors(JsonSerializer.Deserialize<McpActorFind>(p)), request.deadlineUnixMs); break;
                 case "actor.validate_create": result = OnMain(() => ValidateCreateActor(JsonSerializer.Deserialize<McpActorCreate>(p)), request.deadlineUnixMs); break;
-                case "actor.create": result = OnMain(() => CreateActor(JsonSerializer.Deserialize<McpActorCreate>(p)), request.deadlineUnixMs); break;
-                case "actor.update": result = OnMain(() => UpdateActor(JsonSerializer.Deserialize<McpActorUpdate>(p)), request.deadlineUnixMs); break;
-                case "actor.delete": result = OnMain(() => DeleteActor(JsonSerializer.Deserialize<McpActorId>(p)), request.deadlineUnixMs); break;
-                case "actor.duplicate": result = OnMain(() => DuplicateActor(JsonSerializer.Deserialize<McpActorId>(p)), request.deadlineUnixMs); break;
-                case "actor.reparent": result = OnMain(() => ReparentActor(JsonSerializer.Deserialize<McpActorReparent>(p)), request.deadlineUnixMs); break;
-                case "script.attach": result = OnMain(() => AttachScript(JsonSerializer.Deserialize<McpScriptAttach>(p)), request.deadlineUnixMs); break;
-                case "script.detach": result = OnMain(() => DetachScript(JsonSerializer.Deserialize<McpScriptId>(p)), request.deadlineUnixMs); break;
+                case "actor.create": { var q = JsonSerializer.Deserialize<McpActorCreate>(p); result = OnMain(() => ExecuteIdempotent("actor.create", q == null ? null : q.IdempotencyKey, q, () => CreateActor(q)), request.deadlineUnixMs); break; }
+                case "actor.update": { var q = JsonSerializer.Deserialize<McpActorUpdate>(p); result = OnMain(() => ExecuteIdempotent("actor.update", q == null ? null : q.IdempotencyKey, q, () => UpdateActor(q)), request.deadlineUnixMs); break; }
+                case "actor.delete": { var q = JsonSerializer.Deserialize<McpActorId>(p); result = OnMain(() => ExecuteIdempotent("actor.delete", q == null ? null : q.IdempotencyKey, q, () => DeleteActor(q)), request.deadlineUnixMs); break; }
+                case "actor.duplicate": { var q = JsonSerializer.Deserialize<McpActorId>(p); result = OnMain(() => ExecuteIdempotent("actor.duplicate", q == null ? null : q.IdempotencyKey, q, () => DuplicateActor(q)), request.deadlineUnixMs); break; }
+                case "actor.reparent": { var q = JsonSerializer.Deserialize<McpActorReparent>(p); result = OnMain(() => ExecuteIdempotent("actor.reparent", q == null ? null : q.IdempotencyKey, q, () => ReparentActor(q)), request.deadlineUnixMs); break; }
+                case "script.attach": { var q = JsonSerializer.Deserialize<McpScriptAttach>(p); result = OnMain(() => ExecuteIdempotent("script.attach", q == null ? null : q.IdempotencyKey, q, () => AttachScript(q)), request.deadlineUnixMs); break; }
+                case "script.detach": { var q = JsonSerializer.Deserialize<McpScriptId>(p); result = OnMain(() => ExecuteIdempotent("script.detach", q == null ? null : q.IdempotencyKey, q, () => DetachScript(q)), request.deadlineUnixMs); break; }
                 case "script.instance_get": result = OnMain(() => ScriptInfo(RequireScript(JsonSerializer.Deserialize<McpScriptId>(p).ScriptId)), request.deadlineUnixMs); break;
-                case "script.instance_update": result = OnMain(() => UpdateScript(JsonSerializer.Deserialize<McpScriptUpdate>(p)), request.deadlineUnixMs); break;
+                case "script.instance_update": { var q = JsonSerializer.Deserialize<McpScriptUpdate>(p); result = OnMain(() => ExecuteIdempotent("script.instance_update", q == null ? null : q.IdempotencyKey, q, () => UpdateScript(q)), request.deadlineUnixMs); break; }
                 case "edit.undo": result = OnMain(Undo, request.deadlineUnixMs); break;
                 case "edit.redo": result = OnMain(Redo, request.deadlineUnixMs); break;
+                case "edit.lease_begin": result = OnMain(() => BeginLease(JsonSerializer.Deserialize<McpLeaseBegin>(p)), request.deadlineUnixMs); break;
+                case "edit.lease_get": result = OnMain(() => GetLease(JsonSerializer.Deserialize<McpLeaseGet>(p)), request.deadlineUnixMs); break;
+                case "edit.lease_commit": result = OnMain(() => CommitLease(JsonSerializer.Deserialize<McpLeaseRelease>(p)), request.deadlineUnixMs); break;
+                case "edit.lease_release": result = OnMain(() => ReleaseLease(JsonSerializer.Deserialize<McpLeaseRelease>(p)), request.deadlineUnixMs); break;
                 // Phase 2: code operations intentionally acknowledge work quickly.
                 // A compile can reload this plugin, so callers poll status instead of
                 // keeping a request open across the reload boundary.
@@ -319,7 +341,11 @@ namespace Game.MCP
         // All methods below are invoked on the Editor update thread.
         private McpStatus Status()
         {
-            return new McpStatus { Pid = Environment.ProcessId, EditorVersion = Globals.EngineVersion.ToString(), IsPlayMode = FEditor.IsPlayMode, IsHeadless = FEditor.Instance.IsHeadlessMode, LogSessionId = _logSessionId };
+            lock (_stateLock)
+            {
+                CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                return new McpStatus { Pid = Environment.ProcessId, EditorVersion = Globals.EngineVersion.ToString(), IsPlayMode = FEditor.IsPlayMode, IsHeadless = FEditor.Instance.IsHeadlessMode, LogSessionId = _logSessionId, ProjectRevision = _projectRevision };
+            }
         }
 
         private McpCompileStatus CodeStatus()
@@ -524,6 +550,8 @@ namespace Game.MCP
             if (editor.Scene.IsEdited() && !request.AllowDirtyScenes) throw new McpProtocolException("VALIDATION_FAILED", "Edited scenes must be saved or allowDirtyScenes:true must be explicit before starting play.");
             lock (_stateLock)
             {
+                CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                if (_sceneLeases.Count > 0) throw new McpProtocolException("EDIT_LEASE_ACTIVE", "Cannot start play while an edit lease is active. Commit or release the lease first.", ActiveLeasesDetailsLocked());
                 _playSessionId = Guid.NewGuid().ToString("N");
                 _playMode = mode;
                 _playStartedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -634,7 +662,7 @@ namespace Game.MCP
             };
         }
 
-        private static McpSceneRef[] ListLoadedScenes()
+        private McpSceneRef[] ListLoadedScenes()
         {
             var items = new List<McpSceneRef>();
             for (var i = 0; i < Level.ScenesCount; i++)
@@ -645,24 +673,39 @@ namespace Game.MCP
             return items.ToArray();
         }
 
-        private static object SceneTree(McpSceneSave p)
+        private object SceneTree(McpSceneSave p)
         {
             var scene = RequireScene(p == null ? null : p.SceneId);
             return ActorDto(scene, true);
         }
 
-        private static McpSceneRef SaveScene(McpSceneSave p)
+        private McpSceneRef SaveScene(McpSceneSave p)
         {
             var scene = RequireScene(p == null ? null : p.SceneId);
             FEditor.Instance.Scene.SaveScene(scene);
             return SceneRef(scene);
         }
 
-        private static string SaveAll() { FEditor.Instance.SaveAll(); return "save requested"; }
-        private static string Undo() { FEditor.Instance.PerformUndo(); return "undo requested"; }
-        private static string Redo() { FEditor.Instance.PerformRedo(); return "redo requested"; }
+        private string SaveAll() { FEditor.Instance.SaveAll(); return "save requested"; }
 
-        private static McpActorDto[] FindActors(McpActorFind p)
+        // Undo/redo may apply a user-owned editor action, so only the project
+        // counter is advanced; no scene revision is claimed unless the bridge can
+        // identify the affected scene before the editor executes the action.
+        private string Undo()
+        {
+            FEditor.Instance.PerformUndo();
+            AdvanceProjectRevision();
+            return "undo requested";
+        }
+
+        private string Redo()
+        {
+            FEditor.Instance.PerformRedo();
+            AdvanceProjectRevision();
+            return "redo requested";
+        }
+
+        private McpActorDto[] FindActors(McpActorFind p)
         {
             if (p == null || string.IsNullOrWhiteSpace(p.Name)) throw new McpProtocolException("INVALID_REQUEST", "name is required.");
             var max = Math.Max(1, Math.Min(p.MaxResults, 100));
@@ -679,18 +722,23 @@ namespace Game.MCP
             return result.ToArray();
         }
 
-        private static McpActorDto CreateActor(McpActorCreate p)
+        private McpActorDto CreateActor(McpActorCreate p)
         {
             if (p == null) throw new McpProtocolException("INVALID_REQUEST", "Actor creation parameters are required.");
             var type = ResolveType(p.TypeName, typeof(Actor));
+            var parent = string.IsNullOrEmpty(p.ParentId) ? null : RequireActor(p.ParentId);
+            // Flax's public Spawn API selects an editor-default scene when ParentId
+            // is null. That target cannot be verified before the write, so guarded
+            // create operations must provide a parent in the intended loaded scene.
+            CheckSceneWrite(parent == null ? null : parent.Scene, p.ExpectedSceneRevision, p.LeaseId);
             var actor = FObject.New(type) as Actor;
             if (actor == null) throw new McpProtocolException("VALIDATION_FAILED", "Type did not create an Actor.");
             actor.Name = Limit(p.Name, 128, "Actor");
             actor.IsActive = p.Active;
             if (p.Position != null) actor.Position = ToFloat3(p.Position);
-            var parent = string.IsNullOrEmpty(p.ParentId) ? null : RequireActor(p.ParentId);
             FEditor.Instance.SceneEditing.Spawn(actor, parent, -1, false);
             MarkEdited(actor);
+            AdvanceSceneRevision(actor.Scene);
             return ActorDto(actor, false);
         }
 
@@ -703,10 +751,11 @@ namespace Game.MCP
             return new McpActorCreateValidation { TypeName = type.FullName, ParentId = parent == null ? null : parent.ID.ToString("N") };
         }
 
-        private static McpActorDto UpdateActor(McpActorUpdate p)
+        private McpActorDto UpdateActor(McpActorUpdate p)
         {
             if (p == null) throw new McpProtocolException("INVALID_REQUEST", "Actor update parameters are required.");
             var actor = RequireActor(p.ActorId);
+            CheckSceneWrite(actor.Scene, p.ExpectedSceneRevision, p.LeaseId);
             FEditor.Instance.Undo.RecordAction(actor, "Update actor", () =>
             {
                 // This is intentionally a narrow allowlist: no arbitrary reflected properties.
@@ -717,91 +766,114 @@ namespace Game.MCP
                 if (p.EulerAngles != null) actor.EulerAngles = ToFloat3(p.EulerAngles);
                 MarkEdited(actor);
             });
+            AdvanceSceneRevision(actor.Scene);
             return ActorDto(actor, false);
         }
 
-        private static object DeleteActor(McpActorId p)
+        private object DeleteActor(McpActorId p)
         {
             var actor = RequireActor(p == null ? null : p.ActorId);
+            var scene = actor.Scene;
+            CheckSceneWrite(scene, p == null ? null : p.ExpectedSceneRevision, p == null ? null : p.LeaseId);
+            var sceneId = scene == null ? null : scene.ID.ToString("N");
+            var deletedId = actor.ID.ToString("N");
             FEditor.Instance.SceneEditing.Deselect();
             FEditor.Instance.SceneEditing.Select(actor);
             FEditor.Instance.SceneEditing.Delete(); // Editor API records undo/redo.
-            return new McpDeletedDto { DeletedId = actor.ID.ToString("N") };
+            var revision = AdvanceSceneRevision(scene);
+            return new McpDeletedDto { DeletedId = deletedId, ProjectRevision = revision.ProjectRevision, SceneId = sceneId, SceneRevision = revision.SceneRevision };
         }
 
-        private static object DuplicateActor(McpActorId p)
+        private object DuplicateActor(McpActorId p)
         {
             var actor = RequireActor(p == null ? null : p.ActorId);
+            var scene = actor.Scene;
+            CheckSceneWrite(scene, p == null ? null : p.ExpectedSceneRevision, p == null ? null : p.LeaseId);
             FEditor.Instance.SceneEditing.Deselect();
             FEditor.Instance.SceneEditing.Select(actor);
             FEditor.Instance.SceneEditing.Duplicate(); // Public API is undoable but returns no new Actor ID.
-            return new McpDuplicatedDto { SourceId = actor.ID.ToString("N"), NewActorId = null, Verified = false };
+            var revision = AdvanceSceneRevision(scene);
+            return new McpDuplicatedDto { SourceId = actor.ID.ToString("N"), NewActorId = null, Verified = false, ProjectRevision = revision.ProjectRevision, SceneId = scene == null ? null : scene.ID.ToString("N"), SceneRevision = revision.SceneRevision };
         }
 
-        private static McpActorDto ReparentActor(McpActorReparent p)
+        private McpActorDto ReparentActor(McpActorReparent p)
         {
             if (p == null) throw new McpProtocolException("INVALID_REQUEST", "Actor reparent parameters are required.");
             var actor = RequireActor(p.ActorId);
             var parent = string.IsNullOrEmpty(p.ParentId) ? null : RequireActor(p.ParentId);
             if (parent == actor) throw new McpProtocolException("VALIDATION_FAILED", "An actor cannot parent itself.");
+            if (parent != null && parent.Scene != actor.Scene) throw new McpProtocolException("VALIDATION_FAILED", "Cross-scene reparenting is not supported by the v7 edit lease scope.");
+            CheckSceneWrite(actor.Scene, p.ExpectedSceneRevision, p.LeaseId);
             FEditor.Instance.Undo.RecordAction(actor, "Reparent actor", () =>
             {
                 actor.SetParent(parent, p.KeepWorldTransform, true);
                 MarkEdited(actor);
             });
+            AdvanceSceneRevision(actor.Scene);
             return ActorDto(actor, false);
         }
 
         // Script fields are intentionally limited to Enabled. Arbitrary C# member
         // editing is not safe or stable across reloads, so it is not exposed.
-        private static object AttachScript(McpScriptAttach p)
+        private object AttachScript(McpScriptAttach p)
         {
             if (p == null) throw new McpProtocolException("INVALID_REQUEST", "Script attach parameters are required.");
             var actor = RequireActor(p.ActorId);
+            CheckSceneWrite(actor.Scene, p.ExpectedSceneRevision, p.LeaseId);
             var type = ResolveType(p.ScriptType, typeof(Script));
             var script = actor.AddScript(type);
             if (script == null) throw new McpProtocolException("VALIDATION_FAILED", "Failed to attach script.");
             FEditor.Instance.Undo.AddAction(CreateInternalScriptAction("Added", script));
             MarkEdited(actor);
+            AdvanceSceneRevision(actor.Scene);
             return ScriptInfo(script);
         }
 
-        private static object DetachScript(McpScriptId p)
+        private object DetachScript(McpScriptId p)
         {
             var script = RequireScript(p == null ? null : p.ScriptId);
             var id = script.ID.ToString("N");
             var actor = script.Actor;
+            var scene = actor == null ? null : actor.Scene;
+            CheckSceneWrite(scene, p == null ? null : p.ExpectedSceneRevision, p == null ? null : p.LeaseId);
             var action = CreateInternalScriptAction("Remove", script);
             action.Do();
             FEditor.Instance.Undo.AddAction(action);
             if (actor != null) MarkEdited(actor);
-            return new McpDetachedDto { DetachedId = id };
+            var revision = AdvanceSceneRevision(scene);
+            return new McpDetachedDto { DetachedId = id, ProjectRevision = revision.ProjectRevision, SceneId = scene == null ? null : scene.ID.ToString("N"), SceneRevision = revision.SceneRevision };
         }
 
-        private static McpScriptDto ScriptInfo(Script script)
+        private McpScriptDto ScriptInfo(Script script)
         {
+            var scene = script.Actor == null ? null : script.Actor.Scene;
+            var revision = CurrentRevision(scene);
             return new McpScriptDto
             {
                 Id = script.ID.ToString("N"),
                 TypeName = script.TypeName,
                 ActorId = script.Actor == null ? null : script.Actor.ID.ToString("N"),
                 Enabled = script.Enabled,
+                ProjectRevision = revision.ProjectRevision,
+                SceneRevision = revision.SceneRevision,
             };
         }
 
-        private static object UpdateScript(McpScriptUpdate p)
+        private object UpdateScript(McpScriptUpdate p)
         {
             if (p == null || !p.Enabled.HasValue) throw new McpProtocolException("INVALID_REQUEST", "Only the enabled field may be updated.");
             var script = RequireScript(p.ScriptId);
             var actor = script.Actor;
+            CheckSceneWrite(actor == null ? null : actor.Scene, p.ExpectedSceneRevision, p.LeaseId);
             var action = new McpScriptEnabledUndo(script, script.Enabled, p.Enabled.Value);
             action.Do();
             FEditor.Instance.Undo.AddAction(action);
             if (actor != null) MarkEdited(actor);
+            AdvanceSceneRevision(actor == null ? null : actor.Scene);
             return ScriptInfo(script);
         }
 
-        private static McpActorDto ActorDto(Actor actor, bool recursive)
+        private McpActorDto ActorDto(Actor actor, bool recursive)
         {
             return ActorDto(actor, recursive, 0, new McpTreeBudget());
         }
@@ -832,18 +904,20 @@ namespace Game.MCP
             return dto;
         }
 
-        private static McpActorDto ActorDto(Actor actor, bool recursive, int depth, McpTreeBudget budget)
+        private McpActorDto ActorDto(Actor actor, bool recursive, int depth, McpTreeBudget budget)
         {
             budget.Count++;
             if (budget.Count > MaxTreeActors)
                 throw new McpProtocolException("RESPONSE_TOO_LARGE", "Actor tree exceeds the 2000 actor response limit.");
             var scripts = new List<string>();
             for (var i = 0; i < actor.ScriptsCount; i++) scripts.Add(actor.GetScript(i).ID.ToString("N"));
+            var revision = CurrentRevision(actor.Scene);
             var dto = new McpActorDto
             {
                 Id = actor.ID.ToString("N"), TypeName = actor.TypeName, Name = actor.Name, Active = actor.IsActive,
                 ParentId = actor.Parent == null ? null : actor.Parent.ID.ToString("N"), Position = FromFloat3(actor.Position),
                 Scale = FromFloat3(actor.Scale), EulerAngles = FromFloat3(actor.EulerAngles), ScriptIds = scripts.ToArray(),
+                ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision,
             };
             if (recursive)
             {
@@ -856,7 +930,11 @@ namespace Game.MCP
             return dto;
         }
 
-        private static McpSceneRef SceneRef(Scene scene) { return new McpSceneRef { Id = scene.ID.ToString("N"), Name = scene.Name, Path = ProjectRelativePath(scene.Path), Edited = FEditor.Instance.Scene.IsEdited(scene) }; }
+        private McpSceneRef SceneRef(Scene scene)
+        {
+            var revision = CurrentRevision(scene);
+            return new McpSceneRef { Id = scene.ID.ToString("N"), Name = scene.Name, Path = ProjectRelativePath(scene.Path), Edited = FEditor.Instance.Scene.IsEdited(scene), ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision };
+        }
         private static string ProjectRelativePath(string value)
         {
             if (string.IsNullOrEmpty(value)) return null;
@@ -866,6 +944,198 @@ namespace Game.MCP
             return relative == ".." || relative.StartsWith("../", StringComparison.Ordinal) ? null : relative;
         }
         private static void MarkEdited(Actor actor) { if (actor != null && actor.Scene != null) FEditor.Instance.Scene.MarkSceneEdited(actor.Scene); }
+
+        private McpRevision CurrentRevision(Scene scene)
+        {
+            lock (_stateLock)
+            {
+                var sceneRevision = 0L;
+                if (scene != null) _sceneRevisions.TryGetValue(scene.ID.ToString("N"), out sceneRevision);
+                return new McpRevision { ProjectRevision = _projectRevision, SceneRevision = sceneRevision };
+            }
+        }
+
+        private McpRevision AdvanceSceneRevision(Scene scene)
+        {
+            lock (_stateLock)
+            {
+                _projectRevision++;
+                var sceneRevision = 0L;
+                if (scene != null)
+                {
+                    var sceneId = scene.ID.ToString("N");
+                    _sceneRevisions.TryGetValue(sceneId, out sceneRevision);
+                    sceneRevision++;
+                    _sceneRevisions[sceneId] = sceneRevision;
+                }
+                return new McpRevision { ProjectRevision = _projectRevision, SceneRevision = sceneRevision };
+            }
+        }
+
+        private long AdvanceProjectRevision()
+        {
+            lock (_stateLock) return ++_projectRevision;
+        }
+
+        private void CheckSceneWrite(Scene scene, long? expectedSceneRevision, string leaseId)
+        {
+            if (scene == null && (expectedSceneRevision.HasValue || !string.IsNullOrEmpty(leaseId)))
+                throw new McpProtocolException("VALIDATION_FAILED", "ExpectedSceneRevision or LeaseId requires a target scene that the bridge can identify before writing.");
+            if (scene == null) return;
+            var sceneId = scene.ID.ToString("N");
+            lock (_stateLock)
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                CleanupExpiredStateLocked(now);
+                long current;
+                _sceneRevisions.TryGetValue(sceneId, out current);
+                if (expectedSceneRevision.HasValue && expectedSceneRevision.Value != current)
+                    throw new McpProtocolException("SCENE_REVISION_CONFLICT", "ExpectedSceneRevision does not match the current bridge-known scene revision.", new { SceneId = sceneId, ExpectedSceneRevision = expectedSceneRevision.Value, CurrentSceneRevision = current, ProjectRevision = _projectRevision });
+                McpLeaseState lease;
+                if (_sceneLeases.TryGetValue(sceneId, out lease))
+                {
+                    if (!string.Equals(lease.LeaseId, leaseId, StringComparison.Ordinal))
+                        throw new McpProtocolException("EDIT_LEASE_CONFLICT", "A different edit lease is active for this scene.", LeaseDetails(lease, "active"));
+                }
+                else if (!string.IsNullOrEmpty(leaseId))
+                {
+                    throw new McpProtocolException("EDIT_LEASE_EXPIRED", "The supplied edit lease is no longer active.", new { SceneId = sceneId, LeaseId = leaseId, ProjectRevision = _projectRevision, CurrentSceneRevision = current });
+                }
+            }
+        }
+
+        private McpEditLease BeginLease(McpLeaseBegin request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Edit lease parameters are required.");
+            var scene = RequireScene(request.SceneId);
+            if (string.IsNullOrWhiteSpace(request.Owner) || request.Owner.Length > 128) throw new McpProtocolException("VALIDATION_FAILED", "Owner must be between 1 and 128 characters.");
+            if (request.TtlMs < MinLeaseTtlMs || request.TtlMs > MaxLeaseTtlMs) throw new McpProtocolException("VALIDATION_FAILED", "TtlMs must be between " + MinLeaseTtlMs + " and " + MaxLeaseTtlMs + ".");
+            var sceneId = scene.ID.ToString("N");
+            lock (_stateLock)
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                CleanupExpiredStateLocked(now);
+                McpLeaseState existing;
+                if (_sceneLeases.TryGetValue(sceneId, out existing)) throw new McpProtocolException("EDIT_LEASE_CONFLICT", "An edit lease is already active for this scene.", LeaseDetails(existing, "active"));
+                var lease = new McpLeaseState { LeaseId = Guid.NewGuid().ToString("N"), SceneId = sceneId, Owner = request.Owner, AcquiredUnixMs = now, ExpiresUnixMs = now + request.TtlMs };
+                _sceneLeases[sceneId] = lease;
+                return LeaseDetails(lease, "active");
+            }
+        }
+
+        private McpEditLease GetLease(McpLeaseGet request)
+        {
+            if (request == null || (string.IsNullOrEmpty(request.SceneId) && string.IsNullOrEmpty(request.LeaseId))) throw new McpProtocolException("INVALID_REQUEST", "SceneId or LeaseId is required.");
+            lock (_stateLock)
+            {
+                CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                McpLeaseState lease = null;
+                if (!string.IsNullOrEmpty(request.SceneId)) _sceneLeases.TryGetValue(request.SceneId, out lease);
+                if (lease == null && !string.IsNullOrEmpty(request.LeaseId))
+                {
+                    foreach (var item in _sceneLeases) if (string.Equals(item.Value.LeaseId, request.LeaseId, StringComparison.Ordinal)) { lease = item.Value; break; }
+                }
+                if (lease == null) throw new McpProtocolException("NOT_FOUND", "Edit lease was not found or has expired.");
+                return LeaseDetails(lease, "active");
+            }
+        }
+
+        private McpEditLease CommitLease(McpLeaseRelease request)
+        {
+            return EndLease(request, "committed");
+        }
+
+        private McpEditLease ReleaseLease(McpLeaseRelease request)
+        {
+            return EndLease(request, "released");
+        }
+
+        private McpEditLease EndLease(McpLeaseRelease request, string state)
+        {
+            if (request == null || string.IsNullOrEmpty(request.LeaseId)) throw new McpProtocolException("INVALID_REQUEST", "LeaseId is required.");
+            lock (_stateLock)
+            {
+                CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                McpLeaseState lease = null;
+                string sceneId = null;
+                foreach (var item in _sceneLeases)
+                {
+                    if (string.Equals(item.Value.LeaseId, request.LeaseId, StringComparison.Ordinal)) { lease = item.Value; sceneId = item.Key; break; }
+                }
+                if (lease == null) throw new McpProtocolException("NOT_FOUND", "Edit lease was not found or has expired.");
+                _sceneLeases.Remove(sceneId);
+                return LeaseDetails(lease, state);
+            }
+        }
+
+        private McpEditLease LeaseDetails(McpLeaseState lease, string state)
+        {
+            long sceneRevision;
+            _sceneRevisions.TryGetValue(lease.SceneId, out sceneRevision);
+            return new McpEditLease { LeaseId = lease.LeaseId, SceneId = lease.SceneId, Owner = lease.Owner, AcquiredUnixMs = lease.AcquiredUnixMs, ExpiresUnixMs = lease.ExpiresUnixMs, State = state, ProjectRevision = _projectRevision, SceneRevision = sceneRevision };
+        }
+
+        private object ActiveLeasesDetailsLocked()
+        {
+            var active = new List<McpEditLease>();
+            foreach (var item in _sceneLeases) active.Add(LeaseDetails(item.Value, "active"));
+            return new { ActiveLeases = active.ToArray(), ProjectRevision = _projectRevision };
+        }
+
+        private void CleanupExpiredStateLocked(long now)
+        {
+            var expiredLeases = new List<string>();
+            foreach (var item in _sceneLeases) if (item.Value.ExpiresUnixMs <= now) expiredLeases.Add(item.Key);
+            foreach (var sceneId in expiredLeases) _sceneLeases.Remove(sceneId);
+            var expiredKeys = new List<string>();
+            foreach (var item in _idempotency) if (item.Value.ExpiresUnixMs <= now) expiredKeys.Add(item.Key);
+            foreach (var key in expiredKeys) _idempotency.Remove(key);
+        }
+
+        private object ExecuteIdempotent(string method, string key, object request, Func<object> mutation)
+        {
+            if (string.IsNullOrEmpty(key)) return mutation();
+            if (key.Length > 128) throw new McpProtocolException("VALIDATION_FAILED", "IdempotencyKey is limited to 128 characters.");
+            var fingerprint = Fingerprint(method + "\n" + JsonSerializer.Serialize(request, false));
+            lock (_stateLock)
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                CleanupExpiredStateLocked(now);
+                McpIdempotencyEntry existing;
+                if (_idempotency.TryGetValue(key, out existing))
+                {
+                    if (!string.Equals(existing.Method, method, StringComparison.Ordinal) || !string.Equals(existing.Fingerprint, fingerprint, StringComparison.Ordinal))
+                        throw new McpProtocolException("IDEMPOTENCY_KEY_REUSED", "IdempotencyKey was already used for a different mutation request.", new { Method = existing.Method, ProjectRevision = _projectRevision });
+                    return existing.Result;
+                }
+            }
+            var result = mutation();
+            lock (_stateLock)
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                CleanupExpiredStateLocked(now);
+                if (_idempotency.Count >= MaxIdempotencyEntries)
+                {
+                    string oldest = null;
+                    long oldestExpiry = long.MaxValue;
+                    foreach (var item in _idempotency) if (item.Value.ExpiresUnixMs < oldestExpiry) { oldest = item.Key; oldestExpiry = item.Value.ExpiresUnixMs; }
+                    if (oldest != null) _idempotency.Remove(oldest);
+                }
+                _idempotency[key] = new McpIdempotencyEntry { Method = method, Fingerprint = fingerprint, Result = result, ExpiresUnixMs = now + IdempotencyTtlMs };
+            }
+            return result;
+        }
+
+        private static string Fingerprint(string text)
+        {
+            using (var hash = SHA256.Create())
+            {
+                var bytes = hash.ComputeHash(Encoding.UTF8.GetBytes(text));
+                var builder = new StringBuilder(bytes.Length * 2);
+                foreach (var value in bytes) builder.Append(value.ToString("x2"));
+                return builder.ToString();
+            }
+        }
         private static Scene RequireScene(string id) { Guid guid; if (!Guid.TryParseExact(id ?? "", "N", out guid)) throw new McpProtocolException("INVALID_REQUEST", "sceneId must be a 32-character GUID."); var scene = Level.FindScene(guid); if (scene == null) throw new McpProtocolException("NOT_FOUND", "Loaded scene was not found."); return scene; }
         private static Actor RequireActor(string id) { Guid guid; if (!Guid.TryParseExact(id ?? "", "N", out guid)) throw new McpProtocolException("INVALID_REQUEST", "actorId must be a 32-character GUID."); var actor = Level.FindActor(guid); if (actor == null) throw new McpProtocolException("NOT_FOUND", "Actor was not found."); return actor; }
         private static Script RequireScript(string id) { Guid guid; if (!Guid.TryParseExact(id ?? "", "N", out guid)) throw new McpProtocolException("INVALID_REQUEST", "scriptId must be a 32-character GUID."); var script = FObject.TryFind<Script>(ref guid); if (script == null) throw new McpProtocolException("NOT_FOUND", "Script was not found."); return script; }
@@ -1377,11 +1647,11 @@ namespace Game.MCP
         }
 
         private void WriteHeartbeat() { WriteAtomic(BridgePath, JsonSerializer.Serialize(new McpBridgeInfo { Pid = Environment.ProcessId, Project = Globals.ProjectFolder, EditorVersion = Globals.EngineVersion.ToString(), Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }, true)); }
-        private static McpResponse Failure(string id, string requestToken, string code, string message)
+        private static McpResponse Failure(string id, string requestToken, string code, string message, object details = null)
         {
             // Never disclose the active session token to an unauthenticated
             // request. Authenticated failures naturally echo the valid token.
-            return new McpResponse { id = id, token = requestToken, ok = false, errorCode = code, error = message, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
+            return new McpResponse { id = id, token = requestToken, ok = false, errorCode = code, error = message, errorDetails = details == null ? null : JsonSerializer.Serialize(details, false), timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         }
         private static bool IsSafeRequestFile(string name) { if (string.IsNullOrEmpty(name) || name.Length > 133 || !name.EndsWith(".json")) return false; for (var i = 0; i < name.Length - 5; i++) if (!(char.IsLetterOrDigit(name[i]) || name[i] == '-' || name[i] == '_')) return false; return true; }
         private static void WriteAtomic(string path, string text) { var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp"; File.WriteAllText(temp, text); if (File.Exists(path)) File.Replace(temp, path, null); else File.Move(temp, path); }
@@ -1456,7 +1726,8 @@ namespace Game.MCP
     internal sealed class McpProtocolException : Exception
     {
         public readonly string Code;
-        public McpProtocolException(string code, string message) : base(message) { Code = code; }
+        public readonly object Details;
+        public McpProtocolException(string code, string message, object details = null) : base(message) { Code = code; Details = details; }
     }
 
     internal sealed class McpScriptEnabledUndo : IUndoAction

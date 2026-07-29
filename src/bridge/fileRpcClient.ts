@@ -27,10 +27,13 @@ export interface FileRpcClientOptions {
   deadlineMs?: number;
   maxMessageBytes?: number;
   pollIntervalMs?: number;
+  /** Require a newer additive bridge capability for this call. */
+  minimumBridgeVersion?: number;
 }
 
 export interface BridgeCallOptions {
   deadlineMs?: number;
+  minimumBridgeVersion?: number;
 }
 
 export interface EditorBridgeCall<R = unknown> {
@@ -82,6 +85,9 @@ function parseResponse(value: unknown): BridgeResponse {
   if (value.resultJson !== undefined && value.resultJson !== null && typeof value.resultJson !== 'string') {
     throw new BridgeRpcError('BRIDGE_RESPONSE_INVALID', 'Bridge response resultJson must be a string.');
   }
+  if (value.errorDetails !== undefined && value.errorDetails !== null && typeof value.errorDetails !== 'string') {
+    throw new BridgeRpcError('BRIDGE_RESPONSE_INVALID', 'Bridge response errorDetails must be a JSON string.');
+  }
   return value as unknown as BridgeResponse;
 }
 
@@ -100,6 +106,7 @@ export class FileRpcClient {
   private readonly deadlineMs: number;
   private readonly maxMessageBytes: number;
   private readonly pollIntervalMs: number;
+  private readonly optionsMinimumBridgeVersion: number | undefined;
 
   constructor(
     private readonly ctx: ProjectMeta,
@@ -108,6 +115,9 @@ export class FileRpcClient {
     this.deadlineMs = boundedInteger(options.deadlineMs, DEFAULT_DEADLINE_MS, MIN_DEADLINE_MS, MAX_DEADLINE_MS);
     this.maxMessageBytes = boundedInteger(options.maxMessageBytes, DEFAULT_MAX_MESSAGE_BYTES, 256, 16 * 1024 * 1024);
     this.pollIntervalMs = boundedInteger(options.pollIntervalMs, DEFAULT_POLL_INTERVAL_MS, 1, 1_000);
+    this.optionsMinimumBridgeVersion = options.minimumBridgeVersion === undefined
+      ? undefined
+      : boundedInteger(options.minimumBridgeVersion, 5, 5, 100);
   }
 
   async call<M extends BridgeMethod, P, R>(
@@ -153,7 +163,9 @@ export class FileRpcClient {
     }
     const bridgeVersion = Number(bridge.bridgeVersion);
     const phase2Method = /^(?:code|play|log|capture|runtime)\./.test(method);
-    const minimumBridgeVersion = phase2Method ? 6 : 5;
+    const phase3Method = /^edit\.lease_/.test(method);
+    const requestedMinimum = options.minimumBridgeVersion ?? this.optionsMinimumBridgeVersion;
+    const minimumBridgeVersion = Math.max(phase2Method ? 6 : 5, phase3Method ? 7 : 5, requestedMinimum ?? 5);
     if (bridge.protocolVersion !== '1' || !Number.isInteger(bridgeVersion) || bridgeVersion < minimumBridgeVersion) {
       throw new BridgeRpcError(
         'BRIDGE_UNSUPPORTED',
@@ -188,7 +200,11 @@ export class FileRpcClient {
       await this.atomicJsonWrite(requestPath, request);
       const response = await this.waitForResponse(responsePath, requestId, token, deadlineMs);
       if (!response.ok) {
-        throw new BridgeRpcError('BRIDGE_REMOTE_ERROR', response.error!, { code: response.errorCode });
+        let details: unknown;
+        if (response.errorDetails) {
+          try { details = JSON.parse(response.errorDetails); } catch { details = response.errorDetails; }
+        }
+        throw new BridgeRpcError('BRIDGE_REMOTE_ERROR', response.error!, { code: response.errorCode, details });
       }
       let result: R | undefined;
       if (response.resultJson !== undefined && response.resultJson !== null) {
@@ -299,7 +315,7 @@ export async function callEditorBridge<M extends BridgeMethod, P, R>(
   options: FileRpcClientOptions = {},
 ): Promise<EditorBridgeCall<R>> {
   const client = new FileRpcClient(ctx, options);
-  const response = await client.call<M, P, R>(method, params, { deadlineMs: options.deadlineMs });
+  const response = await client.call<M, P, R>(method, params, { deadlineMs: options.deadlineMs, minimumBridgeVersion: options.minimumBridgeVersion });
   return {
     data: response.result,
     mode: 'editor-connected',

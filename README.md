@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 64 tools for reading and patching code, editing live scenes, compiling, running bounded play-mode checks, inspecting logs, and more.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 68 tools for reading and patching code, editing live scenes, compiling, running bounded play-mode checks, inspecting logs, and more.
 
 ## Requirements
 
@@ -124,6 +124,8 @@ Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a sp
 | `script_attach` / `script_detach` | Attach or detach a script with editor undo support |
 | `script_instance_get` / `script_instance_update` | Read a script instance or update its enabled state |
 | `edit_undo` / `edit_redo` | Execute the Flax Editor undo/redo stack |
+| `edit_begin_lease` / `edit_get_lease` | Acquire or inspect a bounded v7 scene edit lease |
+| `edit_commit_lease` / `edit_release_lease` | End a lease after visible edits; neither operation rolls changes back |
 
 ### Assets
 | Tool | What it does |
@@ -157,7 +159,10 @@ Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a sp
 - **Foundation contracts** — every tool validates arguments, advertises an output schema and annotations, and returns structured results with operation metadata.
 - **Editor status** — `get_server_capabilities` and `editor_get_status` validate a matching live heartbeat at `Cache/MCP/bridge.json`; otherwise the server reports offline mode. Project identity includes an explicit project ID when present and an opaque SHA-256 path fingerprint, never the full project path.
 - **Bridge installation** — preview with `install_editor_bridge` using `dry_run:true`; replacement requires the installed `expected_hash` or explicit `force:true`. Restart/open Flax Editor and wait for C# compilation after installation. Installer changes have a separate redacted local audit at `.flax-mcp/bridge-install-audit.jsonl`.
-- **Live editor operations** — scene/actor/script operations require bridge v5 or newer. Compile, play, live-log, capture, and runtime-inspection tools require bridge v6. Editor API mutations execute on Flax's main thread, and actor/script mutations integrate with the Undo stack. Transactions and atomic batches are not advertised.
+- **Live editor operations** — scene/actor/script operations require bridge v5 or newer. Compile, play, live-log, capture, and runtime-inspection tools require bridge v6. Revisions, edit leases, and idempotency keys require bridge v7. Editor API mutations execute on Flax's main thread, and actor/script mutations integrate with the Undo stack. Transactions and atomic batches are not advertised.
+- **Bridge v7 revisions** — status, loaded-scene/tree/actor/script reads, and scene actor/script mutation results include `ProjectRevision`; scene-scoped values also include `SceneRevision`. These counters live for the connected bridge Editor session and advance only for mutations made through this bridge. They do not detect unsaved manual Editor edits because no verified Flax 1.12 editor event is used for that purpose. Pass `expected_scene_revision` to a live write to reject a stale bridge-known scene with `SCENE_REVISION_CONFLICT` and the current revision in error details. For guarded `actor_create`, provide `parent_id` in the target scene so the bridge can identify the scene before spawning.
+- **Edit leases are not transactions** — `edit_begin_lease` creates a TTL-bound, scene-scoped coordination lease. The holder supplies `lease_id` on writes; other bridge writes to that scene are rejected while it is active, and play start is gated until the lease expires, is committed, or is released. Mutations remain visible immediately. `edit_commit_lease` and `edit_release_lease` only end the lease; neither commits an atomic batch nor rolls changes back. `TransactionsSupported` remains `false`.
+- **Idempotent retries** — live mutations accept an optional `idempotency_key`; v7 caches a matching method/request result for ten minutes (up to 512 entries) and replays it without repeating the mutation or revision increment. Reusing a key for different input returns `IDEMPOTENCY_KEY_REUSED`. Create, duplicate, and script-attach operations are the main recommended uses.
 - **Compile → diagnose → run loop** — patch source, call `code_compile`, inspect `code_get_diagnostics`, start play, query session-scoped logs/runtime state, optionally capture the viewport, then stop. Compile polling tolerates the bridge assembly and token being replaced during reload without blindly repeating the compile mutation.
 - **Flax 1.12 headless limitation** — headless editors support bridge status, compilation, diagnostics, and logs, but reject play start. Flax 1.12 cannot reliably complete play cleanup without its game window; runtime inspection and viewport capture therefore require a headed editor.
 - **Temporary capture resources** — viewport PNGs stay below `Cache/MCP/captures`, are size/age bounded, and can be read with MCP `resources/read` using the returned `flax://capture/<id>` URI. Physical paths are not returned.

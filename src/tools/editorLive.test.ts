@@ -8,9 +8,13 @@ import {
   ActorCreateSchema,
   ActorGetSchema,
   ActorUpdateSchema,
+  EditLeaseBeginSchema,
+  EditLeaseGetSchema,
   handleActorCreate,
   handleActorGet,
   handleActorUpdate,
+  handleEditLeaseBegin,
+  handleEditLeaseGet,
 } from './editorLive.js';
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE';
@@ -24,7 +28,7 @@ interface Fixture {
   cleanup: () => Promise<void>;
 }
 
-async function fixture(): Promise<Fixture> {
+async function fixture(bridgeVersion = 5): Promise<Fixture> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flax-mcp-editor-live-'));
   const cache = path.join(root, 'Cache', 'MCP');
   const requests = path.join(cache, 'requests');
@@ -38,7 +42,7 @@ async function fixture(): Promise<Fixture> {
     Pid: process.pid,
     Project: root,
     Timestamp: Date.now(),
-    BridgeVersion: 5,
+    BridgeVersion: bridgeVersion,
     ProtocolVersion: 1,
   }));
   await fs.writeFile(path.join(cache, 'token'), TOKEN);
@@ -169,6 +173,93 @@ test('actor_create dry-run validates creation and never sends the mutation metho
     assert.equal(envelope.data.dryRun, true);
     assert.equal(envelope.data.preview.Name, 'Preview');
     assert.deepEqual(envelope.changes, []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('v7 live writes marshal revision, lease, and idempotency fields in PascalCase', async () => {
+  const f = await fixture(7);
+  try {
+    const pending = handleActorCreate(ActorCreateSchema.parse({
+      name: 'Idempotent',
+      parent_id: 'b'.repeat(32),
+      expected_scene_revision: 4,
+      lease_id: 'c'.repeat(32),
+      idempotency_key: 'create-idempotent-1',
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id,
+      ok: true,
+      resultJson: JSON.stringify({ Id: ACTOR_ID, ProjectRevision: 5, SceneRevision: 5 }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'actor.create');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {
+      TypeName: 'FlaxEngine.EmptyActor', Name: 'Idempotent', ParentId: 'b'.repeat(32), Active: true,
+      ExpectedSceneRevision: 4, LeaseId: 'c'.repeat(32), IdempotencyKey: 'create-idempotent-1',
+    });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.SceneRevision, 5);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('revision-aware live writes fail closed on a pre-v7 bridge before creating a request', async () => {
+  const f = await fixture(6);
+  try {
+    const result = await handleActorUpdate(ActorUpdateSchema.parse({
+      actor_id: ACTOR_ID, name: 'Blocked', expected_scene_revision: 0,
+    }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('stale revision bridge errors preserve the current revision in a stable domain error', async () => {
+  const f = await fixture(7);
+  try {
+    const pending = handleActorUpdate(ActorUpdateSchema.parse({ actor_id: ACTOR_ID, name: 'Stale', expected_scene_revision: 2 }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: false, errorCode: 'SCENE_REVISION_CONFLICT',
+      error: 'ExpectedSceneRevision does not match the current bridge-known scene revision.',
+      errorDetails: JSON.stringify({ SceneId: 'b'.repeat(32), ExpectedSceneRevision: 2, CurrentSceneRevision: 3, ProjectRevision: 8 }),
+      resultJson: null, timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'actor.update');
+    const result = await pending;
+    const error = (result.structuredContent as any).error;
+    assert.equal(error.code, 'SCENE_REVISION_CONFLICT');
+    assert.equal(error.details.CurrentSceneRevision, 3);
+    assert.equal(error.details.ProjectRevision, 8);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('v7 edit leases use explicit lease RPC methods and preserve lease semantics', async () => {
+  const f = await fixture(7);
+  try {
+    const pending = handleEditLeaseBegin(EditLeaseBeginSchema.parse({ scene_id: 'b'.repeat(32), owner: 'fixture', ttl_ms: 10_000 }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ LeaseId: 'c'.repeat(32), SceneId: 'b'.repeat(32), State: 'active', Semantics: 'visible-immediately-no-rollback' }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'edit.lease_begin');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), { SceneId: 'b'.repeat(32), Owner: 'fixture', TtlMs: 10_000 });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.Semantics, 'visible-immediately-no-rollback');
+
+    const getPending = handleEditLeaseGet(EditLeaseGetSchema.parse({ lease_id: 'c'.repeat(32) }), f.ctx);
+    const getRequest = await respond(f, body => ({ id: body.id, ok: false, errorCode: 'NOT_FOUND', error: 'Edit lease was not found or has expired.', resultJson: null, timestamp: Date.now() }));
+    assert.equal(getRequest.method, 'edit.lease_get');
+    const getResult = await getPending;
+    assert.equal((getResult.structuredContent as any).error.code, 'NOT_FOUND');
   } finally {
     await f.cleanup();
   }

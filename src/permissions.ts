@@ -21,7 +21,7 @@ export const DEFAULT_PERMISSION_POLICY: PermissionPolicy = {
 const TOOL_FAMILIES = {
   read: [
     'get_server_capabilities', 'editor_get_status', 'get_editor_bridge_installation',
-    'scene_list_loaded', 'scene_get_tree', 'actor_get', 'actor_find', 'script_instance_get',
+    'scene_list_loaded', 'scene_get_tree', 'actor_get', 'actor_find', 'script_instance_get', 'edit_get_lease',
     'code_get_diagnostics', 'play_get_status', 'log_get_recent', 'log_search',
     'log_get_runtime_errors', 'get_project_info', 'get_game_settings', 'get_project_summary',
     'list_scripts', 'read_script', 'get_audit_entries', 'get_script_classes',
@@ -37,7 +37,7 @@ const TOOL_FAMILIES = {
   scene: [
     'scene_save', 'project_save_all', 'actor_create', 'actor_update', 'actor_delete',
     'actor_duplicate', 'actor_reparent', 'script_attach', 'script_detach',
-    'script_instance_update', 'edit_undo', 'edit_redo', 'create_actor', 'modify_actor',
+    'script_instance_update', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'create_actor', 'modify_actor',
   ],
   asset: ['reimport_asset'],
   runtime: [

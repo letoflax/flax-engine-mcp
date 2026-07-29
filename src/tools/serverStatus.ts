@@ -194,6 +194,7 @@ export async function handleGetServerCapabilities(
     const [identity, editor] = await Promise.all([readProjectIdentity(ctx), inspectEditorBridge(ctx)]);
     const mode: ToolMode = editor.connected ? 'editor-connected' : 'offline';
     const phase2 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 6;
+    const phase3 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 7;
     const data = {
       serverVersion: SERVER_VERSION,
       project: identity,
@@ -209,6 +210,9 @@ export async function handleGetServerCapabilities(
         liveLogs: phase2,
         viewportCapture: phase2,
         runtimeInspection: phase2,
+        sceneRevisions: phase3,
+        editLeases: phase3,
+        idempotentEditorWrites: phase3,
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
         profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false,
