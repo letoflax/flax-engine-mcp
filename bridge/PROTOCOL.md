@@ -420,3 +420,17 @@ undo, durable-save, actor-slot targeting, semantic-preview, and confirmation
 path for those mutations. It therefore never calls SetParameterValue or
 CreateVirtualInstance, nor does it mutate material slots or animation graph
 state.
+## Bridge v14: bounded advanced domain queries
+
+Bridge v14 adds read-only `physics.validate_colliders`, `physics.raycast`,
+`physics.get_layer_matrix`, and `physics.find_overlaps`; navigation status,
+agent validation, and path query methods; lighting status/validation; plus
+`terrain.get_summary` and `foliage.get_summary`. All query only public Flax
+1.12 runtime state and cap caller-controlled result counts.
+
+`navigation.build`, `lighting.bake`, and `environment_probe.bake` are present
+as stable `UNSUPPORTED_FLAX_VERSION` capabilities. Although parts of their
+underlying APIs are public, no reviewed bridge-owned completion, cancellation,
+undo, and result lifecycle is available. Terrain and foliage are deliberately
+metadata-only; painting, height/splat edits, foliage instance changes, and
+cluster rebuilds remain unavailable.

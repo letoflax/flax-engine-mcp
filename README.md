@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 106 tools for reading and patching code, editing live scenes, searching/importing assets, working with safe live-prefab primitives, inspecting materials and animation state, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 120 tools for reading and patching code, editing live scenes, searching/importing assets, working with safe live-prefab primitives, inspecting materials and animation state, physics/navigation/lighting diagnostics, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
 
 ## Requirements
 
@@ -223,6 +223,17 @@ both. The name excludes the extension, which remains the source extension.
 | `read_settings` | Read any settings file by partial name — `"Input"`, `"Physics"`, `"Graphics"`, etc. |
 | `get_input_actions` | All input action and axis mappings from `Input Settings.json` |
 | `get_physics_settings` | Gravity, bounce, and layer masks from `Physics Settings.json` |
+
+### Advanced domain queries
+`physics_validate_colliders`, `physics_raycast`, `physics_get_layer_matrix`,
+and `physics_find_overlaps` require bridge v14 and use bounded public Physics
+queries. `navigation_get_status`, `navigation_validate_agents`, and
+`navigation_query_path` are also read-only. `navigation_build`, `lighting_bake`,
+and `environment_probe_bake` intentionally return a stable unsupported
+capability until their async lifecycle and cancellation semantics are reviewed.
+`terrain_get_summary` and `foliage_get_summary` are the first bounded release
+surface: loaded-actor metadata only; terrain edits, foliage painting/instances,
+and cluster rebuilding are not exposed.
 
 ### Project Health
 | Tool | What it does |

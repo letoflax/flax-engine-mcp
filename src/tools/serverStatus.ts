@@ -204,6 +204,7 @@ export async function handleGetServerCapabilities(
     const assetQuarantineDelete = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const buildCook = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const materialAnimation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
+    const domainQueries = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 14;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -286,6 +287,16 @@ export async function handleGetServerCapabilities(
           graphParameters: materialAnimation,
           setGraphParameter: false,
           validateBindings: materialAnimation,
+        },
+        domainTools: {
+          available: domainQueries,
+          physicsQueries: domainQueries,
+          navigationQueries: domainQueries,
+          navigationBuild: false,
+          lightingValidation: domainQueries,
+          lightingBake: false,
+          environmentProbeBake: false,
+          terrainFoliageRead: domainQueries,
         },
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
