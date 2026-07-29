@@ -63,6 +63,12 @@ export type ObservabilityBridgeMethod =
   | 'capture.status'
   | 'runtime.inspect_actor';
 
+export type AssetBridgeMethod =
+  | 'asset.search'
+  | 'asset.get'
+  | 'asset.dependencies'
+  | 'asset.find_references';
+
 export type BridgeMethod =
   | 'status'
   | SceneBridgeMethod
@@ -71,7 +77,8 @@ export type BridgeMethod =
   | EditBridgeMethod
   | CodeBridgeMethod
   | PlayBridgeMethod
-  | ObservabilityBridgeMethod;
+  | ObservabilityBridgeMethod
+  | AssetBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */
 export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {

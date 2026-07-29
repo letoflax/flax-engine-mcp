@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (bridge v7 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v8 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 7, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 8, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -140,3 +140,39 @@ the side effect or advancing revisions. Reusing a retained key for different inp
 fails with `IDEMPOTENCY_KEY_REUSED`. The cache is bridge-session-local and is not a
 durable request journal; clients should use it for retry recovery, especially for
 create, duplicate, and script attach.
+
+## Bridge v8: public asset registry and reference graph
+
+Bridge v8 keeps protocol v1 because the asset RPCs and status fields are additive.
+`status` adds `AssetRegistrySupported:true`, `AssetReferenceGraphSupported:true`,
+`AssetImportSettingsSupported:false`, and `AssetReferenceLocationsSupported:false`.
+
+The v8 allowlisted methods are `asset.search`, `asset.get`,
+`asset.dependencies`, and `asset.find_references`. Successful result DTOs use
+PascalCase. `asset.get`, `asset.dependencies`, and `asset.find_references` require
+exactly one `AssetId` or `Path` selector. All selector and result paths are
+project-relative `Content/...` paths; IDs are 32-character GUIDs.
+
+`asset.search` accepts `Query`, `Path`, `Type`, `Extension`, `Guid`, `Folder`,
+`HasMissingDependency`, `Limit`, and `Cursor`. `asset.dependencies` accepts
+`Transitive` and `MaxDepth` in addition to its selector and paging fields.
+Search/reference pages have a maximum `Limit` of 200. Dependency requests are
+direct by default; transitive traversal is cycle-safe and has `MaxDepth` 1--16.
+The bridge scans at most 10,000 registry assets and 10,000 dependency edges per
+request. Larger work fails with `RESPONSE_TOO_LARGE`.
+
+Cursors are opaque bridge-generated IDs. They are scoped to the method and
+filters/root selector, carry the registry metadata revision, expire after ten
+minutes, and fail with `CURSOR_INVALID` if reused for a different scope or after
+registry metadata changes. Missing selectors fail with `ASSET_NOT_FOUND`.
+
+The implementation uses only public Flax 1.12 APIs: `Content.GetAllAssets`,
+`Content.GetAssetInfo`, `Content.Load`, and `Asset.GetReferences`.
+`GetReferences` returns direct IDs only and can contain duplicates/invalid IDs;
+v8 deduplicates and validates them against the Content registry before returning
+them. Reverse references are a bounded scan of those verified direct asset
+references. Result kind is `asset`, `scene`, or `prefab` only when the registry
+type verifies it; actor and property paths are intentionally absent. Public APIs
+do not verify importer settings, import status, file size, modified time, or
+asset-reference locations, so v8 omits them instead of inferring them from files
+or reflection.

@@ -195,6 +195,7 @@ export async function handleGetServerCapabilities(
     const mode: ToolMode = editor.connected ? 'editor-connected' : 'offline';
     const phase2 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 6;
     const phase3 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 7;
+    const phase4Assets = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 8;
     const data = {
       serverVersion: SERVER_VERSION,
       project: identity,
@@ -217,6 +218,12 @@ export async function handleGetServerCapabilities(
         arbitraryActorProperties: false,
         scriptInstanceEnabledPatch: editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 5,
         arbitrarySerializedScriptProperties: false,
+        assetSearch: phase4Assets,
+        assetRegistryMetadata: phase4Assets,
+        assetDependencyGraph: phase4Assets,
+        assetReverseReferences: phase4Assets,
+        assetImportSettings: false,
+        assetReferenceLocations: false,
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
         profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false,

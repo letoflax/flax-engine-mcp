@@ -164,8 +164,9 @@ export class FileRpcClient {
     const bridgeVersion = Number(bridge.bridgeVersion);
     const phase2Method = /^(?:code|play|log|capture|runtime)\./.test(method);
     const phase3Method = /^edit\.lease_/.test(method);
+    const assetRegistryMethod = /^asset\./.test(method);
     const requestedMinimum = options.minimumBridgeVersion ?? this.optionsMinimumBridgeVersion;
-    const minimumBridgeVersion = Math.max(phase2Method ? 6 : 5, phase3Method ? 7 : 5, requestedMinimum ?? 5);
+    const minimumBridgeVersion = Math.max(phase2Method ? 6 : 5, phase3Method ? 7 : 5, assetRegistryMethod ? 8 : 5, requestedMinimum ?? 5);
     if (bridge.protocolVersion !== '1' || !Number.isInteger(bridgeVersion) || bridgeVersion < minimumBridgeVersion) {
       throw new BridgeRpcError(
         'BRIDGE_UNSUPPORTED',

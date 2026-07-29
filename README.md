@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 68 tools for reading and patching code, editing live scenes, compiling, running bounded play-mode checks, inspecting logs, and more.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 72 tools for reading and patching code, editing live scenes, searching the live asset registry, compiling, running bounded play-mode checks, inspecting logs, and more.
 
 ## Requirements
 
@@ -133,6 +133,10 @@ Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a sp
 | `get_asset_info` | Inspect JSON assets or the type, GUID, and version header of binary `.flax` assets |
 | `reimport_asset` | Inspect reimport intent and optionally launch Flax Editor for manual reimport |
 | `list_assets` | List Content/ assets by type (scene, material, settings, other) with GUIDs |
+| `asset_search` | Search the connected Content registry with filters, dependency/reference counts, and opaque cursor pagination (bridge v8) |
+| `asset_get` | Read stable metadata for one Content asset selected by GUID or project-relative path (bridge v8) |
+| `asset_dependencies` | Read direct or cycle-safe transitive dependency edges, depth-bounded to 16 (bridge v8) |
+| `asset_find_references` | Find direct reverse references from source assets/scenes/prefabs without property paths (bridge v8) |
 
 ### Settings & Config
 | Tool | What it does |
@@ -155,6 +159,9 @@ Use repeatable `--allow-tool <name>` and `--deny-tool <name>` overrides for a sp
 | `get_latest_log` | Compatibility alias to the live log ring with an offline file fallback; prefer `log_get_recent` or `log_search` |
 
 ## Notes
+
+- **Asset registry and graph reads** -- `asset_search`, `asset_get`, `asset_dependencies`, and `asset_find_references` require bridge v8. They use only public Flax 1.12 `Content` registry metadata and `Asset.GetReferences`; result pages are at most 200 entries, dependency depth is at most 16, registry scans are capped at 10,000 assets, and opaque cursors expire after ten minutes or invalidate when filters or registry metadata change. Paths/GUIDs are project-scoped. The bridge does not expose importer settings, file size/modified time/import status, actor/property reference locations, or inferred prefab overrides because public APIs do not verify them.
+- **Asset compatibility aliases** -- `list_assets` delegates safe all/scene requests to `asset_search` with a v8 bridge; `get_asset_info` delegates `Content/...` paths to `asset_get`. Other legacy filters, bare filenames, offline projects, and bridges older than v8 keep their original filesystem-backed behavior.
 
 - **Foundation contracts** — every tool validates arguments, advertises an output schema and annotations, and returns structured results with operation metadata.
 - **Editor status** — `get_server_capabilities` and `editor_get_status` validate a matching live heartbeat at `Cache/MCP/bridge.json`; otherwise the server reports offline mode. Project identity includes an explicit project ID when present and an opaque SHA-256 path fingerprint, never the full project path.

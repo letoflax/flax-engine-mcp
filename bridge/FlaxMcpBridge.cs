@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 7
+// MCP-BRIDGE-VERSION: 8
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -21,12 +21,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 7; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 8; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 7; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; }
+    public class McpStatus { public int BridgeVersion = 8; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -83,6 +83,20 @@ namespace Game.MCP
     public class McpCaptureStatus { public string CaptureId; public string Phase; public string Path; public long StartedUnixMs; public long CompletedUnixMs; public long SizeBytes; }
     public class McpRuntimeActorInspect { public string ActorId; public int Depth; public bool IncludeScripts = true; }
     public class McpRuntimeActorInspection { public bool IsPlayMode; public bool IsPaused; public string SceneId; public McpActorDto Actor; }
+    public class McpAssetSearch { public string Query; public string Path; public string Type; public string Extension; public string Guid; public string Folder; public bool? HasMissingDependency; public int Limit = 50; public string Cursor; }
+    public class McpAssetGet { public string AssetId; public string Path; }
+    public class McpAssetGraphRequest { public string AssetId; public string Path; public bool Transitive; public int MaxDepth = 1; public int Limit = 50; public string Cursor; }
+    public class McpAssetMetadata { public string Id; public string Path; public string TypeName; public string Extension; public string Folder; }
+    public class McpAssetDto { public string Id; public string Path; public string TypeName; public string Extension; public string Folder; public int DependencyCount; public int MissingDependencyCount; public int ReferenceCount; }
+    public class McpAssetSearchResult { public McpAssetDto[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
+    public class McpAssetGetResult { public McpAssetMetadata Asset; public bool ImportSettingsAvailable = false; public string[] Warnings; }
+    public class McpAssetDependency { public string FromId; public McpAssetDto Asset; public int Depth; public bool Cycle; }
+    public class McpAssetDependenciesResult { public McpAssetDto Root; public McpAssetDependency[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
+    public class McpAssetReference { public McpAssetDto Asset; public string Kind; }
+    public class McpAssetReferencesResult { public McpAssetDto Root; public McpAssetReference[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
+    internal sealed class McpAssetRecord { public Guid Id; public AssetInfo Info; public string Path; public string Extension; public string Folder; }
+    internal sealed class McpAssetGraphIndex { public Dictionary<Guid, McpAssetRecord> ById; public Dictionary<Guid, List<Guid>> Direct; public Dictionary<Guid, int> Missing; public Dictionary<Guid, int> Reverse; }
+    internal sealed class McpAssetCursor { public string Method; public string Scope; public string IndexRevision; public int Offset; public long ExpiresUnixMs; }
 
     /// <summary>
     /// File-based RPC bridge. Requests are moved atomically from requests/ into
@@ -91,7 +105,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 7;
+        private const int BridgeVersion = 8;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -117,6 +131,16 @@ namespace Game.MCP
         private const int MaxLeaseTtlMs = 5 * 60 * 1000;
         private const int IdempotencyTtlMs = 10 * 60 * 1000;
         private const int MaxIdempotencyEntries = 512;
+        // Asset reads use the public Flax 1.12 Content registry. The result
+        // pages are small, while registry/graph work has its own explicit cap
+        // so an accidental request cannot monopolize the Editor thread.
+        private const int MaxAssetPageSize = 200;
+        private const int MaxAssetRegistryEntries = 10000;
+        private const int MaxAssetGraphEdges = 10000;
+        private const int MaxAssetGraphDepth = 16;
+        private const int AssetLoadTimeoutMs = 250;
+        private const int AssetCursorTtlMs = 10 * 60 * 1000;
+        private const int MaxAssetCursors = 512;
 
         private volatile bool _running;
         private volatile int _busy;
@@ -147,6 +171,7 @@ namespace Game.MCP
         private readonly Dictionary<string, long> _sceneRevisions = new Dictionary<string, long>();
         private readonly Dictionary<string, McpLeaseState> _sceneLeases = new Dictionary<string, McpLeaseState>();
         private readonly Dictionary<string, McpIdempotencyEntry> _idempotency = new Dictionary<string, McpIdempotencyEntry>();
+        private readonly Dictionary<string, McpAssetCursor> _assetCursors = new Dictionary<string, McpAssetCursor>();
 
         private static string Root { get { return Path.Combine(Globals.ProjectFolder, "Cache", "MCP"); } }
         private static string Requests { get { return Path.Combine(Root, "requests"); } }
@@ -178,7 +203,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v7 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v8 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -339,6 +364,10 @@ namespace Game.MCP
                 case "capture.start": result = OnMain(() => StartCapture(JsonSerializer.Deserialize<McpCaptureStart>(p)), request.deadlineUnixMs); break;
                 case "capture.status": result = GetCaptureStatus(JsonSerializer.Deserialize<McpCaptureStatusRequest>(p)); break;
                 case "runtime.inspect_actor": result = OnMain(() => InspectRuntimeActor(JsonSerializer.Deserialize<McpRuntimeActorInspect>(p)), request.deadlineUnixMs); break;
+                case "asset.search": result = OnMain(() => AssetSearch(JsonSerializer.Deserialize<McpAssetSearch>(p)), request.deadlineUnixMs); break;
+                case "asset.get": result = OnMain(() => AssetGet(JsonSerializer.Deserialize<McpAssetGet>(p)), request.deadlineUnixMs); break;
+                case "asset.dependencies": result = OnMain(() => AssetDependencies(JsonSerializer.Deserialize<McpAssetGraphRequest>(p)), request.deadlineUnixMs); break;
+                case "asset.find_references": result = OnMain(() => AssetFindReferences(JsonSerializer.Deserialize<McpAssetGraphRequest>(p)), request.deadlineUnixMs); break;
                 default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method is not in the bridge allowlist.");
             }
             var resultJson = JsonSerializer.Serialize(result, true);
@@ -355,6 +384,412 @@ namespace Game.MCP
                 CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                 return new McpStatus { Pid = Environment.ProcessId, EditorVersion = Globals.EngineVersion.ToString(), IsPlayMode = FEditor.IsPlayMode, IsHeadless = FEditor.Instance.IsHeadlessMode, LogSessionId = _logSessionId, ProjectRevision = _projectRevision };
             }
+        }
+
+        // Asset discovery deliberately uses only Flax 1.12's public managed
+        // Content API: registry enumeration/metadata and Asset.GetReferences.
+        // No Content Browser internals, binary scanning, reflection, import
+        // settings, or serialized-property inspection is used here.
+        private McpAssetSearchResult AssetSearch(McpAssetSearch request)
+        {
+            if (request == null) request = new McpAssetSearch();
+            ValidateAssetSearch(request);
+            var records = BuildAssetRegistry();
+            var graph = BuildAssetGraphIndex(records);
+            var scope = AssetSearchScope(request);
+            var revision = AssetIndexRevision(records);
+            var offset = GetAssetCursorOffset(request.Cursor, "asset.search", scope, revision);
+            var filtered = new List<McpAssetRecord>();
+            Guid guidFilter = Guid.Empty;
+            var hasGuidFilter = !string.IsNullOrEmpty(request.Guid);
+            if (hasGuidFilter) Guid.TryParseExact(request.Guid, "N", out guidFilter);
+            foreach (var record in records)
+            {
+                if (hasGuidFilter && record.Id != guidFilter) continue;
+                if (!MatchesAssetText(record.Path, request.Query) && !MatchesAssetText(record.Info.TypeName, request.Query)) continue;
+                if (!MatchesAssetText(record.Path, request.Path)) continue;
+                if (!MatchesAssetType(record.Info.TypeName, request.Type)) continue;
+                if (!string.IsNullOrEmpty(request.Extension) && !string.Equals(record.Extension, request.Extension, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.IsNullOrEmpty(request.Folder) && !IsAssetInFolder(record.Folder, request.Folder)) continue;
+                if (request.HasMissingDependency.HasValue && (graph.Missing[record.Id] > 0) != request.HasMissingDependency.Value) continue;
+                filtered.Add(record);
+            }
+            var page = AssetPage(filtered, offset, request.Limit, record => AssetDto(record, graph));
+            return new McpAssetSearchResult
+            {
+                Entries = page.Entries,
+                HasMore = page.HasMore,
+                NextCursor = page.HasMore ? CreateAssetCursor("asset.search", scope, revision, page.NextOffset) : null,
+                IndexRevision = revision,
+                Warnings = AssetMetadataWarnings(),
+            };
+        }
+
+        private McpAssetGetResult AssetGet(McpAssetGet request)
+        {
+            var records = BuildAssetRegistry();
+            var record = ResolveAssetRecord(request, records);
+            return new McpAssetGetResult
+            {
+                Asset = AssetMetadata(record),
+                Warnings = AssetMetadataWarnings(),
+            };
+        }
+
+        private McpAssetDependenciesResult AssetDependencies(McpAssetGraphRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset dependency parameters are required.");
+            ValidateAssetGraphRequest(request);
+            var records = BuildAssetRegistry();
+            var root = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, records);
+            var graph = BuildAssetGraphIndex(records);
+            var maxDepth = request.Transitive ? request.MaxDepth : 1;
+            var entries = new List<McpAssetDependency>();
+            var ancestors = new List<Guid> { root.Id };
+            var expanded = new HashSet<Guid> { root.Id };
+            CollectAssetDependencies(root.Id, 0, maxDepth, ancestors, expanded, graph, entries);
+            entries.Sort((a, b) =>
+            {
+                var depth = a.Depth.CompareTo(b.Depth);
+                if (depth != 0) return depth;
+                var from = string.Compare(a.FromId, b.FromId, StringComparison.Ordinal);
+                if (from != 0) return from;
+                return string.Compare(a.Asset.Path, b.Asset.Path, StringComparison.OrdinalIgnoreCase);
+            });
+            var scope = "asset.dependencies|" + root.Id.ToString("N") + "|" + (request.Transitive ? "transitive" : "direct") + "|" + maxDepth;
+            var revision = AssetIndexRevision(records);
+            var offset = GetAssetCursorOffset(request.Cursor, "asset.dependencies", scope, revision);
+            var page = DependencyPage(entries, offset, request.Limit);
+            return new McpAssetDependenciesResult
+            {
+                Root = AssetDto(root, graph),
+                Entries = page.Entries,
+                HasMore = page.HasMore,
+                NextCursor = page.HasMore ? CreateAssetCursor("asset.dependencies", scope, revision, page.NextOffset) : null,
+                IndexRevision = revision,
+                Warnings = AssetGraphWarnings(),
+            };
+        }
+
+        private McpAssetReferencesResult AssetFindReferences(McpAssetGraphRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset reference parameters are required.");
+            ValidateAssetReferenceRequest(request);
+            var records = BuildAssetRegistry();
+            var root = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, records);
+            var graph = BuildAssetGraphIndex(records);
+            var entries = new List<McpAssetReference>();
+            foreach (var pair in graph.Direct)
+            {
+                if (!pair.Value.Contains(root.Id)) continue;
+                McpAssetRecord source;
+                if (!graph.ById.TryGetValue(pair.Key, out source)) continue;
+                entries.Add(new McpAssetReference { Asset = AssetDto(source, graph), Kind = AssetReferenceKind(source) });
+            }
+            entries.Sort((a, b) =>
+            {
+                var path = string.Compare(a.Asset.Path, b.Asset.Path, StringComparison.OrdinalIgnoreCase);
+                return path != 0 ? path : string.Compare(a.Asset.Id, b.Asset.Id, StringComparison.Ordinal);
+            });
+            var scope = "asset.find_references|" + root.Id.ToString("N");
+            var revision = AssetIndexRevision(records);
+            var offset = GetAssetCursorOffset(request.Cursor, "asset.find_references", scope, revision);
+            var page = ReferencePage(entries, offset, request.Limit);
+            return new McpAssetReferencesResult
+            {
+                Root = AssetDto(root, graph),
+                Entries = page.Entries,
+                HasMore = page.HasMore,
+                NextCursor = page.HasMore ? CreateAssetCursor("asset.find_references", scope, revision, page.NextOffset) : null,
+                IndexRevision = revision,
+                Warnings = AssetGraphWarnings(),
+            };
+        }
+
+        private static void ValidateAssetSearch(McpAssetSearch request)
+        {
+            ValidateAssetLimit(request.Limit);
+            ValidateAssetText(request.Query, 256, "Query");
+            ValidateAssetText(request.Path, 512, "Path");
+            ValidateAssetText(request.Type, 256, "Type");
+            if (!string.IsNullOrEmpty(request.Extension) && (request.Extension.Length > 32 || request.Extension[0] != '.' || request.Extension.IndexOf('/') >= 0 || request.Extension.IndexOf('\\') >= 0))
+                throw new McpProtocolException("VALIDATION_FAILED", "Extension must begin with a dot and be at most 32 characters.");
+            if (!string.IsNullOrEmpty(request.Guid) && !IsGuidN(request.Guid)) throw new McpProtocolException("INVALID_REQUEST", "Guid must be a 32-character GUID.");
+            if (!string.IsNullOrEmpty(request.Folder)) ValidateProjectContentPath(request.Folder, true);
+            if (!string.IsNullOrEmpty(request.Cursor) && !IsGuidN(request.Cursor)) throw new McpProtocolException("CURSOR_INVALID", "Asset cursor is invalid.");
+        }
+
+        private static void ValidateAssetGraphRequest(McpAssetGraphRequest request)
+        {
+            ValidateAssetSelector(request.AssetId, request.Path);
+            ValidateAssetLimit(request.Limit);
+            if (request.MaxDepth < 1 || request.MaxDepth > MaxAssetGraphDepth) throw new McpProtocolException("VALIDATION_FAILED", "MaxDepth must be between 1 and 16.");
+            if (!request.Transitive && request.MaxDepth != 1) throw new McpProtocolException("VALIDATION_FAILED", "Direct dependency queries require MaxDepth of 1.");
+            if (!string.IsNullOrEmpty(request.Cursor) && !IsGuidN(request.Cursor)) throw new McpProtocolException("CURSOR_INVALID", "Asset cursor is invalid.");
+        }
+
+        private static void ValidateAssetReferenceRequest(McpAssetGraphRequest request)
+        {
+            ValidateAssetSelector(request.AssetId, request.Path);
+            ValidateAssetLimit(request.Limit);
+            if (request.Transitive || request.MaxDepth != 1) throw new McpProtocolException("VALIDATION_FAILED", "Reverse reference queries support direct references only.");
+            if (!string.IsNullOrEmpty(request.Cursor) && !IsGuidN(request.Cursor)) throw new McpProtocolException("CURSOR_INVALID", "Asset cursor is invalid.");
+        }
+
+        private static void ValidateAssetSelector(string assetId, string assetPath)
+        {
+            if ((string.IsNullOrEmpty(assetId) && string.IsNullOrEmpty(assetPath)) || (!string.IsNullOrEmpty(assetId) && !string.IsNullOrEmpty(assetPath)))
+                throw new McpProtocolException("INVALID_REQUEST", "Provide exactly one of AssetId or Path.");
+            if (!string.IsNullOrEmpty(assetId) && !IsGuidN(assetId)) throw new McpProtocolException("INVALID_REQUEST", "AssetId must be a 32-character GUID.");
+            if (!string.IsNullOrEmpty(assetPath)) ValidateProjectContentPath(assetPath, false);
+        }
+
+        private static void ValidateAssetLimit(int limit)
+        {
+            if (limit < 1 || limit > MaxAssetPageSize) throw new McpProtocolException("VALIDATION_FAILED", "Limit must be between 1 and 200.");
+        }
+
+        private static void ValidateAssetText(string value, int max, string name)
+        {
+            if (value == null) return;
+            if (value.Length == 0 || value.Length > max || value.IndexOf('\0') >= 0 || value.IndexOf('\r') >= 0 || value.IndexOf('\n') >= 0)
+                throw new McpProtocolException("VALIDATION_FAILED", name + " is invalid.");
+        }
+
+        private static string ValidateProjectContentPath(string value, bool folder)
+        {
+            ValidateAssetText(value, 512, folder ? "Folder" : "Path");
+            var normalized = (value ?? "").Replace('\\', '/').Trim('/');
+            if (string.IsNullOrEmpty(normalized) || Path.IsPathRooted(value) || !(normalized == "Content" || normalized.StartsWith("Content/", StringComparison.Ordinal)))
+                throw new McpProtocolException("INVALID_REQUEST", "Asset paths must be project-relative under Content/.");
+            var parts = normalized.Split('/');
+            foreach (var part in parts) if (part == "." || part == ".." || string.IsNullOrEmpty(part)) throw new McpProtocolException("INVALID_REQUEST", "Asset path contains an invalid segment.");
+            if (!folder && normalized == "Content") throw new McpProtocolException("INVALID_REQUEST", "Asset path must identify a file under Content/.");
+            return normalized;
+        }
+
+        private static string AssetSearchScope(McpAssetSearch request)
+        {
+            return "q=" + (request.Query ?? "") + "|p=" + (request.Path ?? "") + "|t=" + (request.Type ?? "") + "|e=" + (request.Extension ?? "") + "|g=" + (request.Guid ?? "") + "|f=" + (request.Folder ?? "") + "|m=" + (request.HasMissingDependency.HasValue ? request.HasMissingDependency.Value.ToString() : "");
+        }
+
+        private static bool MatchesAssetText(string value, string filter)
+        {
+            return string.IsNullOrEmpty(filter) || (!string.IsNullOrEmpty(value) && value.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static bool MatchesAssetType(string typeName, string filter)
+        {
+            if (string.IsNullOrEmpty(filter)) return true;
+            return string.Equals(typeName, filter, StringComparison.OrdinalIgnoreCase) || (typeName != null && typeName.EndsWith("." + filter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsAssetInFolder(string folder, string requestedFolder)
+        {
+            var normalized = ValidateProjectContentPath(requestedFolder, true);
+            return string.Equals(folder, normalized, StringComparison.OrdinalIgnoreCase) || folder.StartsWith(normalized + "/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static List<McpAssetRecord> BuildAssetRegistry()
+        {
+            var records = new List<McpAssetRecord>();
+            var seen = new HashSet<Guid>();
+            var ids = Content.GetAllAssets() ?? new Guid[0];
+            foreach (var id in ids)
+            {
+                if (id == Guid.Empty || !seen.Add(id)) continue;
+                if (records.Count >= MaxAssetRegistryEntries) throw new McpProtocolException("RESPONSE_TOO_LARGE", "Asset registry exceeds the 10000-asset scan limit.");
+                AssetInfo info;
+                if (!Content.GetAssetInfo(id, out info)) continue;
+                var assetPath = AssetProjectRelativePath(info.Path);
+                if (assetPath == null) continue;
+                var extension = Path.GetExtension(assetPath);
+                var folder = Path.GetDirectoryName(assetPath);
+                records.Add(new McpAssetRecord { Id = id, Info = info, Path = assetPath, Extension = extension == null ? "" : extension.ToLowerInvariant(), Folder = string.IsNullOrEmpty(folder) ? "Content" : folder.Replace('\\', '/') });
+            }
+            records.Sort((a, b) =>
+            {
+                var byPath = string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
+                return byPath != 0 ? byPath : a.Id.CompareTo(b.Id);
+            });
+            return records;
+        }
+
+        private static string AssetProjectRelativePath(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return null;
+            const string marker = "<project>";
+            var root = Path.GetFullPath(Globals.ProjectFolder);
+            var full = value.StartsWith(marker, StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(root, value.Substring(marker.Length).TrimStart('\\', '/'))
+                : (Path.IsPathRooted(value) ? value : Path.Combine(root, value));
+            string relative;
+            try { relative = Path.GetRelativePath(root, Path.GetFullPath(full)).Replace('\\', '/'); }
+            catch { return null; }
+            if (!(relative.StartsWith("Content/", StringComparison.OrdinalIgnoreCase))) return null;
+            return relative;
+        }
+
+        private static string AssetIndexRevision(List<McpAssetRecord> records)
+        {
+            var text = new StringBuilder(records.Count * 96);
+            foreach (var record in records) text.Append(record.Id.ToString("N")).Append('|').Append(record.Path).Append('|').Append(record.Info.TypeName ?? "").Append('\n');
+            return Fingerprint(text.ToString());
+        }
+
+        private static McpAssetGraphIndex BuildAssetGraphIndex(List<McpAssetRecord> records)
+        {
+            var graph = new McpAssetGraphIndex { ById = new Dictionary<Guid, McpAssetRecord>(), Direct = new Dictionary<Guid, List<Guid>>(), Missing = new Dictionary<Guid, int>(), Reverse = new Dictionary<Guid, int>() };
+            foreach (var record in records) { graph.ById[record.Id] = record; graph.Direct[record.Id] = new List<Guid>(); graph.Missing[record.Id] = 0; graph.Reverse[record.Id] = 0; }
+            foreach (var record in records)
+            {
+                var direct = graph.Direct[record.Id];
+                Asset asset = null;
+                try { asset = Content.Load(record.Id, AssetLoadTimeoutMs); }
+                catch { }
+                if (asset == null || asset.LastLoadFailed) continue;
+                Guid[] references;
+                try { references = asset.GetReferences(); }
+                catch { continue; }
+                if (references == null) continue;
+                var unique = new HashSet<Guid>();
+                foreach (var target in references)
+                {
+                    if (target == Guid.Empty || !unique.Add(target)) continue;
+                    if (!graph.ById.ContainsKey(target)) { graph.Missing[record.Id]++; continue; }
+                    direct.Add(target);
+                    graph.Reverse[target] = graph.Reverse[target] + 1;
+                }
+                direct.Sort();
+            }
+            return graph;
+        }
+
+        private static McpAssetRecord ResolveAssetRecord(McpAssetGet request, List<McpAssetRecord> records)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset selector is required.");
+            ValidateAssetSelector(request.AssetId, request.Path);
+            if (!string.IsNullOrEmpty(request.AssetId))
+            {
+                Guid id;
+                Guid.TryParseExact(request.AssetId, "N", out id);
+                foreach (var record in records) if (record.Id == id) return record;
+            }
+            else
+            {
+                var normalized = ValidateProjectContentPath(request.Path, false);
+                foreach (var record in records) if (string.Equals(record.Path, normalized, StringComparison.OrdinalIgnoreCase)) return record;
+            }
+            throw new McpProtocolException("ASSET_NOT_FOUND", "Asset was not found in the project Content registry.");
+        }
+
+        private static McpAssetMetadata AssetMetadata(McpAssetRecord record)
+        {
+            return new McpAssetMetadata { Id = record.Id.ToString("N"), Path = record.Path, TypeName = record.Info.TypeName, Extension = record.Extension, Folder = record.Folder };
+        }
+
+        private static McpAssetDto AssetDto(McpAssetRecord record, McpAssetGraphIndex graph)
+        {
+            return new McpAssetDto { Id = record.Id.ToString("N"), Path = record.Path, TypeName = record.Info.TypeName, Extension = record.Extension, Folder = record.Folder, DependencyCount = graph.Direct[record.Id].Count, MissingDependencyCount = graph.Missing[record.Id], ReferenceCount = graph.Reverse[record.Id] };
+        }
+
+        private static string[] AssetMetadataWarnings()
+        {
+            return new[] { "Flax 1.12 public Content metadata exposes only ID, path, type, extension, and folder. File size, modified time, import status, and importer settings are intentionally omitted." };
+        }
+
+        private static string[] AssetGraphWarnings()
+        {
+            return new[] { "Dependencies are direct public Asset.GetReferences results. Invalid and duplicate IDs are discarded after registry validation; reverse references expose source asset/scene/prefab kinds only and never actor or property locations." };
+        }
+
+        private static string AssetReferenceKind(McpAssetRecord record)
+        {
+            if (string.Equals(record.Info.TypeName, "FlaxEngine.Scene", StringComparison.Ordinal)) return "scene";
+            if (string.Equals(record.Info.TypeName, "FlaxEngine.Prefab", StringComparison.Ordinal)) return "prefab";
+            return "asset";
+        }
+
+        private static void CollectAssetDependencies(Guid current, int depth, int maxDepth, List<Guid> ancestors, HashSet<Guid> expanded, McpAssetGraphIndex graph, List<McpAssetDependency> output)
+        {
+            if (depth >= maxDepth) return;
+            List<Guid> targets;
+            if (!graph.Direct.TryGetValue(current, out targets)) return;
+            foreach (var target in targets)
+            {
+                McpAssetRecord record;
+                if (!graph.ById.TryGetValue(target, out record)) continue;
+                var cycle = ancestors.Contains(target);
+                output.Add(new McpAssetDependency { FromId = current.ToString("N"), Asset = AssetDto(record, graph), Depth = depth + 1, Cycle = cycle });
+                if (output.Count > MaxAssetGraphEdges) throw new McpProtocolException("RESPONSE_TOO_LARGE", "Asset graph exceeds the 10000-edge traversal limit.");
+                if (cycle || depth + 1 >= maxDepth || !expanded.Add(target)) continue;
+                var nextAncestors = new List<Guid>(ancestors) { target };
+                CollectAssetDependencies(target, depth + 1, maxDepth, nextAncestors, expanded, graph, output);
+            }
+        }
+
+        private static AssetPageResult AssetPage(List<McpAssetRecord> records, int offset, int limit, Func<McpAssetRecord, McpAssetDto> map)
+        {
+            if (offset < 0 || offset > records.Count) throw new McpProtocolException("CURSOR_INVALID", "Asset cursor offset is invalid.");
+            var count = Math.Min(limit, records.Count - offset);
+            var entries = new McpAssetDto[count];
+            for (var i = 0; i < count; i++) entries[i] = map(records[offset + i]);
+            return new AssetPageResult { Entries = entries, NextOffset = offset + count, HasMore = offset + count < records.Count };
+        }
+
+        private static DependencyPageResult DependencyPage(List<McpAssetDependency> entries, int offset, int limit)
+        {
+            if (offset < 0 || offset > entries.Count) throw new McpProtocolException("CURSOR_INVALID", "Asset cursor offset is invalid.");
+            var count = Math.Min(limit, entries.Count - offset);
+            var page = new McpAssetDependency[count];
+            for (var i = 0; i < count; i++) page[i] = entries[offset + i];
+            return new DependencyPageResult { Entries = page, NextOffset = offset + count, HasMore = offset + count < entries.Count };
+        }
+
+        private static ReferencePageResult ReferencePage(List<McpAssetReference> entries, int offset, int limit)
+        {
+            if (offset < 0 || offset > entries.Count) throw new McpProtocolException("CURSOR_INVALID", "Asset cursor offset is invalid.");
+            var count = Math.Min(limit, entries.Count - offset);
+            var page = new McpAssetReference[count];
+            for (var i = 0; i < count; i++) page[i] = entries[offset + i];
+            return new ReferencePageResult { Entries = page, NextOffset = offset + count, HasMore = offset + count < entries.Count };
+        }
+
+        private sealed class AssetPageResult { public McpAssetDto[] Entries; public int NextOffset; public bool HasMore; }
+        private sealed class DependencyPageResult { public McpAssetDependency[] Entries; public int NextOffset; public bool HasMore; }
+        private sealed class ReferencePageResult { public McpAssetReference[] Entries; public int NextOffset; public bool HasMore; }
+
+        private int GetAssetCursorOffset(string cursor, string method, string scope, string revision)
+        {
+            if (string.IsNullOrEmpty(cursor)) return 0;
+            lock (_stateLock)
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                CleanupExpiredStateLocked(now);
+                McpAssetCursor stored;
+                if (!_assetCursors.TryGetValue(cursor, out stored) || !string.Equals(stored.Method, method, StringComparison.Ordinal) || !string.Equals(stored.Scope, scope, StringComparison.Ordinal) || !string.Equals(stored.IndexRevision, revision, StringComparison.Ordinal))
+                    throw new McpProtocolException("CURSOR_INVALID", "Asset cursor is expired, has a different filter scope, or the asset registry changed.");
+                return stored.Offset;
+            }
+        }
+
+        private string CreateAssetCursor(string method, string scope, string revision, int offset)
+        {
+            var cursor = Guid.NewGuid().ToString("N");
+            lock (_stateLock)
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                CleanupExpiredStateLocked(now);
+                _assetCursors[cursor] = new McpAssetCursor { Method = method, Scope = scope, IndexRevision = revision, Offset = offset, ExpiresUnixMs = now + AssetCursorTtlMs };
+                while (_assetCursors.Count > MaxAssetCursors)
+                {
+                    string oldest = null; long expires = long.MaxValue;
+                    foreach (var pair in _assetCursors) if (pair.Value.ExpiresUnixMs < expires) { oldest = pair.Key; expires = pair.Value.ExpiresUnixMs; }
+                    if (oldest == null) break;
+                    _assetCursors.Remove(oldest);
+                }
+            }
+            return cursor;
         }
 
         private McpCompileStatus CodeStatus()
@@ -1139,6 +1574,9 @@ namespace Game.MCP
             var expiredKeys = new List<string>();
             foreach (var item in _idempotency) if (item.Value.ExpiresUnixMs <= now) expiredKeys.Add(item.Key);
             foreach (var key in expiredKeys) _idempotency.Remove(key);
+            var expiredCursors = new List<string>();
+            foreach (var item in _assetCursors) if (item.Value.ExpiresUnixMs <= now) expiredCursors.Add(item.Key);
+            foreach (var key in expiredCursors) _assetCursors.Remove(key);
         }
 
         private object ExecuteIdempotent(string method, string key, object request, Func<object> mutation)

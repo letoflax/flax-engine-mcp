@@ -9,13 +9,25 @@ import { assertPermissionRegistryCoverage } from '../permissions.js';
 import { GetProjectInfoSchema, GetGameSettingsSchema, handleGetProjectInfo, handleGetGameSettings } from './project.js';
 import { ListScriptsSchema, ReadScriptSchema, WriteScriptSchema, ApplyScriptPatchSchema, handleListScripts, handleReadScript, handleWriteScript, handleApplyScriptPatch } from './scripts.js';
 import { GetAuditEntriesSchema, handleGetAuditEntries } from '../audit.js';
-import { ListAssetsSchema, GetSceneActorsSchema, handleListAssets, handleGetSceneActors } from './assets.js';
+import { ListAssetsSchema, GetSceneActorsSchema, handleGetSceneActors } from './assets.js';
 import { ReadSettingsSchema, handleReadSettings } from './settings.js';
 import { SearchInFilesSchema, handleSearchInFiles } from './files.js';
 import { GetLatestLogSchema, handleGetLatestLog } from './logs.js';
 
 // New tools
-import { GetAssetInfoSchema, ReimportAssetSchema, handleGetAssetInfo, handleReimportAsset } from './assetInfo.js';
+import { GetAssetInfoSchema, ReimportAssetSchema, handleReimportAsset } from './assetInfo.js';
+import {
+  AssetDependenciesSchema,
+  AssetFindReferencesSchema,
+  AssetGetSchema,
+  AssetSearchSchema,
+  handleAssetDependencies,
+  handleAssetFindReferences,
+  handleAssetGet,
+  handleAssetSearch,
+  handleGetAssetInfoCompatibility,
+  handleListAssetsCompatibility,
+} from './assetLive.js';
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
 import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyActor } from './sceneWrite.js';
@@ -119,14 +131,14 @@ export interface ToolDefinition {
   name: string;
   description: string;
   /** Runtime source of truth; the JSON schema is only the protocol projection. */
-  zodInputSchema: z.AnyZodObject;
+  zodInputSchema: z.ZodTypeAny;
   inputSchema: ReturnType<typeof zodToJsonSchema>;
   outputSchema: ReturnType<typeof zodToJsonSchema>;
   annotations: ToolAnnotations;
   handler: (args: unknown, ctx: ProjectMeta) => Promise<ToolResponse>;
 }
 
-const INPUT_SCHEMAS: Record<string, z.AnyZodObject> = {
+const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   get_server_capabilities: GetServerCapabilitiesSchema,
   editor_get_status: EditorGetStatusSchema,
   get_editor_bridge_installation: GetEditorBridgeInstallationSchema,
@@ -187,6 +199,10 @@ const INPUT_SCHEMAS: Record<string, z.AnyZodObject> = {
   get_asset_info: GetAssetInfoSchema,
   reimport_asset: ReimportAssetSchema,
   list_assets: ListAssetsSchema,
+  asset_search: AssetSearchSchema,
+  asset_get: AssetGetSchema,
+  asset_dependencies: AssetDependenciesSchema,
+  asset_find_references: AssetFindReferencesSchema,
   read_settings: ReadSettingsSchema,
   get_input_actions: GetInputActionsSchema,
   get_physics_settings: GetPhysicsSettingsSchema,
@@ -623,9 +639,9 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     // ── Asset Info ────────────────────────────────────────────────────────────
     {
       name: 'get_asset_info',
-      description: 'Reads asset metadata from any file in Content/. For .flax binary assets extracts TypeName (e.g. SkinnedModel, Model, MaterialInstance) and GUID from the CFWF header. For .scene/.json returns full parsed data.',
+      description: 'Compatibility alias to asset_get for Content/... paths when bridge v8 is connected; otherwise preserves the legacy offline file inspection behavior.',
       inputSchema: zodToJsonSchema(GetAssetInfoSchema),
-      handler: (a, c) => handleGetAssetInfo(a as Parameters<typeof handleGetAssetInfo>[0], c),
+      handler: (a, c) => handleGetAssetInfoCompatibility(a as Parameters<typeof handleGetAssetInfoCompatibility>[0], c),
     },
     {
       name: 'reimport_asset',
@@ -637,9 +653,33 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     // ── Assets ────────────────────────────────────────────────────────────────
     {
       name: 'list_assets',
-      description: 'Lists assets in Content/ by type (scene, material, settings, other). Returns name, path, and GUID.',
+      description: 'Compatibility alias to asset_search for safe all/scene queries when bridge v8 is connected; otherwise preserves the legacy offline Content scanner.',
       inputSchema: zodToJsonSchema(ListAssetsSchema),
-      handler: (a, c) => handleListAssets(a as Parameters<typeof handleListAssets>[0], c),
+      handler: (a, c) => handleListAssetsCompatibility(a as Parameters<typeof handleListAssetsCompatibility>[0], c),
+    },
+    {
+      name: 'asset_search',
+      description: 'Searches the connected Flax Content registry with bounded, cursor-paginated metadata and direct dependency/reference counts. Requires bridge v8.',
+      inputSchema: zodToJsonSchema(AssetSearchSchema),
+      handler: (a, c) => handleAssetSearch(a as Parameters<typeof handleAssetSearch>[0], c),
+    },
+    {
+      name: 'asset_get',
+      description: 'Reads stable registry metadata for exactly one Content asset by GUID or project-relative path. Import settings are explicitly unavailable in Flax 1.12 public APIs. Requires bridge v8.',
+      inputSchema: zodToJsonSchema(AssetGetSchema),
+      handler: (a, c) => handleAssetGet(a as Parameters<typeof handleAssetGet>[0], c),
+    },
+    {
+      name: 'asset_dependencies',
+      description: 'Returns direct dependencies by default, or a cycle-safe transitive asset graph to max_depth 16. Results are cursor-paginated and use only public Asset.GetReferences data. Requires bridge v8.',
+      inputSchema: zodToJsonSchema(AssetDependenciesSchema),
+      handler: (a, c) => handleAssetDependencies(a as Parameters<typeof handleAssetDependencies>[0], c),
+    },
+    {
+      name: 'asset_find_references',
+      description: 'Finds bounded direct reverse references by scanning public asset references. Returns source asset/scene/prefab kinds only; actor/property locations are unavailable. Requires bridge v8.',
+      inputSchema: zodToJsonSchema(AssetFindReferencesSchema),
+      handler: (a, c) => handleAssetFindReferences(a as Parameters<typeof handleAssetFindReferences>[0], c),
     },
 
     // ── Settings ──────────────────────────────────────────────────────────────
@@ -704,7 +744,9 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     if (!zodInputSchema) {
       throw new Error(`Tool "${tool.name}" is missing its Zod input schema.`);
     }
-    const strictSchema = zodInputSchema.strict();
+    // Most schemas are objects and are made strict centrally. Schemas with
+    // selector cross-field validation are already strict before superRefine.
+    const strictSchema = zodInputSchema instanceof z.ZodObject ? zodInputSchema.strict() : zodInputSchema;
     return {
       ...tool,
       zodInputSchema: strictSchema,

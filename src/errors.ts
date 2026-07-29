@@ -8,6 +8,7 @@ export type ToolErrorCode =
   | 'INVALID_ARGUMENT'
   | 'UNKNOWN_TOOL'
   | 'NOT_FOUND'
+  | 'ASSET_NOT_FOUND'
   | 'PERMISSION_DENIED'
   | 'INVALID_PATH'
   | 'FILE_CHANGED'
