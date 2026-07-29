@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 9
+// MCP-BRIDGE-VERSION: 12
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -23,12 +23,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 9; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 12; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 9; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; }
+    public class McpStatus { public int BridgeVersion = 12; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -106,6 +106,14 @@ namespace Game.MCP
     internal sealed class McpAssetRecord { public Guid Id; public AssetInfo Info; public string Path; public string Extension; public string Folder; }
     internal sealed class McpAssetGraphIndex { public Dictionary<Guid, McpAssetRecord> ById; public Dictionary<Guid, List<Guid>> Direct; public Dictionary<Guid, int> Missing; public Dictionary<Guid, int> Reverse; }
     internal sealed class McpAssetCursor { public string Method; public string Scope; public string IndexRevision; public int Offset; public long ExpiresUnixMs; }
+    public class McpPrefabCreateFromActor { public string ActorId; public string DestinationPath; public bool AutoLink; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpPrefabInstantiate { public string AssetId; public string Path; public string ParentId; public string Name; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpPrefabGetInstances { public string AssetId; public string Path; public string SceneId; public int Limit = 50; public string Cursor; }
+    public class McpPrefabActorRequest { public string ActorId; public bool DryRun = true; public bool Confirm; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpPrefabCreateResult { public bool DryRun; public bool Created; public string PrefabPath; public string ActorId; public bool AutoLinked; public long ProjectRevision; public string SceneId; public long SceneRevision; }
+    public class McpPrefabInstantiateResult { public bool DryRun; public McpAssetMetadata Prefab; public McpActorDto Actor; public bool VerifiedLink; public long ProjectRevision; public string SceneId; public long SceneRevision; }
+    public class McpPrefabInstanceDto { public string ActorId; public string SceneId; public string ParentId; public string Name; public string PrefabId; public string PrefabObjectId; public bool IsPrefabRoot; }
+    public class McpPrefabInstancesResult { public McpAssetMetadata Prefab; public McpPrefabInstanceDto[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
 
     /// <summary>
     /// File-based RPC bridge. Requests are moved atomically from requests/ into
@@ -114,7 +122,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 9;
+        private const int BridgeVersion = 12;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -154,6 +162,8 @@ namespace Game.MCP
         private const int MaxAssetImportOperations = 512;
         private const long MaxAssetImportSourceBytes = 512L * 1024L * 1024L;
         private const int AssetImportOperationTtlMs = 10 * 60 * 1000;
+        private const int MaxPrefabPageSize = 200;
+        private const int MaxPrefabInstanceScan = 10000;
 
         private volatile bool _running;
         private volatile int _busy;
@@ -221,7 +231,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v9 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v12 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -390,6 +400,13 @@ namespace Game.MCP
                 case "asset.import_status": result = OnMain(() => GetAssetImportOperation(JsonSerializer.Deserialize<McpAssetOperationStatusRequest>(p), "import"), request.deadlineUnixMs); break;
                 case "asset.reimport_start": { var q = JsonSerializer.Deserialize<McpAssetReimportStart>(p); result = OnMain(() => ExecuteIdempotent("asset.reimport_start", q == null ? null : q.IdempotencyKey, AssetReimportFingerprintInput(q), () => StartAssetReimport(q)), request.deadlineUnixMs); break; }
                 case "asset.reimport_status": result = OnMain(() => GetAssetImportOperation(JsonSerializer.Deserialize<McpAssetOperationStatusRequest>(p), "reimport"), request.deadlineUnixMs); break;
+                case "prefab.create_from_actor": { var q = JsonSerializer.Deserialize<McpPrefabCreateFromActor>(p); result = OnMain(() => ExecuteIdempotent("prefab.create_from_actor", q == null ? null : q.IdempotencyKey, q, () => CreatePrefabFromActor(q)), request.deadlineUnixMs); break; }
+                case "prefab.instantiate": { var q = JsonSerializer.Deserialize<McpPrefabInstantiate>(p); result = OnMain(() => ExecuteIdempotent("prefab.instantiate", q == null ? null : q.IdempotencyKey, q, () => InstantiatePrefab(q)), request.deadlineUnixMs); break; }
+                case "prefab.get_instances": result = OnMain(() => GetPrefabInstances(JsonSerializer.Deserialize<McpPrefabGetInstances>(p)), request.deadlineUnixMs); break;
+                case "prefab.get_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_get_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
+                case "prefab.revert_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_revert_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
+                case "prefab.apply_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_apply_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
+                case "prefab.break_link": result = OnMain(() => UnsupportedPrefabOperation("prefab_break_link", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
                 default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method is not in the bridge allowlist.");
             }
             var resultJson = JsonSerializer.Serialize(result, true);
@@ -658,6 +675,229 @@ namespace Game.MCP
                     operation.Progress = Math.Max(operation.Progress, Math.Min(0.99f, FEditor.Instance.ContentImporting.ImportingProgress));
                 return CopyAssetImportOperation(operation);
             }
+        }
+
+        // Prefab v12 intentionally uses only the documented public Flax 1.12
+        // API: PrefabManager.CreatePrefab, SpawnPrefab, Actor.IsPrefabRoot, and
+        // SceneObject.PrefabID. It never reads or edits prefab serialization.
+        private McpPrefabCreateResult CreatePrefabFromActor(McpPrefabCreateFromActor request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Prefab creation parameters are required.");
+            var actor = RequireActor(request.ActorId);
+            if (actor is Scene) throw new McpProtocolException("VALIDATION_FAILED", "A scene cannot be used as a prefab root actor.");
+            EnsurePrefabEditorReady();
+            CheckSceneWrite(actor.Scene, request.ExpectedSceneRevision, request.LeaseId);
+            var output = ResolvePrefabOutput(request.DestinationPath);
+            var result = new McpPrefabCreateResult
+            {
+                DryRun = request.DryRun,
+                Created = false,
+                PrefabPath = ProjectContentRelativePath(output),
+                ActorId = actor.ID.ToString("N"),
+                AutoLinked = request.AutoLink,
+            };
+            if (request.DryRun)
+            {
+                var current = CurrentRevision(actor.Scene);
+                result.ProjectRevision = current.ProjectRevision;
+                result.SceneId = actor.Scene == null ? null : actor.Scene.ID.ToString("N");
+                result.SceneRevision = current.SceneRevision;
+                return result;
+            }
+            if (PrefabManager.CreatePrefab(actor, output, request.AutoLink))
+                throw new McpProtocolException("VALIDATION_FAILED", "Flax failed to create the prefab from the selected actor.");
+            result.Created = true;
+            McpRevision revision;
+            if (request.AutoLink)
+            {
+                MarkEdited(actor);
+                revision = AdvanceSceneRevision(actor.Scene);
+            }
+            else
+            {
+                AdvanceProjectRevision();
+                revision = CurrentRevision(actor.Scene);
+            }
+            result.ProjectRevision = revision.ProjectRevision;
+            result.SceneId = actor.Scene == null ? null : actor.Scene.ID.ToString("N");
+            result.SceneRevision = revision.SceneRevision;
+            return result;
+        }
+
+        private McpPrefabInstantiateResult InstantiatePrefab(McpPrefabInstantiate request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Prefab instantiation parameters are required.");
+            if (string.IsNullOrEmpty(request.ParentId))
+                throw new McpProtocolException("VALIDATION_FAILED", "ParentId is required so the target loaded scene can be guarded before instantiation.");
+            var record = ResolvePrefabRecord(request.AssetId, request.Path);
+            var parent = RequireActor(request.ParentId);
+            EnsurePrefabEditorReady();
+            CheckSceneWrite(parent.Scene, request.ExpectedSceneRevision, request.LeaseId);
+            ValidateVector(request.Position, "Position");
+            ValidateVector(request.Scale, "Scale");
+            ValidateVector(request.EulerAngles, "EulerAngles");
+            if (request.Name != null) Limit(request.Name, 128, "Prefab");
+            var current = CurrentRevision(parent.Scene);
+            var preview = new McpPrefabInstantiateResult
+            {
+                DryRun = request.DryRun,
+                Prefab = AssetMetadata(record),
+                VerifiedLink = false,
+                ProjectRevision = current.ProjectRevision,
+                SceneId = parent.Scene == null ? null : parent.Scene.ID.ToString("N"),
+                SceneRevision = current.SceneRevision,
+            };
+            if (request.DryRun) return preview;
+            Asset loaded = null;
+            try { loaded = Content.Load(record.Id, AssetLoadTimeoutMs); } catch { }
+            var prefab = loaded as Prefab;
+            if (prefab == null || prefab.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The selected prefab asset could not be loaded by Flax Editor.");
+            var position = request.Position == null ? new Float3(0.0f, 0.0f, 0.0f) : ToFloat3(request.Position);
+            var euler = request.EulerAngles == null ? new Float3(0.0f, 0.0f, 0.0f) : ToFloat3(request.EulerAngles);
+            var scale = request.Scale == null ? new Float3(1.0f, 1.0f, 1.0f) : ToFloat3(request.Scale);
+            var transform = new Transform(new Vector3(position.X, position.Y, position.Z), Quaternion.Euler(euler), scale);
+            var actor = PrefabManager.SpawnPrefab(prefab, parent, transform);
+            if (actor == null) throw new McpProtocolException("VALIDATION_FAILED", "Flax failed to instantiate the selected prefab under the requested parent.");
+            if (request.Name != null) actor.Name = Limit(request.Name, 128, "Prefab");
+            MarkEdited(actor);
+            var revision = AdvanceSceneRevision(actor.Scene);
+            preview.DryRun = false;
+            preview.Actor = ActorDto(actor, false);
+            preview.VerifiedLink = actor.HasPrefabLink && actor.PrefabID == record.Id && actor.IsPrefabRoot;
+            preview.ProjectRevision = revision.ProjectRevision;
+            preview.SceneId = actor.Scene == null ? null : actor.Scene.ID.ToString("N");
+            preview.SceneRevision = revision.SceneRevision;
+            return preview;
+        }
+
+        private McpPrefabInstancesResult GetPrefabInstances(McpPrefabGetInstances request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Prefab instance parameters are required.");
+            ValidatePrefabPage(request.Limit, request.Cursor);
+            var record = ResolvePrefabRecord(request.AssetId, request.Path);
+            Scene scene = null;
+            if (!string.IsNullOrEmpty(request.SceneId)) scene = RequireScene(request.SceneId);
+            var instances = new List<Actor>();
+            var scanned = 0;
+            if (scene != null)
+            {
+                CollectPrefabInstances(scene, record.Id, instances, ref scanned);
+            }
+            else
+            {
+                for (var i = 0; i < Level.ScenesCount; i++)
+                {
+                    var loadedScene = Level.GetScene(i);
+                    if (loadedScene != null) CollectPrefabInstances(loadedScene, record.Id, instances, ref scanned);
+                }
+            }
+            instances.Sort((left, right) =>
+            {
+                var sceneCompare = string.Compare(left.Scene == null ? "" : left.Scene.ID.ToString("N"), right.Scene == null ? "" : right.Scene.ID.ToString("N"), StringComparison.Ordinal);
+                return sceneCompare != 0 ? sceneCompare : string.Compare(left.ID.ToString("N"), right.ID.ToString("N"), StringComparison.Ordinal);
+            });
+            var scope = "prefab.get_instances|" + record.Id.ToString("N") + "|" + (scene == null ? "all-loaded" : scene.ID.ToString("N"));
+            var revision = PrefabInstancesRevision(instances);
+            var offset = GetAssetCursorOffset(request.Cursor, "prefab.get_instances", scope, revision);
+            if (offset < 0 || offset > instances.Count) throw new McpProtocolException("CURSOR_INVALID", "Prefab instance cursor offset is invalid.");
+            var count = Math.Min(request.Limit, instances.Count - offset);
+            var entries = new McpPrefabInstanceDto[count];
+            for (var i = 0; i < count; i++) entries[i] = PrefabInstanceDto(instances[offset + i]);
+            var hasMore = offset + count < instances.Count;
+            return new McpPrefabInstancesResult
+            {
+                Prefab = AssetMetadata(record),
+                Entries = entries,
+                HasMore = hasMore,
+                NextCursor = hasMore ? CreateAssetCursor("prefab.get_instances", scope, revision, offset + count) : null,
+                IndexRevision = revision,
+                Warnings = new[] { "Only currently loaded scenes are scanned. Flax 1.12 exposes no verified global prefab-instance registry; external Editor changes require a refresh." },
+            };
+        }
+
+        private object UnsupportedPrefabOperation(string capability, McpPrefabActorRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(request.ActorId)) throw new McpProtocolException("INVALID_REQUEST", "ActorId is required.");
+            RequireActor(request.ActorId);
+            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", capability + " is intentionally unavailable: Flax 1.12 exposes no verified public override-diff/revert API, and apply or break-link lacks the reviewed undo, preview, and confirmation path required by this bridge.", new { Capability = capability, BridgeVersion = BridgeVersion, DryRun = request.DryRun });
+        }
+
+        private static void EnsurePrefabEditorReady()
+        {
+            if (FEditor.IsPlayMode || FEditor.Instance.Simulation.IsPlayModeRequested || ScriptsBuilder.IsCompiling || !ScriptsBuilder.IsReady)
+                throw new McpProtocolException("EDITOR_BUSY", "Prefab workflows are unavailable while the editor is playing, compiling, or reloading scripts.");
+        }
+
+        private static McpAssetRecord ResolvePrefabRecord(string assetId, string path)
+        {
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = assetId, Path = path }, BuildAssetRegistry());
+            if (!string.Equals(record.Info.TypeName, "FlaxEngine.Prefab", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "The selected Content asset is not a Flax prefab.");
+            return record;
+        }
+
+        private static string ResolvePrefabOutput(string destinationPath)
+        {
+            var normalized = ValidateProjectContentPath(destinationPath, false);
+            if (!normalized.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
+                throw new McpProtocolException("VALIDATION_FAILED", "Prefab destination must use the .prefab extension.");
+            var content = CanonicalExistingPath(Path.Combine(Globals.ProjectFolder, "Content"), false);
+            var output = Path.GetFullPath(Path.Combine(content, normalized.Substring("Content/".Length).Replace('/', Path.DirectorySeparatorChar)));
+            if (!PathIsWithin(content, output)) throw new McpProtocolException("VALIDATION_FAILED", "Prefab destination escapes Content.");
+            EnsurePrefabOutputParent(output);
+            if (File.Exists(output) || Directory.Exists(output)) throw new McpProtocolException("FILE_EXISTS", "A prefab already exists at the requested destination.");
+            return output;
+        }
+
+        private static void EnsurePrefabOutputParent(string output)
+        {
+            var content = CanonicalExistingPath(Path.Combine(Globals.ProjectFolder, "Content"), false);
+            var parent = Path.GetDirectoryName(output);
+            while (!Directory.Exists(parent))
+            {
+                var next = Path.GetDirectoryName(parent);
+                if (string.IsNullOrEmpty(next) || string.Equals(next, parent, PathComparison))
+                    throw new McpProtocolException("VALIDATION_FAILED", "Prefab destination parent is invalid.");
+                parent = next;
+            }
+            if (!PathIsWithin(content, CanonicalExistingPath(parent, false)))
+                throw new McpProtocolException("VALIDATION_FAILED", "Prefab destination parent resolves outside Content.");
+        }
+
+        private static void ValidatePrefabPage(int limit, string cursor)
+        {
+            if (limit < 1 || limit > MaxPrefabPageSize) throw new McpProtocolException("VALIDATION_FAILED", "Limit must be between 1 and 200.");
+            if (!string.IsNullOrEmpty(cursor) && !IsGuidN(cursor)) throw new McpProtocolException("CURSOR_INVALID", "Prefab cursor is invalid.");
+        }
+
+        private static void CollectPrefabInstances(Actor actor, Guid prefabId, List<Actor> output, ref int scanned)
+        {
+            if (++scanned > MaxPrefabInstanceScan) throw new McpProtocolException("RESPONSE_TOO_LARGE", "Loaded-scene prefab scan exceeds the 10000-actor limit.");
+            if (actor.IsPrefabRoot && actor.HasPrefabLink && actor.PrefabID == prefabId) output.Add(actor);
+            for (var i = 0; i < actor.ChildrenCount; i++) CollectPrefabInstances(actor.GetChild(i), prefabId, output, ref scanned);
+        }
+
+        private static McpPrefabInstanceDto PrefabInstanceDto(Actor actor)
+        {
+            return new McpPrefabInstanceDto
+            {
+                ActorId = actor.ID.ToString("N"),
+                SceneId = actor.Scene == null ? null : actor.Scene.ID.ToString("N"),
+                ParentId = actor.Parent == null ? null : actor.Parent.ID.ToString("N"),
+                Name = actor.Name,
+                PrefabId = actor.PrefabID.ToString("N"),
+                PrefabObjectId = actor.PrefabObjectID.ToString("N"),
+                IsPrefabRoot = actor.IsPrefabRoot,
+            };
+        }
+
+        private string PrefabInstancesRevision(List<Actor> instances)
+        {
+            var identity = new StringBuilder(instances.Count * 48);
+            lock (_stateLock) identity.Append(_projectRevision).Append('|');
+            foreach (var actor in instances) identity.Append(actor.Scene == null ? "" : actor.Scene.ID.ToString("N")).Append('|').Append(actor.ID.ToString("N")).Append('|').Append(actor.PrefabID.ToString("N")).Append('\n');
+            return Fingerprint(identity.ToString());
         }
 
         private McpAssetOperation BeginAssetImportOperation(string operationId, string kind, string fingerprint, bool dryRun, out bool adopted)
@@ -1106,7 +1346,7 @@ namespace Game.MCP
                 CleanupExpiredStateLocked(now);
                 McpAssetCursor stored;
                 if (!_assetCursors.TryGetValue(cursor, out stored) || !string.Equals(stored.Method, method, StringComparison.Ordinal) || !string.Equals(stored.Scope, scope, StringComparison.Ordinal) || !string.Equals(stored.IndexRevision, revision, StringComparison.Ordinal))
-                    throw new McpProtocolException("CURSOR_INVALID", "Asset cursor is expired, has a different filter scope, or the asset registry changed.");
+                    throw new McpProtocolException("CURSOR_INVALID", "Cursor is expired, has a different filter scope, or its source index changed.");
                 return stored.Offset;
             }
         }

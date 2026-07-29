@@ -1,4 +1,4 @@
-# Flax MCP Editor Bridge protocol (bridge v9 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v12 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
@@ -6,7 +6,7 @@
 At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
 writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 9, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 12, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -245,3 +245,65 @@ ten minutes and are capped at 512. Reusing an operation ID with a different
 request fingerprint or an idempotency key with a different request yields
 `IDEMPOTENCY_KEY_REUSED`; expired/unknown/mismatched status IDs yield
 `OPERATION_NOT_FOUND`.
+
+## Bridge v12: bounded prefab editor workflows
+
+Bridge v12 keeps protocol v1. All v5--v9 methods remain available unchanged and
+the following status flags are additive: `PrefabWorkflowsSupported:true`,
+`PrefabCreateSupported:true`, `PrefabInstantiateSupported:true`,
+`PrefabInstanceEnumerationSupported:true`, `PrefabOverridesSupported:false`,
+`PrefabApplyOverridesSupported:false`, `PrefabRevertOverridesSupported:false`,
+and `PrefabBreakLinkSupported:false`.
+
+The bridge implements only verified public Flax 1.12 API calls:
+`PrefabManager.CreatePrefab`, `PrefabManager.SpawnPrefab`, `Actor.IsPrefabRoot`,
+and `SceneObject.PrefabID`/`PrefabObjectID`. It does not read or mutate prefab
+serialization, call private prefab internals, or use reflection to infer
+overrides.
+
+`prefab.create_from_actor` accepts PascalCase `ActorId`, `DestinationPath`,
+`AutoLink`, `DryRun`, `ExpectedSceneRevision`, `LeaseId`, and `IdempotencyKey`.
+`DestinationPath` must be a new project-relative `Content/.../*.prefab` path;
+absolute paths, traversal, symlink/junction escapes, and existing files are
+rejected. `AutoLink` defaults to false. The bridge resolves the source actor,
+checks the source loaded scene's v7 revision/lease gate, and rejects play or
+script compile/reload. Dry-run performs every validation without calling Flax
+or changing dirty state. A successful create uses
+`PrefabManager.CreatePrefab(actor, fullOutputPath, autoLink)` and returns only
+the project-relative prefab path, source actor ID, link mode, and revisions.
+When `AutoLink:false`, only `ProjectRevision` advances; when true, the source
+scene is marked edited and its `SceneRevision` advances. The output asset write
+does not claim to be recoverable with Editor Undo.
+
+`prefab.instantiate` accepts exactly one `AssetId` or `Path`, plus required
+`ParentId`; optional `Name`, `Position`, `Scale`, and `EulerAngles` are bounded
+and finite. The selected registry entry must verify as `FlaxEngine.Prefab`.
+`ParentId` is deliberately mandatory because public unparented
+`SpawnPrefab` targets the first loaded scene, which cannot be safely selected
+or lease-gated before mutation. The bridge validates the parent's loaded scene,
+loads the selected `Prefab`, and calls only
+`PrefabManager.SpawnPrefab(prefab, parent, worldTransform)`. It returns the
+new actor DTO and a `VerifiedLink` flag based on public link metadata. This
+operation accepts the same dry-run, revision, lease, and ten-minute bounded
+idempotency guard as other bridge mutations.
+
+`prefab.get_instances` accepts exactly one `AssetId` or `Path`, optional loaded
+`SceneId`, `Limit` 1--200, and opaque `Cursor`. It scans only currently loaded
+scene actor trees, selects `IsPrefabRoot` actors whose public `PrefabID` equals
+the selected prefab ID, and returns actor/scene/parent IDs plus prefab object
+metadata. The scan is capped at 10,000 actors; results are capped at 200 per
+page. Cursors are scoped to prefab + scene filter + bridge-known project
+revision, share the existing ten-minute/512-entry bounded cursor store, and
+are invalidated when that source identity changes. Manual Editor changes are
+not observed automatically, so callers must refresh after out-of-band edits.
+
+The bridge exposes `prefab.get_overrides`, `prefab.revert_overrides`,
+`prefab.apply_overrides`, and `prefab.break_link` so clients can discover a
+stable result, but each validates its target then returns
+`UNSUPPORTED_FLAX_VERSION` with a `Capability` detail. Flax 1.12 exposes no
+verified public property-level override reader or revert API. The public apply
+and break-link APIs are intentionally not called: v12 has not proven a
+reviewed undo action, semantic dry-run, and explicit confirmation path for
+them. Revert/apply/break DTOs accept `DryRun` (defaulted by Node to true) and
+`Confirm`, but these fields never authorize a mutation until a future reviewed
+bridge version adds that capability.

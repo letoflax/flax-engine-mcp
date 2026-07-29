@@ -198,6 +198,7 @@ export async function handleGetServerCapabilities(
     const phase3 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 7;
     const phase4Assets = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 8;
     const phase5AssetImport = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 9;
+    const phase6Prefabs = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 12;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -234,6 +235,16 @@ export async function handleGetServerCapabilities(
           maxSourceBytes: assetImportPolicy.maxSourceBytes,
           allowedExtensionCount: assetImportPolicy.extensions.length,
           settings: false,
+        },
+        prefab: {
+          available: phase6Prefabs,
+          create: phase6Prefabs,
+          instantiate: phase6Prefabs,
+          loadedSceneInstances: phase6Prefabs,
+          overrides: false,
+          applyOverrides: false,
+          revertOverrides: false,
+          breakLink: false,
         },
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
