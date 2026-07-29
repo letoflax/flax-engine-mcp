@@ -25,15 +25,17 @@ Flax Editor, prohibits symlink/junction creation, or the bridge exposes no
 cancellable operation API. Scoped temporary directories are removed in every
 test, including on a failed assertion.
 
-For the bridge v12 prefab surface, run the compile-only API smoke probe against
+For the bridge v12 prefab and v13 material/animation surfaces, run the compile-only API smoke probes against
 the installed Flax 1.12 managed artifact before claiming compatibility:
 
 ```powershell
 dotnet build test/flax-api-smoke/PrefabApiCompileProbe.csproj --nologo --verbosity minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll'
+dotnet build test/flax-api-smoke/MaterialAnimationApiCompileProbe.csproj --nologo --verbosity minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll'
 dotnet build test/flax-api-smoke/BridgeCompileSmoke.csproj --nologo --verbosity minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll'
 ```
 
-The first probe validates the direct public signatures; the second compiles the
-whole bridge source with `FLAX_EDITOR` against the same artifact. Neither starts
+The direct probes validate public signatures; the final command compiles the
+whole bridge source with FLAX_EDITOR against the same artifact. Neither starts
 Flax or validates Editor Undo behavior; that is why v12 keeps
-override/revert/apply/break-link workflows explicitly unsupported.
+override/revert/apply/break-link and v13 keeps material/animation mutations
+explicitly unsupported.

@@ -67,6 +67,24 @@ import {
   handlePrefabInstantiate,
   handlePrefabRevertOverrides,
 } from './prefabLive.js';
+import {
+  AnimationGetGraphParametersSchema,
+  AnimationListClipsSchema,
+  AnimationSetGraphParameterSchema,
+  AnimationValidateBindingsSchema,
+  MaterialAssignToActorSchema,
+  MaterialCreateInstanceSchema,
+  MaterialGetParametersSchema,
+  MaterialSetParametersSchema,
+  handleAnimationGetGraphParameters,
+  handleAnimationListClips,
+  handleAnimationSetGraphParameter,
+  handleAnimationValidateBindings,
+  handleMaterialAssignToActor,
+  handleMaterialCreateInstance,
+  handleMaterialGetParameters,
+  handleMaterialSetParameters,
+} from './materialAnimationLive.js';
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
 import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyActor } from './sceneWrite.js';
@@ -269,6 +287,14 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   prefab_apply_overrides: PrefabApplyOverridesSchema,
   prefab_revert_overrides: PrefabRevertOverridesSchema,
   prefab_break_link: PrefabBreakLinkSchema,
+  material_get_parameters: MaterialGetParametersSchema,
+  material_set_parameters: MaterialSetParametersSchema,
+  material_create_instance: MaterialCreateInstanceSchema,
+  material_assign_to_actor: MaterialAssignToActorSchema,
+  animation_list_clips: AnimationListClipsSchema,
+  animation_get_graph_parameters: AnimationGetGraphParametersSchema,
+  animation_set_graph_parameter: AnimationSetGraphParameterSchema,
+  animation_validate_bindings: AnimationValidateBindingsSchema,
   read_settings: ReadSettingsSchema,
   get_input_actions: GetInputActionsSchema,
   get_physics_settings: GetPhysicsSettingsSchema,
@@ -311,6 +337,10 @@ const WRITE_TOOL_NAMES = new Set([
   'prefab_apply_overrides',
   'prefab_revert_overrides',
   'prefab_break_link',
+  'material_set_parameters',
+  'material_create_instance',
+  'material_assign_to_actor',
+  'animation_set_graph_parameter',
   'install_editor_bridge',
   'scene_save',
   'project_save_all',
@@ -876,6 +906,55 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Reports a stable unsupported capability. Link breaking needs an audited undo/preview/confirmation path before it can be exposed. Requires bridge v12.',
       inputSchema: zodToJsonSchema(PrefabBreakLinkSchema),
       handler: (a, c) => handlePrefabBreakLink(a as Parameters<typeof handlePrefabBreakLink>[0], c),
+    },
+
+    {
+      name: 'material_get_parameters',
+      description: 'Reads bounded public parameter metadata and safe value projections for one Material or MaterialInstance. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(MaterialGetParametersSchema),
+      handler: (a, c) => handleMaterialGetParameters(a as Parameters<typeof handleMaterialGetParameters>[0], c),
+    },
+    {
+      name: 'material_set_parameters',
+      description: 'Reports a stable unsupported capability: material runtime setters lack a reviewed Editor undo, persistence, and preview path. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(MaterialSetParametersSchema),
+      handler: (a, c) => handleMaterialSetParameters(a as Parameters<typeof handleMaterialSetParameters>[0], c),
+    },
+    {
+      name: 'material_create_instance',
+      description: 'Reports a stable unsupported capability: virtual material instances cannot be safely persisted as a reviewed Editor mutation. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(MaterialCreateInstanceSchema),
+      handler: (a, c) => handleMaterialCreateInstance(a as Parameters<typeof handleMaterialCreateInstance>[0], c),
+    },
+    {
+      name: 'material_assign_to_actor',
+      description: 'Reports a stable unsupported capability: actor material-slot assignment lacks a verified undoable, previewable Editor API path. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(MaterialAssignToActorSchema),
+      handler: (a, c) => handleMaterialAssignToActor(a as Parameters<typeof handleMaterialAssignToActor>[0], c),
+    },
+    {
+      name: 'animation_list_clips',
+      description: 'Lists registered Animation clips with public playback and content metadata using opaque cursor pagination. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(AnimationListClipsSchema),
+      handler: (a, c) => handleAnimationListClips(a as Parameters<typeof handleAnimationListClips>[0], c),
+    },
+    {
+      name: 'animation_get_graph_parameters',
+      description: 'Reads public live animation-graph parameter values from one loaded AnimatedModel. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(AnimationGetGraphParametersSchema),
+      handler: (a, c) => handleAnimationGetGraphParameters(a as Parameters<typeof handleAnimationGetGraphParameters>[0], c),
+    },
+    {
+      name: 'animation_set_graph_parameter',
+      description: 'Reports a stable unsupported capability: runtime graph setters have no reviewed Editor persistence, undo, or semantic preview path. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(AnimationSetGraphParameterSchema),
+      handler: (a, c) => handleAnimationSetGraphParameter(a as Parameters<typeof handleAnimationSetGraphParameter>[0], c),
+    },
+    {
+      name: 'animation_validate_bindings',
+      description: 'Validates one loaded AnimatedModel against its public SkinnedModel, AnimationGraph, and graph BaseModel references. Requires bridge v13.',
+      inputSchema: zodToJsonSchema(AnimationValidateBindingsSchema),
+      handler: (a, c) => handleAnimationValidateBindings(a as Parameters<typeof handleAnimationValidateBindings>[0], c),
     },
 
     // ── Settings ──────────────────────────────────────────────────────────────

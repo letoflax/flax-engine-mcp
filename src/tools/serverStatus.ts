@@ -201,6 +201,7 @@ export async function handleGetServerCapabilities(
     const phase6AssetOrganization = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 10;
     const operationHandles = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 11;
     const phase6Prefabs = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 12;
+    const materialAnimation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -260,6 +261,20 @@ export async function handleGetServerCapabilities(
           applyOverrides: false,
           revertOverrides: false,
           breakLink: false,
+        },
+        material: {
+          available: materialAnimation,
+          parameters: materialAnimation,
+          setParameters: false,
+          createInstance: false,
+          assignToActor: false,
+        },
+        animation: {
+          available: materialAnimation,
+          listClips: materialAnimation,
+          graphParameters: materialAnimation,
+          setGraphParameter: false,
+          validateBindings: materialAnimation,
         },
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
