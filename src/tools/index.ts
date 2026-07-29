@@ -50,6 +50,14 @@ import {
   handleGetServerCapabilities,
 } from './serverStatus.js';
 import {
+  ServerGetHealthSchema,
+  ServerGetMetricsSchema,
+  ServerGetRecentErrorsSchema,
+  handleServerGetHealth,
+  handleServerGetMetrics,
+  handleServerGetRecentErrors,
+} from './serverObservability.js';
+import {
   GetEditorBridgeInstallationSchema,
   InstallEditorBridgeSchema,
   handleGetEditorBridgeInstallation,
@@ -150,6 +158,9 @@ export interface ToolDefinition {
 const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   get_server_capabilities: GetServerCapabilitiesSchema,
   editor_get_status: EditorGetStatusSchema,
+  server_get_health: ServerGetHealthSchema,
+  server_get_metrics: ServerGetMetricsSchema,
+  server_get_recent_errors: ServerGetRecentErrorsSchema,
   get_editor_bridge_installation: GetEditorBridgeInstallationSchema,
   install_editor_bridge: InstallEditorBridgeSchema,
   scene_list_loaded: SceneListLoadedSchema,
@@ -307,6 +318,24 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Reports whether a matching, live, recently heartbeating Flax Editor Bridge is connected.',
       inputSchema: zodToJsonSchema(EditorGetStatusSchema),
       handler: (a, c) => handleEditorGetStatus(a, c),
+    },
+    {
+      name: 'server_get_health',
+      description: 'Reports process-local server health and bridge availability without cloud telemetry or secrets.',
+      inputSchema: zodToJsonSchema(ServerGetHealthSchema),
+      handler: (a, c) => handleServerGetHealth(a, c),
+    },
+    {
+      name: 'server_get_metrics',
+      description: 'Returns bounded process-local tool timing, error, and IPC failure metrics. Metrics reset on restart.',
+      inputSchema: zodToJsonSchema(ServerGetMetricsSchema),
+      handler: (a, c) => handleServerGetMetrics(a, c),
+    },
+    {
+      name: 'server_get_recent_errors',
+      description: 'Returns up to 100 recent redacted process-local tool and IPC errors.',
+      inputSchema: zodToJsonSchema(ServerGetRecentErrorsSchema),
+      handler: (a, c) => handleServerGetRecentErrors(a as Parameters<typeof handleServerGetRecentErrors>[0], c),
     },
     {
       name: 'get_editor_bridge_installation',

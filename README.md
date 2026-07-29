@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 76 tools for reading and patching code, editing live scenes, searching the live asset registry, importing allowlisted assets, compiling, running bounded play-mode checks, inspecting logs, and more.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 79 tools for reading and patching code, editing live scenes, searching/importing assets, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
 
 ## Requirements
 
@@ -53,6 +53,19 @@ flax-mcp --project-path /path/to/flax/project \
 
 Only the built-in Flax 1.12 texture, model, and audio source extensions are accepted, source files are capped at 512 MiB, and destination paths must be `Content/.../*.flax`. Symlinks and junctions are resolved before every import; collisions fail by default or can use the bounded `rename` policy.
 
+## Doctor and local observability
+
+Run a read-only diagnostic before connecting a client:
+
+```bash
+flax-mcp doctor --project-path /path/to/project
+flax-mcp doctor --project-path /path/to/project --json
+```
+
+`doctor` checks Node, project metadata, declared Flax version, bridge installation and heartbeat/protocol, active permission flags, and cache/source/settings readability. It never reads the bridge token or prints the project path. Exit codes are stable: `0` means no failed checks (warnings are allowed), `1` means a check failed, and `2` means invalid doctor usage.
+
+The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_errors` tools provide bounded, in-process health data. Metrics include tool counts, error codes/rate, P50/P95 duration, and observable IPC failures; recent errors have a maximum of 100 entries and redact token-like values. They reset when the MCP process restarts. Cloud telemetry is disabled and no metrics leave the process.
+
 ## Tools
 
 ### Project Info
@@ -60,6 +73,9 @@ Only the built-in Flax 1.12 texture, model, and audio source extensions are acce
 |------|-------------|
 | `get_server_capabilities` | Server/project identity, feature flags, mode, and Editor Bridge availability |
 | `editor_get_status` | Validates the live bridge heartbeat, project identity, process, and freshness |
+| `server_get_health` | Process-local health and bridge availability without secrets or cloud telemetry |
+| `server_get_metrics` | Bounded in-process tool timing, error, and IPC-failure metrics |
+| `server_get_recent_errors` | Up to 100 recent redacted in-process tool and IPC errors |
 | `get_editor_bridge_installation` | Compare bundled and installed Editor Bridge versions and hashes |
 | `install_editor_bridge` | Preview or safely install the bridge into the editor target's detected game module; accepts `module` when targets are ambiguous |
 | `get_project_info` | Project config from `.flaxproj` — name, version, default scene, directory layout |

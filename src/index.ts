@@ -24,6 +24,8 @@ import { getFlaxPrompt, listFlaxPrompts } from './prompts.js';
 import { ResourceSubscriptionManager } from './resourceSubscriptions.js';
 import { allowedToolNames, assertPermissionRegistryCoverage, parsePermissionPolicy, policyForContext } from './permissions.js';
 import { createAssetImportPolicy } from './assetImportPolicy.js';
+import { recordToolCall } from './observability.js';
+import { runDoctor } from './doctor.js';
 
 export function parseProjectPath(argv = process.argv): string {
   const idx = argv.indexOf('--project-path');
@@ -50,8 +52,12 @@ export async function dispatchToolCall(
 ): Promise<ToolResponse> {
   const operationId = randomUUID();
   const startedAt = performance.now();
-  const finalize = (response: ToolResponse) =>
-    finalizeToolResponse(response, operationId, Math.round(performance.now() - startedAt));
+  const finalize = (response: ToolResponse) => {
+    const result = finalizeToolResponse(response, operationId, Math.round(performance.now() - startedAt));
+    const envelope = result.structuredContent as { timing?: { durationMs?: number }; error?: { code?: string; message?: string } } | undefined;
+    recordToolCall(name, envelope?.timing?.durationMs ?? 0, !result.isError, envelope?.error?.code, envelope?.error?.message);
+    return result;
+  };
 
   const tool = tools.find(candidate => candidate.name === name);
   if (!tool) {
@@ -78,6 +84,12 @@ export async function dispatchToolCall(
 }
 
 async function main(): Promise<void> {
+  if (process.argv[2] === 'doctor') {
+    const result = await runDoctor(process.argv);
+    process.stdout.write(`${result.text}\n`);
+    process.exitCode = result.exitCode;
+    return;
+  }
   const projectPath = parseProjectPath();
   const ctx = await createProjectContext(projectPath);
   ctx.permissionPolicy = parsePermissionPolicy(process.argv);
