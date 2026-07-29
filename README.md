@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 92 tools for reading and patching code, editing live scenes, searching/importing assets, working with safe live-prefab primitives, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 98 tools for reading and patching code, editing live scenes, searching/importing assets, working with safe live-prefab primitives, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
 
 ## Requirements
 
@@ -198,6 +198,15 @@ both. The name excludes the extension, which remains the source extension.
 | `prefab_revert_overrides` | Stable unsupported capability; dry-run defaults to true because no verified public revert API exists (bridge v12) |
 | `prefab_apply_overrides` / `prefab_break_link` | Stable unsupported capabilities until an undoable, previewable, confirmation-safe Editor path is verified (bridge v12) |
 
+### Build & Cook
+| Tool | What it does |
+|------|-------------|
+| `build_list_targets` | List the reviewed GameCooker target allowlist; a listed target is not proof its local toolchain is installed (bridge v13) |
+| `build_validate` | Non-mutating preflight for a target and output below `Builds/`; toolchain availability remains unknown until start (bridge v13) |
+| `build_cook` | Start a bounded GameCooker build into an empty project-relative `Builds/...` directory, with dry-run and an operation handle (bridge v13) |
+| `build_get_status` / `build_get_result` | Poll a build handle or retrieve its terminal result; result rejects a non-terminal build (bridge v13) |
+| `build_cancel` | Request GameCooker cancellation; poll to confirm terminal cleanup (bridge v13) |
+
 ### Settings & Config
 | Tool | What it does |
 |------|-------------|
@@ -235,6 +244,8 @@ Each workflow first asks the client to inspect safe MCP resources (and read-only
 
 - **Safe prefab workflows** -- `prefab_create_from_actor`, `prefab_instantiate`, and `prefab_get_instances` require bridge v12. They use only the public Flax 1.12 `PrefabManager.CreatePrefab`, `PrefabManager.SpawnPrefab`, `Actor.IsPrefabRoot`, and `SceneObject.PrefabID` APIs. Creation accepts only a new project-relative `Content/.../*.prefab` path and never overwrites; it defaults `auto_link:false`. Instantiation requires a loaded `parent_id`, so the bridge can check the target scene revision/lease before it writes; top-level placement is deliberately deferred because Flax's unparented spawn selects its first loaded scene. Instance results are limited to currently loaded scenes, capped at 10,000 scanned actors and 200 entries/page; cursors expire after ten minutes. The bridge does not inspect or edit prefab files, use reflection, or claim unloaded-scene coverage.
 - **Prefab limitations** -- Flax 1.12 has no verified public API for reading property-level overrides or reverting them. Although public engine APIs expose apply and break-link operations, bridge v12 does not expose them because it has not verified a reviewed undo, semantic preview, and confirmation path. `prefab_get_overrides`, `prefab_revert_overrides`, `prefab_apply_overrides`, and `prefab_break_link` therefore return the stable `UNSUPPORTED_FLAX_VERSION` capability error with an explicit reason instead of inferring state from serialization.
+
+- **Bounded build/cook workflows** -- `build_list_targets`, `build_validate`, `build_cook`, `build_get_status`, `build_get_result`, and `build_cancel` require bridge v13. They invoke only public Flax 1.12 `GameCooker.Build`, `GameCooker.Cancel`, event, and progress APIs. Output must be a non-empty project-relative directory below `Builds/`; non-empty destinations, arbitrary command lines, presets, package settings, and paths outside the project are rejected. Validation is deliberately preflight-only because Flax does not expose a reviewed managed API for toolchain availability. Build cancellation is asynchronous: acknowledgement means the request reached GameCooker, while a terminal cancellation requires later polling.
 
 - **Foundation contracts** — every tool validates arguments, advertises an output schema and annotations, and returns structured results with operation metadata.
 - **Validation rules** — `validate_project` keeps its legacy text summary, while `structuredContent.data.findings` exposes stable rule IDs, severities, project-relative locations, suggested fixes, auto-fix metadata, filters (`rule_ids`, `severities`), per-call suppressions, and cursor pagination (maximum 200 findings/page). Offline rules cover missing first scenes/assets, compiler log failures, duplicate input mappings, statically suspicious network attributes, optional required-camera checks, invalid Flax headers, settings, and scene JSON. Editor/cooker-only checks are explicitly reported as capability gaps rather than inferred.

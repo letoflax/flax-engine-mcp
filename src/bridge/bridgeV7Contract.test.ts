@@ -132,3 +132,21 @@ test('bridge v12 exposes only the verified bounded prefab surface and leaves uns
   assert.doesNotMatch(source, /PrefabManager\.ApplyAll\(/);
   assert.doesNotMatch(source, /\.BreakPrefabLink\(/);
 });
+
+test('bridge v13 exposes only bounded public GameCooker build/cook workflows', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "build\.list_targets"/);
+  assert.match(source, /case "build\.validate"/);
+  assert.match(source, /case "build\.cook"/);
+  assert.match(source, /case "build\.status"/);
+  assert.match(source, /case "build\.result"/);
+  assert.match(source, /case "build\.cancel"/);
+  assert.match(source, /GameCooker\.Build\(platform, configuration, output, BuildOptions\.None/);
+  assert.match(source, /GameCooker\.Cancel\(false\)/);
+  assert.match(source, /GameCooker\.Event \+= OnGameCookerEvent/);
+  assert.match(source, /GameCooker\.Progress \+= OnGameCookerProgress/);
+  assert.match(source, /BuildOutputScope = "project-relative-Builds-only"/);
+  assert.match(source, /ToolchainPreflightSupported = false/);
+  assert.match(source, /BUILD_NOT_COMPLETE/);
+  assert.doesNotMatch(source, /Process\.Start\(/);
+});

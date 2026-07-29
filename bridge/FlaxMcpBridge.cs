@@ -28,7 +28,7 @@ namespace Game.MCP
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 13; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; }
+    public class McpStatus { public int BridgeVersion = 13; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -122,6 +122,14 @@ namespace Game.MCP
         public bool CanCancel; public bool CancelRequested; public string ResultSummary;
         public string ErrorCode; public string Error; public string[] Diagnostics;
     }
+    // v13 build requests are deliberately narrow. Output is project-relative
+    // under Builds/, custom defines are bounded plain symbols, and the bridge
+    // never accepts arbitrary command lines, packaging settings, or presets.
+    public class McpBuildRequest { public string OperationId; public string Platform; public string Configuration; public string OutputPath; public bool DryRun; public string[] CustomDefines; }
+    public class McpBuildOperationRequest { public string OperationId; }
+    public class McpBuildTarget { public string Platform; public string DisplayName; public bool IsHostTarget; public string Availability = "not-preflighted"; }
+    public class McpBuildTargetsResult { public McpBuildTarget[] Entries; public string[] Warnings; }
+    public class McpBuildValidation { public bool Valid; public string Platform; public string Configuration; public string OutputPath; public bool OutputExists; public bool OutputEmpty; public bool ToolchainPreflightSupported = false; public string[] Warnings; }
     public class McpPrefabCreateFromActor { public string ActorId; public string DestinationPath; public bool AutoLink; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpPrefabInstantiate { public string AssetId; public string Path; public string ParentId; public string Name; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpPrefabGetInstances { public string AssetId; public string Path; public string SceneId; public int Limit = 50; public string Cursor; }
@@ -225,6 +233,9 @@ namespace Game.MCP
         // completion event. Full paths never leave the bridge response DTO.
         private readonly Dictionary<string, string> _pendingReimportsByOutputPath = new Dictionary<string, string>();
         private readonly Dictionary<string, McpOperation> _operations = new Dictionary<string, McpOperation>();
+        // Only metadata necessary for a bounded result projection is retained.
+        // The persisted generic operation remains the durable source of truth.
+        private readonly Dictionary<string, McpBuildRequest> _buildRequests = new Dictionary<string, McpBuildRequest>();
 
         private static string Root { get { return Path.Combine(Globals.ProjectFolder, "Cache", "MCP"); } }
         private static string Requests { get { return Path.Combine(Root, "requests"); } }
@@ -411,6 +422,12 @@ namespace Game.MCP
                 case "code.generate_project_status": result = GetGenerateProjectStatus(); break;
                 case "operation.status": result = OnMain(() => GetOperation(JsonSerializer.Deserialize<McpOperationRequest>(p)), request.deadlineUnixMs); break;
                 case "operation.cancel": result = OnMain(() => CancelOperation(JsonSerializer.Deserialize<McpOperationCancelRequest>(p)), request.deadlineUnixMs); break;
+                case "build.list_targets": result = OnMain(BuildTargets, request.deadlineUnixMs); break;
+                case "build.validate": result = OnMain(() => ValidateBuild(JsonSerializer.Deserialize<McpBuildRequest>(p)), request.deadlineUnixMs); break;
+                case "build.cook": { var q = JsonSerializer.Deserialize<McpBuildRequest>(p); result = OnMain(() => ExecuteIdempotent("build.cook", q == null ? null : q.OperationId, q, () => StartBuild(q)), request.deadlineUnixMs); break; }
+                case "build.status": result = OnMain(() => GetBuildStatus(JsonSerializer.Deserialize<McpBuildOperationRequest>(p), false), request.deadlineUnixMs); break;
+                case "build.result": result = OnMain(() => GetBuildStatus(JsonSerializer.Deserialize<McpBuildOperationRequest>(p), true), request.deadlineUnixMs); break;
+                case "build.cancel": result = OnMain(() => CancelBuild(JsonSerializer.Deserialize<McpBuildOperationRequest>(p)), request.deadlineUnixMs); break;
                 case "play.status": result = OnMain(PlayStatus, request.deadlineUnixMs); break;
                 case "play.start_scenes": result = OnMain(() => StartPlayScenes(JsonSerializer.Deserialize<McpPlayStart>(p)), request.deadlineUnixMs); break;
                 case "play.start_game": result = OnMain(() => StartPlayGame(JsonSerializer.Deserialize<McpPlayStart>(p)), request.deadlineUnixMs); break;
@@ -1736,6 +1753,189 @@ namespace Game.MCP
             }
         }
 
+        // Build/cook only exposes the public Flax 1.12 GameCooker API. There
+        // is no public toolchain capability query, so list/validate are
+        // explicitly preflight-only and a target is confirmed only by Build.
+        private McpBuildTargetsResult BuildTargets()
+        {
+            return new McpBuildTargetsResult
+            {
+                Entries = new[]
+                {
+                    BuildTarget("windows64", "Windows 64-bit", false),
+                    BuildTarget("linux_x64", "Linux 64-bit", false),
+                    BuildTarget("macos_x64", "macOS Intel", false),
+                    BuildTarget("macos_arm64", "macOS Apple Silicon", false),
+                    BuildTarget("android_arm64", "Android ARM64", false),
+                    BuildTarget("web", "Web", false),
+                },
+                Warnings = new[] { "Flax 1.12 exposes no reviewed public managed API to preflight installed platform toolchains. Availability is confirmed only when a build starts." },
+            };
+        }
+
+        private static McpBuildTarget BuildTarget(string platform, string displayName, bool host)
+        {
+            return new McpBuildTarget { Platform = platform, DisplayName = displayName, IsHostTarget = host };
+        }
+
+        private McpBuildValidation ValidateBuild(McpBuildRequest request)
+        {
+            ValidateBuildRequest(request, false);
+            var output = BuildOutputAbsolutePath(request.OutputPath);
+            var exists = Directory.Exists(output);
+            var empty = !exists || Directory.GetFileSystemEntries(output).Length == 0;
+            return new McpBuildValidation
+            {
+                Valid = !GameCooker.IsRunning && !FEditor.IsPlayMode && !ScriptsBuilder.IsCompiling && empty,
+                Platform = request.Platform, Configuration = request.Configuration, OutputPath = request.OutputPath,
+                OutputExists = exists, OutputEmpty = empty,
+                Warnings = BuildValidationWarnings(exists, empty),
+            };
+        }
+
+        private string[] BuildValidationWarnings(bool outputExists, bool outputEmpty)
+        {
+            var warnings = new List<string>();
+            warnings.Add("Validation is preflight-only; Flax toolchain availability is not known until GameCooker.Build starts.");
+            if (GameCooker.IsRunning) warnings.Add("A game build is already running.");
+            if (FEditor.IsPlayMode || FEditor.Instance.Simulation.IsPlayModeRequested) warnings.Add("Stop play mode before starting a build.");
+            if (ScriptsBuilder.IsCompiling || !ScriptsBuilder.IsReady) warnings.Add("Wait for script compilation/reload before starting a build.");
+            if (outputExists && !outputEmpty) warnings.Add("Output directory is not empty. This bridge refuses to start a build there.");
+            return warnings.ToArray();
+        }
+
+        private McpOperation StartBuild(McpBuildRequest request)
+        {
+            ValidateBuildRequest(request, true);
+            var preflight = ValidateBuild(request);
+            if (!preflight.Valid)
+                throw new McpProtocolException("VALIDATION_FAILED", "Build preflight failed.", preflight);
+            if (request.DryRun)
+            {
+                lock (_stateLock)
+                {
+                    var dry = BeginOperationLocked(request.OperationId, "build_cook", false, "Build dry-run completed", 1);
+                    UpdateOperationLocked(dry.OperationId, "dry_run", 1.0f, "Build dry-run completed", null, null, "No GameCooker.Build call was made.");
+                    _buildRequests[request.OperationId] = CopyBuildRequest(request);
+                    return CopyOperation(_operations[request.OperationId]);
+                }
+            }
+            var platform = ParseBuildPlatform(request.Platform);
+            var configuration = ParseBuildConfiguration(request.Configuration);
+            var output = BuildOutputAbsolutePath(request.OutputPath);
+            lock (_stateLock)
+            {
+                if (_operations.ContainsKey(request.OperationId))
+                    throw new McpProtocolException("IDEMPOTENCY_KEY_REUSED", "OperationId is already in use.");
+                BeginOperationLocked(request.OperationId, "build_cook", true, "Starting Flax game cooker", 1);
+                _buildRequests[request.OperationId] = CopyBuildRequest(request);
+            }
+            bool failed;
+            try { failed = GameCooker.Build(platform, configuration, output, BuildOptions.None, request.CustomDefines ?? new string[0]); }
+            catch (Exception ex)
+            {
+                lock (_stateLock) UpdateOperationLocked(request.OperationId, "failed", 1.0f, "Flax game cooker failed to start", "BUILD_START_FAILED", LimitForLog(ex.Message, 512));
+                throw new McpProtocolException("BUILD_START_FAILED", "Flax game cooker threw while starting the build.");
+            }
+            if (failed)
+            {
+                lock (_stateLock) UpdateOperationLocked(request.OperationId, "failed", 1.0f, "Flax game cooker rejected the build", "BUILD_START_FAILED", "GameCooker.Build returned failure.");
+            }
+            else
+            {
+                lock (_stateLock) UpdateOperationLocked(request.OperationId, "running", 0.0f, "Flax game cooker started");
+            }
+            return GetOperation(new McpOperationRequest { OperationId = request.OperationId });
+        }
+
+        private McpOperation GetBuildStatus(McpBuildOperationRequest request, bool requireTerminal)
+        {
+            var operation = GetOperation(new McpOperationRequest { OperationId = request == null ? null : request.OperationId });
+            if (!string.Equals(operation.Kind, "build_cook", StringComparison.Ordinal))
+                throw new McpProtocolException("OPERATION_NOT_FOUND", "Operation ID does not identify a build/cook operation.");
+            if (requireTerminal && !IsTerminalOperationPhase(operation.Phase))
+                throw new McpProtocolException("BUILD_NOT_COMPLETE", "Build result is unavailable until the operation reaches a terminal phase.");
+            return operation;
+        }
+
+        private McpOperation CancelBuild(McpBuildOperationRequest request)
+        {
+            var operation = GetBuildStatus(request, false);
+            if (IsTerminalOperationPhase(operation.Phase)) return operation;
+            if (!GameCooker.IsRunning)
+                throw new McpProtocolException("CANCELLATION_UNSUPPORTED", "The Flax game cooker is no longer running; refresh build status instead.");
+            GameCooker.Cancel(false);
+            lock (_stateLock)
+            {
+                McpOperation stored;
+                if (_operations.TryGetValue(operation.OperationId, out stored))
+                {
+                    stored.CancelRequested = true;
+                    UpdateOperationLocked(stored.OperationId, "cancelling", stored.Progress, "Flax game cooker cancellation requested");
+                    return CopyOperation(stored);
+                }
+            }
+            return operation;
+        }
+
+        private static void ValidateBuildRequest(McpBuildRequest request, bool requireOperationId)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Build parameters are required.");
+            if (requireOperationId && !IsGuidN(request.OperationId)) throw new McpProtocolException("INVALID_REQUEST", "OperationId must be a 32-character GUID without separators.");
+            ParseBuildPlatform(request.Platform);
+            ParseBuildConfiguration(request.Configuration);
+            BuildOutputAbsolutePath(request.OutputPath);
+            if (request.CustomDefines != null)
+            {
+                if (request.CustomDefines.Length > 32) throw new McpProtocolException("VALIDATION_FAILED", "At most 32 custom build defines are allowed.");
+                foreach (var define in request.CustomDefines)
+                    if (string.IsNullOrEmpty(define) || define.Length > 64 || !IsBuildDefine(define)) throw new McpProtocolException("VALIDATION_FAILED", "Custom build defines must be simple identifier-like values.");
+            }
+        }
+
+        private static bool IsBuildDefine(string value)
+        {
+            for (var i = 0; i < value.Length; i++) if (!(char.IsLetterOrDigit(value[i]) || value[i] == '_')) return false;
+            return true;
+        }
+
+        private static BuildPlatform ParseBuildPlatform(string value)
+        {
+            if (string.Equals(value, "windows64", StringComparison.Ordinal)) return BuildPlatform.Windows64;
+            if (string.Equals(value, "linux_x64", StringComparison.Ordinal)) return BuildPlatform.LinuxX64;
+            if (string.Equals(value, "macos_x64", StringComparison.Ordinal)) return BuildPlatform.MacOSx64;
+            if (string.Equals(value, "macos_arm64", StringComparison.Ordinal)) return BuildPlatform.MacOSARM64;
+            if (string.Equals(value, "android_arm64", StringComparison.Ordinal)) return BuildPlatform.AndroidARM64;
+            if (string.Equals(value, "web", StringComparison.Ordinal)) return BuildPlatform.Web;
+            throw new McpProtocolException("VALIDATION_FAILED", "Build platform is not in the reviewed bridge allowlist.");
+        }
+
+        private static BuildConfiguration ParseBuildConfiguration(string value)
+        {
+            if (string.Equals(value, "debug", StringComparison.Ordinal)) return BuildConfiguration.Debug;
+            if (string.Equals(value, "development", StringComparison.Ordinal)) return BuildConfiguration.Development;
+            if (string.Equals(value, "release", StringComparison.Ordinal)) return BuildConfiguration.Release;
+            throw new McpProtocolException("VALIDATION_FAILED", "Build configuration must be debug, development, or release.");
+        }
+
+        private static string BuildOutputAbsolutePath(string outputPath)
+        {
+            if (string.IsNullOrEmpty(outputPath) || outputPath.Length > 512 || outputPath.Replace('\\', '/') != outputPath || !outputPath.StartsWith("Builds/", StringComparison.Ordinal) || outputPath.EndsWith("/", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "OutputPath must be a project-relative directory below Builds/.");
+            var parts = outputPath.Split('/');
+            foreach (var part in parts) if (string.IsNullOrEmpty(part) || part == "." || part == ".." || part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) throw new McpProtocolException("VALIDATION_FAILED", "OutputPath contains an invalid path segment.");
+            var project = Path.GetFullPath(Globals.ProjectFolder).TrimEnd('\\', '/');
+            var builds = Path.GetFullPath(Path.Combine(project, "Builds"));
+            var candidate = Path.GetFullPath(Path.Combine(project, outputPath));
+            if (!candidate.StartsWith(builds + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new McpProtocolException("VALIDATION_FAILED", "OutputPath must remain below project Builds/.");
+            return candidate;
+        }
+
+        private static McpBuildRequest CopyBuildRequest(McpBuildRequest value)
+        {
+            return new McpBuildRequest { OperationId = value.OperationId, Platform = value.Platform, Configuration = value.Configuration, OutputPath = value.OutputPath, DryRun = value.DryRun, CustomDefines = value.CustomDefines == null ? new string[0] : (string[])value.CustomDefines.Clone() };
+        }
+
         private McpCompileStatus StartCompile(McpCompileStart request)
         {
             if (ScriptsBuilder.IsCompiling)
@@ -2678,6 +2878,8 @@ namespace Game.MCP
             FEditor.Instance.Simulation.BreakpointHangBegin += OnBreakpointHangBegin;
             FEditor.Instance.Simulation.BreakpointHangEnd += OnBreakpointHangEnd;
             FEditor.Instance.ContentImporting.ImportFileEnd += OnAssetImportFileEnd;
+            GameCooker.Event += OnGameCookerEvent;
+            GameCooker.Progress += OnGameCookerProgress;
             _logHandler = Debug.Logger == null ? null : Debug.Logger.LogHandler;
             if (_logHandler != null)
             {
@@ -2703,6 +2905,8 @@ namespace Game.MCP
             FEditor.Instance.Simulation.BreakpointHangEnd -= OnBreakpointHangEnd;
             FEditor.Instance.ContentImporting.ImportFileEnd -= OnAssetImportFileEnd;
             }
+            GameCooker.Event -= OnGameCookerEvent;
+            GameCooker.Progress -= OnGameCookerProgress;
             if (_logHandler != null)
             {
                 _logHandler.SendLog -= OnSendLog;
@@ -2762,6 +2966,42 @@ namespace Game.MCP
         private void OnPlayModeEnd() { lock (_stateLock) { _playState = "stopped"; _playEndedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); } }
         private void OnBreakpointHangBegin() { lock (_stateLock) { if (_playState == "running") _playState = "paused"; } }
         private void OnBreakpointHangEnd() { lock (_stateLock) { if (FEditor.IsPlayMode && !FEditor.Instance.StateMachine.PlayingState.IsPaused) _playState = "running"; } }
+
+        private void OnGameCookerProgress(string info, float totalProgress)
+        {
+            lock (_stateLock)
+            {
+                foreach (var operation in _operations.Values)
+                {
+                    if (operation.Kind != "build_cook" || IsTerminalOperationPhase(operation.Phase)) continue;
+                    UpdateOperationLocked(operation.OperationId, operation.CancelRequested ? "cancelling" : "running", totalProgress, string.IsNullOrEmpty(info) ? "Flax game cooker is running" : LimitForLog(info, MaxOperationMessageChars));
+                    break;
+                }
+            }
+        }
+
+        private void OnGameCookerEvent(GameCooker.EventType type)
+        {
+            lock (_stateLock)
+            {
+                foreach (var operation in _operations.Values)
+                {
+                    if (operation.Kind != "build_cook" || IsTerminalOperationPhase(operation.Phase)) continue;
+                    if (type == GameCooker.EventType.BuildStarted)
+                        UpdateOperationLocked(operation.OperationId, "running", operation.Progress, "Flax game cooker started");
+                    else if (type == GameCooker.EventType.BuildDone)
+                        UpdateOperationLocked(operation.OperationId, "succeeded", 1.0f, "Flax game cooker completed", null, null, "Build output was produced below the requested Builds/ directory.");
+                    else if (type == GameCooker.EventType.BuildFailed)
+                    {
+                        if (operation.CancelRequested)
+                            UpdateOperationLocked(operation.OperationId, "cancelled", operation.Progress, "Flax game cooker cancelled", "OPERATION_CANCELLED", "Flax game cooker observed the requested cancellation.");
+                        else
+                            UpdateOperationLocked(operation.OperationId, "failed", 1.0f, "Flax game cooker failed", "BUILD_FAILED", "Flax game cooker reported build failure.");
+                    }
+                    break;
+                }
+            }
+        }
 
         private void OnSendLog(LogType level, string message, FlaxEngine.Object context, string stackTrace)
         {
@@ -3073,6 +3313,14 @@ namespace Game.MCP
                     UpdateOperationLocked(operation.OperationId, "cancelled", operation.Progress, "Project generation was cancelled before execution.", "OPERATION_CANCELLED", "Cancelled at a safe queue checkpoint.");
                     return CopyOperation(operation);
                 }
+                if (string.Equals(operation.Kind, "build_cook", StringComparison.Ordinal))
+                {
+                    if (!GameCooker.IsRunning) throw new McpProtocolException("CANCELLATION_UNSUPPORTED", "The Flax game cooker is no longer running; refresh operation status instead.");
+                    GameCooker.Cancel(false);
+                    operation.CancelRequested = true;
+                    UpdateOperationLocked(operation.OperationId, "cancelling", operation.Progress, "Flax game cooker cancellation requested");
+                    return CopyOperation(operation);
+                }
                 throw new McpProtocolException("CANCELLATION_UNSUPPORTED", "The active backend does not expose safe cancellation for this operation.");
             }
         }
@@ -3095,6 +3343,8 @@ namespace Game.MCP
                 if (_assetImportOperations.TryGetValue(operation.OperationId, out asset))
                     UpdateOperationLocked(operation.OperationId, asset.Phase, asset.Progress, asset.Phase == "running" ? "Importing content" : "Processing asset operation", asset.ErrorCode, asset.Error, asset.ResultPath);
             }
+            else if (operation.Kind == "build_cook" && !GameCooker.IsRunning && operation.Phase == "running")
+                UpdateOperationLocked(operation.OperationId, "interrupted", operation.Progress, "Game cooker stopped without a terminal build event.", "BUILD_INTERRUPTED", "Flax did not report build completion.");
         }
 
         private static bool IsTerminalOperationPhase(string phase) { return phase == "succeeded" || phase == "failed" || phase == "cancelled" || phase == "interrupted" || phase == "dry_run"; }
