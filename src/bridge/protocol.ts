@@ -104,6 +104,13 @@ export type BuildBridgeMethod =
   | 'build.result'
   | 'build.cancel';
 
+/** Bridge v14 bounded physics/navigation/lighting/terrain domain queries. */
+export type DomainBridgeMethod =
+  | 'physics.validate_colliders' | 'physics.raycast' | 'physics.get_layer_matrix' | 'physics.find_overlaps'
+  | 'navigation.build' | 'navigation.get_status' | 'navigation.validate_agents' | 'navigation.query_path'
+  | 'lighting.bake' | 'lighting.get_status' | 'lighting.validate' | 'environment_probe.bake'
+  | 'terrain.get_summary' | 'foliage.get_summary';
+
 export type BridgeMethod =
   | 'status'
   | SceneBridgeMethod
@@ -116,7 +123,8 @@ export type BridgeMethod =
   | AssetBridgeMethod
   | OperationBridgeMethod
   | PrefabBridgeMethod
-  | BuildBridgeMethod;
+  | BuildBridgeMethod
+  | DomainBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */
 export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {

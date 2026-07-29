@@ -203,6 +203,7 @@ export async function handleGetServerCapabilities(
     const phase6Prefabs = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 12;
     const assetQuarantineDelete = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const buildCook = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
+    const domainQueries = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 14;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -271,6 +272,16 @@ export async function handleGetServerCapabilities(
           preflightOnly: buildCook,
           cancel: buildCook,
           outputScope: buildCook ? 'project-relative-Builds-only' : null,
+        },
+        domainTools: {
+          available: domainQueries,
+          physicsQueries: domainQueries,
+          navigationQueries: domainQueries,
+          navigationBuild: false,
+          lightingValidation: domainQueries,
+          lightingBake: false,
+          environmentProbeBake: false,
+          terrainFoliageRead: domainQueries,
         },
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {

@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v13 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v14 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*13/);
-  assert.match(source, /BridgeVersion\s*=\s*13/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*14/);
+  assert.match(source, /BridgeVersion\s*=\s*14/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -149,4 +149,23 @@ test('bridge v13 exposes only bounded public GameCooker build/cook workflows', a
   assert.match(source, /ToolchainPreflightSupported = false/);
   assert.match(source, /BUILD_NOT_COMPLETE/);
   assert.doesNotMatch(source, /Process\.Start\(/);
+});
+
+test('bridge v14 keeps domain mutations unsupported while exposing bounded public queries', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "physics\.raycast"/);
+  assert.match(source, /case "physics\.find_overlaps"/);
+  assert.match(source, /case "navigation\.query_path"/);
+  assert.match(source, /case "lighting\.validate"/);
+  assert.match(source, /case "terrain\.get_summary"/);
+  assert.match(source, /case "foliage\.get_summary"/);
+  assert.match(source, /Physics\.RayCast\(/);
+  assert.match(source, /Physics\.OverlapSphere\(/);
+  assert.match(source, /Navigation\.FindPath\(/);
+  assert.match(source, /Navigation\.IsBuildingNavMesh/);
+  assert.match(source, /UnsupportedDomainMutation\("navigation_build"/);
+  assert.match(source, /UnsupportedDomainMutation\("lighting_bake"/);
+  assert.match(source, /UnsupportedDomainMutation\("environment_probe_bake"/);
+  assert.doesNotMatch(source, /Navigation\.BuildNavMesh\(/);
+  assert.doesNotMatch(source, /Foliage\.AddInstance\(/);
 });

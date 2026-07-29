@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 13
+// MCP-BRIDGE-VERSION: 14
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -23,12 +23,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 13; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 14; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 13; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; }
+    public class McpStatus { public int BridgeVersion = 14; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -130,6 +130,12 @@ namespace Game.MCP
     public class McpBuildTarget { public string Platform; public string DisplayName; public bool IsHostTarget; public string Availability = "not-preflighted"; }
     public class McpBuildTargetsResult { public McpBuildTarget[] Entries; public string[] Warnings; }
     public class McpBuildValidation { public bool Valid; public string Platform; public string Configuration; public string OutputPath; public bool OutputExists; public bool OutputEmpty; public bool ToolchainPreflightSupported = false; public string[] Warnings; }
+    // v14 domain DTOs are deliberately query-only except for no-op capability
+    // reports. They never serialize raw physics/native objects back to clients.
+    public class McpPhysicsRayRequest { public McpVector3 Origin; public McpVector3 Direction; public float Distance = 1000.0f; public uint LayerMask = UInt32.MaxValue; public bool IncludeTriggers = true; }
+    public class McpPhysicsOverlapRequest { public McpVector3 Center; public float Radius = 1.0f; public uint LayerMask = UInt32.MaxValue; public bool IncludeTriggers = true; public int Limit = 50; }
+    public class McpNavigationPathRequest { public McpVector3 Start; public McpVector3 End; public int MaxPoints = 128; }
+    public class McpDomainListRequest { public int Limit = 100; }
     public class McpPrefabCreateFromActor { public string ActorId; public string DestinationPath; public bool AutoLink; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpPrefabInstantiate { public string AssetId; public string Path; public string ParentId; public string Name; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpPrefabGetInstances { public string AssetId; public string Path; public string SceneId; public int Limit = 50; public string Cursor; }
@@ -149,7 +155,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 13;
+        private const int BridgeVersion = 14;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -428,6 +434,20 @@ namespace Game.MCP
                 case "build.status": result = OnMain(() => GetBuildStatus(JsonSerializer.Deserialize<McpBuildOperationRequest>(p), false), request.deadlineUnixMs); break;
                 case "build.result": result = OnMain(() => GetBuildStatus(JsonSerializer.Deserialize<McpBuildOperationRequest>(p), true), request.deadlineUnixMs); break;
                 case "build.cancel": result = OnMain(() => CancelBuild(JsonSerializer.Deserialize<McpBuildOperationRequest>(p)), request.deadlineUnixMs); break;
+                case "physics.validate_colliders": result = OnMain(ValidateColliders, request.deadlineUnixMs); break;
+                case "physics.raycast": result = OnMain(() => PhysicsRaycast(JsonSerializer.Deserialize<McpPhysicsRayRequest>(p)), request.deadlineUnixMs); break;
+                case "physics.get_layer_matrix": result = OnMain(PhysicsLayerMatrix, request.deadlineUnixMs); break;
+                case "physics.find_overlaps": result = OnMain(() => PhysicsFindOverlaps(JsonSerializer.Deserialize<McpPhysicsOverlapRequest>(p)), request.deadlineUnixMs); break;
+                case "navigation.build": result = OnMain(() => UnsupportedDomainMutation("navigation_build", "Flax 1.12 navigation building has no reviewed cancellation, undo, or bridge-owned completion contract."), request.deadlineUnixMs); break;
+                case "navigation.get_status": result = OnMain(NavigationStatus, request.deadlineUnixMs); break;
+                case "navigation.validate_agents": result = OnMain(ValidateNavigationAgents, request.deadlineUnixMs); break;
+                case "navigation.query_path": result = OnMain(() => NavigationQueryPath(JsonSerializer.Deserialize<McpNavigationPathRequest>(p)), request.deadlineUnixMs); break;
+                case "lighting.bake": result = OnMain(() => UnsupportedDomainMutation("lighting_bake", "Flax 1.12 lightmap baking has no reviewed bridge-owned cancellation and result contract."), request.deadlineUnixMs); break;
+                case "lighting.get_status": result = OnMain(LightingStatus, request.deadlineUnixMs); break;
+                case "lighting.validate": result = OnMain(LightingValidate, request.deadlineUnixMs); break;
+                case "environment_probe.bake": result = OnMain(() => UnsupportedDomainMutation("environment_probe_bake", "Flax 1.12 probe baking has no reviewed bridge-owned cancellation and result contract."), request.deadlineUnixMs); break;
+                case "terrain.get_summary": result = OnMain(() => TerrainSummary(JsonSerializer.Deserialize<McpDomainListRequest>(p)), request.deadlineUnixMs); break;
+                case "foliage.get_summary": result = OnMain(() => FoliageSummary(JsonSerializer.Deserialize<McpDomainListRequest>(p)), request.deadlineUnixMs); break;
                 case "play.status": result = OnMain(PlayStatus, request.deadlineUnixMs); break;
                 case "play.start_scenes": result = OnMain(() => StartPlayScenes(JsonSerializer.Deserialize<McpPlayStart>(p)), request.deadlineUnixMs); break;
                 case "play.start_game": result = OnMain(() => StartPlayGame(JsonSerializer.Deserialize<McpPlayStart>(p)), request.deadlineUnixMs); break;
@@ -1752,6 +1772,133 @@ namespace Game.MCP
                 return CopyCompileStatus(_compile);
             }
         }
+
+        // v14 physics/navigation/lighting/terrain domain tools intentionally
+        // expose only public read/query APIs. Build/bake mutations report a
+        // stable unsupported capability until a bounded completion/cancel model
+        // can be verified against Flax Editor rather than inferred.
+        private object UnsupportedDomainMutation(string capability, string reason)
+        {
+            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", reason, new { Capability = capability, BridgeVersion = BridgeVersion, Reason = reason });
+        }
+
+        private object ValidateColliders()
+        {
+            var colliders = Level.GetActors(typeof(Collider), false);
+            var entries = new List<object>();
+            var issues = new List<object>();
+            foreach (var actor in colliders)
+            {
+                var collider = actor as Collider;
+                if (collider == null) continue;
+                entries.Add(new { ActorId = collider.ID.ToString("N"), SceneId = collider.Scene == null ? null : collider.Scene.ID.ToString("N"), TypeName = collider.TypeName, Name = LimitForLog(collider.Name, 128), IsTrigger = collider.IsTrigger, Active = collider.IsActiveInHierarchy, Layer = collider.Layer });
+                if (!collider.IsActiveInHierarchy) issues.Add(new { Code = "COLLIDER_INACTIVE", ActorId = collider.ID.ToString("N"), Message = "Collider is inactive in hierarchy." });
+            }
+            return new { Entries = entries.ToArray(), Findings = issues.ToArray(), Scanned = colliders.Length, Scope = "loaded-scenes-only" };
+        }
+
+        private object PhysicsLayerMatrix()
+        {
+            var layers = new List<object>();
+            for (var i = 0; i < 32; i++) layers.Add(new { Index = i, Name = LayersMask.GetLayerName(i) });
+            return new { Layers = layers.ToArray(), CollisionMatrixAvailable = false, Warning = "Flax 1.12 public managed API exposes layer names but not a reviewed runtime collision-matrix reader; use Physics Settings.json for offline matrix inspection." };
+        }
+
+        private object PhysicsRaycast(McpPhysicsRayRequest request)
+        {
+            if (request == null || request.Origin == null || request.Direction == null) throw new McpProtocolException("INVALID_REQUEST", "Origin and Direction are required.");
+            ValidateDomainVector(request.Origin, "Origin"); ValidateDomainVector(request.Direction, "Direction");
+            if (request.Distance <= 0 || request.Distance > 100000.0f) throw new McpProtocolException("VALIDATION_FAILED", "Distance must be between 0 and 100000.");
+            RayCastHit hit;
+            var didHit = Physics.RayCast(ToVector3(request.Origin), ToVector3(request.Direction), out hit, request.Distance, request.LayerMask, request.IncludeTriggers);
+            return new { Hit = didHit, Result = didHit ? new { ColliderId = hit.Collider == null ? null : hit.Collider.ID.ToString("N"), Point = FromVector3(hit.Point), Normal = FromVector3(hit.Normal), hit.Distance, hit.FaceIndex } : null };
+        }
+
+        private object PhysicsFindOverlaps(McpPhysicsOverlapRequest request)
+        {
+            if (request == null || request.Center == null) throw new McpProtocolException("INVALID_REQUEST", "Center is required.");
+            ValidateDomainVector(request.Center, "Center");
+            if (request.Radius <= 0 || request.Radius > 100000.0f || request.Limit < 1 || request.Limit > 100) throw new McpProtocolException("VALIDATION_FAILED", "Radius must be between 0 and 100000 and Limit between 1 and 100.");
+            Collider[] hits;
+            var any = Physics.OverlapSphere(ToVector3(request.Center), request.Radius, out hits, request.LayerMask, request.IncludeTriggers);
+            var entries = new List<object>();
+            if (any && hits != null) foreach (var hit in hits)
+            {
+                if (hit == null) continue;
+                entries.Add(new { ActorId = hit.ID.ToString("N"), SceneId = hit.Scene == null ? null : hit.Scene.ID.ToString("N"), TypeName = hit.TypeName, Name = LimitForLog(hit.Name, 128), IsTrigger = hit.IsTrigger });
+                if (entries.Count == request.Limit) break;
+            }
+            return new { Entries = entries.ToArray(), Truncated = any && hits != null && hits.Length > entries.Count, Scope = "Physics.OverlapSphere" };
+        }
+
+        private object NavigationStatus()
+        {
+            return new { IsBuilding = Navigation.IsBuildingNavMesh, Progress = Navigation.NavMeshBuildingProgress, BuildSupported = false, CancellationSupported = false, Scope = "global-navigation-runtime" };
+        }
+
+        private object ValidateNavigationAgents()
+        {
+            var meshes = Level.GetActors(typeof(NavMesh), false);
+            var entries = new List<object>();
+            foreach (var actor in meshes)
+            {
+                var mesh = actor as NavMesh;
+                if (mesh == null) continue;
+                var agent = mesh.Properties.Agent;
+                entries.Add(new { ActorId = mesh.ID.ToString("N"), SceneId = mesh.Scene == null ? null : mesh.Scene.ID.ToString("N"), Name = LimitForLog(mesh.Name, 128), AgentRadius = agent.Radius, AgentHeight = agent.Height, AgentStepHeight = agent.StepHeight, AgentMaxSlopeAngle = agent.MaxSlopeAngle, Active = mesh.IsActiveInHierarchy });
+            }
+            return new { Entries = entries.ToArray(), Findings = new object[0], Scope = "loaded-navmesh-actors-only", Warning = "Flax 1.12 exposes navmesh agent settings on NavMesh actors; dynamic NavAgent actor validation is not exposed by this bounded surface." };
+        }
+
+        private object NavigationQueryPath(McpNavigationPathRequest request)
+        {
+            if (request == null || request.Start == null || request.End == null) throw new McpProtocolException("INVALID_REQUEST", "Start and End are required.");
+            ValidateDomainVector(request.Start, "Start"); ValidateDomainVector(request.End, "End");
+            if (request.MaxPoints < 1 || request.MaxPoints > 256) throw new McpProtocolException("VALIDATION_FAILED", "MaxPoints must be between 1 and 256.");
+            Vector3[] points;
+            var found = Navigation.FindPath(ToVector3(request.Start), ToVector3(request.End), out points);
+            var entries = new List<McpVector3>();
+            if (found && points != null) for (var i = 0; i < points.Length && i < request.MaxPoints; i++) entries.Add(FromVector3(points[i]));
+            return new { Found = found, Points = entries.ToArray(), Truncated = found && points != null && points.Length > entries.Count, Scope = "active-global-navmesh" };
+        }
+
+        private object LightingStatus()
+        {
+            return new { Phase = "unsupported", BakeSupported = false, CancellationSupported = false, Warning = "No bridge-owned lightmap or probe bake operation is active. Flax public bake APIs lack a reviewed bounded lifecycle contract here." };
+        }
+
+        private object LightingValidate()
+        {
+            var staticModels = Level.GetActors(typeof(StaticModel), false);
+            var probes = Level.GetActors(typeof(EnvironmentProbe), false);
+            var entries = new List<object>();
+            foreach (var actor in staticModels)
+            {
+                var model = actor as StaticModel;
+                if (model != null) entries.Add(new { ActorId = model.ID.ToString("N"), Type = "StaticModel", Active = model.IsActiveInHierarchy, ScaleInLightmap = model.ScaleInLightmap, HasLightmap = model.HasLightmap });
+            }
+            return new { Entries = entries.ToArray(), StaticModelCount = staticModels.Length, EnvironmentProbeCount = probes.Length, Scope = "loaded-scenes-only", Warning = "This validator reports public lightmap-related actor state only; it does not estimate lighting quality or invoke baking." };
+        }
+
+        private object TerrainSummary(McpDomainListRequest request)
+        {
+            var limit = request == null ? 100 : Math.Max(1, Math.Min(request.Limit, 100));
+            var actors = Level.GetActors(typeof(Terrain), false); var entries = new List<object>();
+            foreach (var actor in actors) { var terrain = actor as Terrain; if (terrain == null) continue; entries.Add(new { ActorId = terrain.ID.ToString("N"), SceneId = terrain.Scene == null ? null : terrain.Scene.ID.ToString("N"), Name = LimitForLog(terrain.Name, 128), terrain.LODCount, terrain.ChunkSize, terrain.HeightmapSize, terrain.PatchSize, terrain.PatchesCount, terrain.CollisionLOD, Active = terrain.IsActiveInHierarchy }); if (entries.Count == limit) break; }
+            return new { Entries = entries.ToArray(), Truncated = actors.Length > entries.Count, Scope = "loaded-terrain-actors-only", MutationsSupported = false };
+        }
+
+        private object FoliageSummary(McpDomainListRequest request)
+        {
+            var limit = request == null ? 100 : Math.Max(1, Math.Min(request.Limit, 100));
+            var actors = Level.GetActors(typeof(Foliage), false); var entries = new List<object>();
+            foreach (var actor in actors) { var foliage = actor as Foliage; if (foliage == null) continue; entries.Add(new { ActorId = foliage.ID.ToString("N"), SceneId = foliage.Scene == null ? null : foliage.Scene.ID.ToString("N"), Name = LimitForLog(foliage.Name, 128), foliage.InstancesCount, foliage.FoliageTypesCount, GlobalDensityScale = Foliage.GlobalDensityScale, Active = foliage.IsActiveInHierarchy }); if (entries.Count == limit) break; }
+            return new { Entries = entries.ToArray(), Truncated = actors.Length > entries.Count, Scope = "loaded-foliage-actors-only", MutationsSupported = false, Warning = "Foliage painting, instance edits, and cluster rebuild are intentionally unavailable because they are wide scene mutations without a reviewed preview/undo contract." };
+        }
+
+        private static Vector3 ToVector3(McpVector3 value) { return new Vector3(value.X, value.Y, value.Z); }
+        private static McpVector3 FromVector3(Vector3 value) { return new McpVector3 { X = value.X, Y = value.Y, Z = value.Z }; }
+        private static void ValidateDomainVector(McpVector3 value, string label) { if (value == null || float.IsNaN(value.X) || float.IsInfinity(value.X) || float.IsNaN(value.Y) || float.IsInfinity(value.Y) || float.IsNaN(value.Z) || float.IsInfinity(value.Z)) throw new McpProtocolException("VALIDATION_FAILED", label + " must contain finite coordinates."); }
 
         // Build/cook only exposes the public Flax 1.12 GameCooker API. There
         // is no public toolchain capability query, so list/validate are

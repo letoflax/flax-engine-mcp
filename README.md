@@ -214,6 +214,17 @@ both. The name excludes the extension, which remains the source extension.
 | `get_input_actions` | All input action and axis mappings from `Input Settings.json` |
 | `get_physics_settings` | Gravity, bounce, and layer masks from `Physics Settings.json` |
 
+### Advanced domain queries
+`physics_validate_colliders`, `physics_raycast`, `physics_get_layer_matrix`,
+and `physics_find_overlaps` require bridge v14 and use bounded public Physics
+queries. `navigation_get_status`, `navigation_validate_agents`, and
+`navigation_query_path` are also read-only. `navigation_build`, `lighting_bake`,
+and `environment_probe_bake` intentionally return a stable unsupported
+capability until their async lifecycle and cancellation semantics are reviewed.
+`terrain_get_summary` and `foliage_get_summary` are the first bounded release
+surface: loaded-actor metadata only; terrain edits, foliage painting/instances,
+and cluster rebuilding are not exposed.
+
 ### Project Health
 | Tool | What it does |
 |------|-------------|
