@@ -25,7 +25,14 @@ export const SceneSaveSchema = z.object({ scene_id: FlaxId });
 export const ProjectSaveAllSchema = z.object({});
 export const ActorGetSchema = z.object({ actor_id: FlaxId });
 export const ActorFindSchema = z.object({
-  name: z.string().min(1).max(128),
+  name: z.string().min(1).max(128).optional()
+    .describe('Case-insensitive actor name substring.'),
+  type_name: z.string().min(1).max(256).optional()
+    .describe('Exact fully qualified Flax actor type name.'),
+  parent_id: FlaxId.optional()
+    .describe('Only direct children of this live actor.'),
+  active: z.boolean().optional()
+    .describe('Filter by the actor active flag (not inherited active state).'),
   max_results: z.number().int().min(1).max(100).optional().default(50),
 });
 export const ActorCreateSchema = z.object({
@@ -44,6 +51,11 @@ export const ActorUpdateSchema = z.object({
   position: Vector3.optional(),
   scale: Vector3.optional(),
   euler_angles: Vector3.optional(),
+  local_position: Vector3.optional(),
+  local_scale: Vector3.optional(),
+  local_euler_angles: Vector3.optional(),
+  layer: z.number().int().min(0).max(31).optional()
+    .describe('Flax layer index. Only the actor itself is changed; children are not updated recursively.'),
   dry_run: z.boolean().optional().default(false),
   ...RevisionedLiveWrite,
 });
@@ -78,7 +90,8 @@ export const ScriptDetachSchema = z.object({
 export const ScriptInstanceGetSchema = z.object({ script_id: FlaxId });
 export const ScriptInstanceUpdateSchema = z.object({
   script_id: FlaxId,
-  enabled: z.boolean(),
+  enabled: z.boolean().optional()
+    .describe('The only supported script-instance patch field. Arbitrary serialized script properties are not exposed.'),
   dry_run: z.boolean().optional().default(false),
   ...RevisionedLiveWrite,
 });
@@ -159,9 +172,10 @@ async function liveCall(
   method: BridgeMethod,
   params: AnyRecord,
   changes: unknown[] = [],
+  minimumBridgeVersion?: number,
 ): Promise<ToolResponse> {
   try {
-    const requiresV7 = params.ExpectedSceneRevision !== undefined || params.LeaseId !== undefined || params.IdempotencyKey !== undefined;
+    const requiresV7 = minimumBridgeVersion === 7 || params.ExpectedSceneRevision !== undefined || params.LeaseId !== undefined || params.IdempotencyKey !== undefined;
     const response = await callEditorBridge(ctx, method, params, requiresV7 ? { minimumBridgeVersion: 7 } : {});
     const data = { result: response.data, bridge: response.bridge };
     return toolResult(JSON.stringify(data, null, 2), {
@@ -204,8 +218,18 @@ export const handleProjectSaveAll = (_: unknown, ctx: ProjectMeta) =>
   liveCall(ctx, 'project.save_all', {}, [{ kind: 'project.saved' }]);
 export const handleActorGet = (args: z.infer<typeof ActorGetSchema>, ctx: ProjectMeta) =>
   liveCall(ctx, 'actor.get', { ActorId: args.actor_id });
-export const handleActorFind = (args: z.infer<typeof ActorFindSchema>, ctx: ProjectMeta) =>
-  liveCall(ctx, 'actor.find', { Name: args.name, MaxResults: args.max_results });
+export const handleActorFind = (args: z.infer<typeof ActorFindSchema>, ctx: ProjectMeta) => {
+  if (args.name === undefined && args.type_name === undefined && args.parent_id === undefined && args.active === undefined) {
+    return Promise.resolve(toolError(new ToolDomainError('VALIDATION_FAILED', 'Provide at least one actor find filter.')));
+  }
+  return liveCall(ctx, 'actor.find', {
+    Name: args.name,
+    TypeName: args.type_name,
+    ParentId: args.parent_id,
+    Active: args.active,
+    MaxResults: args.max_results,
+  }, [], args.type_name !== undefined || args.parent_id !== undefined || args.active !== undefined ? 7 : undefined);
+};
 
 export async function handleActorCreate(args: z.infer<typeof ActorCreateSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   const params = {
@@ -228,9 +252,18 @@ export async function handleActorUpdate(args: z.infer<typeof ActorUpdateSchema>,
     args.active === undefined &&
     args.position === undefined &&
     args.scale === undefined &&
-    args.euler_angles === undefined
+    args.euler_angles === undefined &&
+    args.local_position === undefined &&
+    args.local_scale === undefined &&
+    args.local_euler_angles === undefined &&
+    args.layer === undefined
   ) {
     return toolError(new ToolDomainError('VALIDATION_FAILED', 'Provide at least one actor field to update.'));
+  }
+  const hasWorldTransform = args.position !== undefined || args.scale !== undefined || args.euler_angles !== undefined;
+  const hasLocalTransform = args.local_position !== undefined || args.local_scale !== undefined || args.local_euler_angles !== undefined;
+  if (hasWorldTransform && hasLocalTransform) {
+    return toolError(new ToolDomainError('VALIDATION_FAILED', 'World-space and local-space transform patches cannot be combined in one actor update.'));
   }
   const params = {
     ActorId: args.actor_id,
@@ -239,12 +272,22 @@ export async function handleActorUpdate(args: z.infer<typeof ActorUpdateSchema>,
     Position: toBridgeVector(args.position),
     Scale: toBridgeVector(args.scale),
     EulerAngles: toBridgeVector(args.euler_angles),
+    LocalPosition: toBridgeVector(args.local_position),
+    LocalScale: toBridgeVector(args.local_scale),
+    LocalEulerAngles: toBridgeVector(args.local_euler_angles),
+    Layer: args.layer,
     ExpectedSceneRevision: args.expected_scene_revision,
     LeaseId: args.lease_id,
     IdempotencyKey: args.idempotency_key,
   };
   if (args.dry_run) return dryRunLookup(ctx, 'actor.get', { ActorId: args.actor_id }, params);
-  return liveCall(ctx, 'actor.update', params, [{ kind: 'actor.updated', id: args.actor_id }]);
+  return liveCall(
+    ctx,
+    'actor.update',
+    params,
+    [{ kind: 'actor.updated', id: args.actor_id }],
+    hasLocalTransform || args.layer !== undefined ? 7 : undefined,
+  );
 }
 
 export async function handleActorDelete(args: z.infer<typeof ActorDeleteSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
@@ -291,6 +334,9 @@ export async function handleScriptInstanceUpdate(
   args: z.infer<typeof ScriptInstanceUpdateSchema>,
   ctx: ProjectMeta,
 ): Promise<ToolResponse> {
+  if (args.enabled === undefined) {
+    return toolError(new ToolDomainError('VALIDATION_FAILED', 'Provide enabled; arbitrary serialized script properties are not supported.'));
+  }
   const params = { ScriptId: args.script_id, Enabled: args.enabled, ExpectedSceneRevision: args.expected_scene_revision, LeaseId: args.lease_id, IdempotencyKey: args.idempotency_key };
   if (args.dry_run) return dryRunLookup(ctx, 'script.instance_get', { ScriptId: args.script_id }, params);
   return liveCall(ctx, 'script.instance_update', params, [{ kind: 'script.updated', id: args.script_id }]);

@@ -5,16 +5,20 @@ import path from 'node:path';
 import test from 'node:test';
 import { createProjectContext, ProjectMeta } from '../projectContext.js';
 import {
+  ActorFindSchema,
   ActorCreateSchema,
   ActorGetSchema,
   ActorUpdateSchema,
   EditLeaseBeginSchema,
   EditLeaseGetSchema,
+  ScriptInstanceUpdateSchema,
   handleActorCreate,
+  handleActorFind,
   handleActorGet,
   handleActorUpdate,
   handleEditLeaseBegin,
   handleEditLeaseGet,
+  handleScriptInstanceUpdate,
 } from './editorLive.js';
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE';
@@ -129,6 +133,97 @@ test('actor_update rejects an empty update without writing an RPC request', asyn
   }
 });
 
+test('actor_update maps v7-only local transform and layer fields in PascalCase', async () => {
+  const f = await fixture(7);
+  try {
+    const pending = handleActorUpdate(ActorUpdateSchema.parse({
+      actor_id: ACTOR_ID,
+      local_position: { x: 1, y: 2, z: 3 },
+      local_scale: { x: 4, y: 5, z: 6 },
+      local_euler_angles: { x: 7, y: 8, z: 9 },
+      layer: 31,
+      expected_scene_revision: 4,
+      lease_id: 'b'.repeat(32),
+      idempotency_key: 'local-layer-1',
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ Id: ACTOR_ID, Layer: 31, ProjectRevision: 5, SceneRevision: 5 }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'actor.update');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {
+      ActorId: ACTOR_ID,
+      LocalPosition: { X: 1, Y: 2, Z: 3 },
+      LocalScale: { X: 4, Y: 5, Z: 6 },
+      LocalEulerAngles: { X: 7, Y: 8, Z: 9 },
+      Layer: 31,
+      ExpectedSceneRevision: 4,
+      LeaseId: 'b'.repeat(32),
+      IdempotencyKey: 'local-layer-1',
+    });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.Layer, 31);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('actor_update rejects mixed transform spaces before sending an RPC request', async () => {
+  const f = await fixture(7);
+  try {
+    const result = await handleActorUpdate(ActorUpdateSchema.parse({
+      actor_id: ACTOR_ID,
+      position: { x: 1, y: 2, z: 3 },
+      local_position: { x: 4, y: 5, z: 6 },
+    }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'VALIDATION_FAILED');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('v7-only actor patches and find filters fail closed on a pre-v7 bridge', async () => {
+  const f = await fixture(6);
+  try {
+    const patch = await handleActorUpdate(ActorUpdateSchema.parse({
+      actor_id: ACTOR_ID, layer: 3,
+    }), f.ctx);
+    assert.equal(patch.isError, true);
+    assert.equal((patch.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+
+    const find = await handleActorFind(ActorFindSchema.parse({
+      type_name: 'FlaxEngine.EmptyActor',
+    }), f.ctx);
+    assert.equal(find.isError, true);
+    assert.equal((find.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('actor_find maps v7 filters to PascalCase bridge fields', async () => {
+  const f = await fixture(7);
+  try {
+    const pending = handleActorFind(ActorFindSchema.parse({
+      name: 'Light', type_name: 'FlaxEngine.PointLight', parent_id: 'b'.repeat(32), active: false, max_results: 7,
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true, resultJson: JSON.stringify([]), timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'actor.find');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {
+      Name: 'Light', TypeName: 'FlaxEngine.PointLight', ParentId: 'b'.repeat(32), Active: false, MaxResults: 7,
+    });
+    assert.equal((await pending).isError, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('remote NOT_FOUND maps to the stable tool-domain NOT_FOUND error', async () => {
   const f = await fixture();
   try {
@@ -201,6 +296,32 @@ test('v7 live writes marshal revision, lease, and idempotency fields in PascalCa
     });
     const envelope = (await pending).structuredContent as Record<string, any>;
     assert.equal(envelope.data.result.SceneRevision, 5);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('script_instance_update accepts an enabled patch and rejects an empty patch without writing', async () => {
+  const f = await fixture(7);
+  try {
+    const rejected = await handleScriptInstanceUpdate(ScriptInstanceUpdateSchema.parse({ script_id: ACTOR_ID }), f.ctx);
+    assert.equal(rejected.isError, true);
+    assert.equal((rejected.structuredContent as any).error.code, 'VALIDATION_FAILED');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+
+    const pending = handleScriptInstanceUpdate(ScriptInstanceUpdateSchema.parse({
+      script_id: ACTOR_ID, enabled: false, expected_scene_revision: 3, lease_id: 'b'.repeat(32), idempotency_key: 'disable-1',
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ Id: ACTOR_ID, Enabled: false, ProjectRevision: 4, SceneRevision: 4 }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'script.instance_update');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {
+      ScriptId: ACTOR_ID, Enabled: false, ExpectedSceneRevision: 3, LeaseId: 'b'.repeat(32), IdempotencyKey: 'disable-1',
+    });
+    assert.equal(((await pending).structuredContent as any).data.result.Enabled, false);
   } finally {
     await f.cleanup();
   }

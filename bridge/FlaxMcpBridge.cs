@@ -33,6 +33,11 @@ namespace Game.MCP
     {
         public string Id; public string TypeName; public string Name; public bool Active; public string ParentId;
         public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles;
+        // Position/Scale/EulerAngles are world-space values. The following fields
+        // expose the corresponding bounded local-space and hierarchy metadata.
+        public McpVector3 LocalPosition; public McpVector3 LocalScale; public McpVector3 LocalEulerAngles;
+        public string[] Tags; public bool TagsTruncated; public int Layer; public string LayerName;
+        public int ChildrenCount; public bool ActiveInHierarchy; public int StaticFlags; public int OrderInParent;
         public string[] ScriptIds; public McpActorDto[] Children; public long ProjectRevision; public long SceneRevision;
     }
     public class McpScriptDto { public string Id; public string TypeName; public string ActorId; public bool Enabled; public long ProjectRevision; public long SceneRevision; }
@@ -48,10 +53,10 @@ namespace Game.MCP
     internal sealed class McpIdempotencyEntry { public string Method; public string Fingerprint; public object Result; public long ExpiresUnixMs; }
     internal sealed class McpTreeBudget { public int Count; }
     public class McpActorId { public string ActorId; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
-    public class McpActorFind { public string Name; public int MaxResults = 50; }
+    public class McpActorFind { public string Name; public string TypeName; public string ParentId; public bool? Active; public int MaxResults = 50; }
     public class McpActorCreate { public string TypeName = "FlaxEngine.EmptyActor"; public string Name; public string ParentId; public bool Active = true; public McpVector3 Position; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpActorCreateValidation { public string TypeName; public string ParentId; }
-    public class McpActorUpdate { public string ActorId; public string Name; public bool? Active; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpActorUpdate { public string ActorId; public string Name; public bool? Active; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public McpVector3 LocalPosition; public McpVector3 LocalScale; public McpVector3 LocalEulerAngles; public int? Layer; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpActorReparent { public string ActorId; public string ParentId; public bool KeepWorldTransform = true; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptAttach { public string ActorId; public string ScriptType; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptId { public string ScriptId; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
@@ -95,6 +100,10 @@ namespace Game.MCP
         private const int MaxRequestsPerPoll = 4;
         private const int MaxTreeDepth = 64;
         private const int MaxTreeActors = 2000;
+        private const int MaxActorTags = 64;
+        private const int MaxActorTagChars = 128;
+        private const int MaxLayerNameChars = 128;
+        private const int MaxActorLayer = 31;
         private const int MaxResultBytes = 512 * 1024;
         private const int MaxLogEntries = 2000;
         private const int MaxLogMessageChars = 8192;
@@ -707,17 +716,25 @@ namespace Game.MCP
 
         private McpActorDto[] FindActors(McpActorFind p)
         {
-            if (p == null || string.IsNullOrWhiteSpace(p.Name)) throw new McpProtocolException("INVALID_REQUEST", "name is required.");
+            if (p == null) throw new McpProtocolException("INVALID_REQUEST", "Actor find parameters are required.");
+            if (string.IsNullOrWhiteSpace(p.Name) && string.IsNullOrWhiteSpace(p.TypeName) && string.IsNullOrEmpty(p.ParentId) && !p.Active.HasValue)
+                throw new McpProtocolException("INVALID_REQUEST", "Provide at least one actor find filter.");
+            if (p.Name != null && (p.Name.Length == 0 || p.Name.Length > 128)) throw new McpProtocolException("VALIDATION_FAILED", "Name filter must be between 1 and 128 characters.");
+            if (p.TypeName != null && (p.TypeName.Length == 0 || p.TypeName.Length > 256)) throw new McpProtocolException("VALIDATION_FAILED", "TypeName filter must be between 1 and 256 characters.");
+            Guid parentId = Guid.Empty;
+            if (!string.IsNullOrEmpty(p.ParentId) && !Guid.TryParseExact(p.ParentId, "N", out parentId)) throw new McpProtocolException("INVALID_REQUEST", "parentId must be a 32-character GUID.");
             var max = Math.Max(1, Math.Min(p.MaxResults, 100));
             var all = Level.GetActors(typeof(Actor), false);
             var result = new List<McpActorDto>();
             foreach (var actor in all)
             {
-                if (actor != null && actor.Name.IndexOf(p.Name, StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    result.Add(ActorDto(actor, false));
-                    if (result.Count == max) break;
-                }
+                if (actor == null) continue;
+                if (!string.IsNullOrEmpty(p.Name) && actor.Name.IndexOf(p.Name, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (!string.IsNullOrEmpty(p.TypeName) && !string.Equals(actor.TypeName, p.TypeName, StringComparison.Ordinal)) continue;
+                if (parentId != Guid.Empty && (actor.Parent == null || actor.Parent.ID != parentId)) continue;
+                if (p.Active.HasValue && actor.IsActive != p.Active.Value) continue;
+                result.Add(ActorDto(actor, false));
+                if (result.Count == max) break;
             }
             return result.ToArray();
         }
@@ -753,7 +770,7 @@ namespace Game.MCP
 
         private McpActorDto UpdateActor(McpActorUpdate p)
         {
-            if (p == null) throw new McpProtocolException("INVALID_REQUEST", "Actor update parameters are required.");
+            ValidateActorUpdate(p);
             var actor = RequireActor(p.ActorId);
             CheckSceneWrite(actor.Scene, p.ExpectedSceneRevision, p.LeaseId);
             FEditor.Instance.Undo.RecordAction(actor, "Update actor", () =>
@@ -764,10 +781,34 @@ namespace Game.MCP
                 if (p.Position != null) actor.Position = ToFloat3(p.Position);
                 if (p.Scale != null) actor.Scale = ToFloat3(p.Scale);
                 if (p.EulerAngles != null) actor.EulerAngles = ToFloat3(p.EulerAngles);
+                if (p.LocalPosition != null) actor.LocalPosition = ToFloat3(p.LocalPosition);
+                if (p.LocalScale != null) actor.LocalScale = ToFloat3(p.LocalScale);
+                if (p.LocalEulerAngles != null) actor.LocalEulerAngles = ToFloat3(p.LocalEulerAngles);
+                if (p.Layer.HasValue) actor.Layer = p.Layer.Value;
                 MarkEdited(actor);
             });
             AdvanceSceneRevision(actor.Scene);
             return ActorDto(actor, false);
+        }
+
+        private static void ValidateActorUpdate(McpActorUpdate p)
+        {
+            if (p == null) throw new McpProtocolException("INVALID_REQUEST", "Actor update parameters are required.");
+            var hasWorldTransform = p.Position != null || p.Scale != null || p.EulerAngles != null;
+            var hasLocalTransform = p.LocalPosition != null || p.LocalScale != null || p.LocalEulerAngles != null;
+            if (p.Name == null && !p.Active.HasValue && !hasWorldTransform && !hasLocalTransform && !p.Layer.HasValue)
+                throw new McpProtocolException("INVALID_REQUEST", "Provide at least one allowlisted actor field to update.");
+            if (hasWorldTransform && hasLocalTransform)
+                throw new McpProtocolException("VALIDATION_FAILED", "World-space and local-space transform patches cannot be combined in one actor update.");
+            if (p.Name != null) Limit(p.Name, 128, "");
+            ValidateVector(p.Position, "Position");
+            ValidateVector(p.Scale, "Scale");
+            ValidateVector(p.EulerAngles, "EulerAngles");
+            ValidateVector(p.LocalPosition, "LocalPosition");
+            ValidateVector(p.LocalScale, "LocalScale");
+            ValidateVector(p.LocalEulerAngles, "LocalEulerAngles");
+            if (p.Layer.HasValue && (p.Layer.Value < 0 || p.Layer.Value > MaxActorLayer))
+                throw new McpProtocolException("VALIDATION_FAILED", "Layer must be between 0 and 31.");
         }
 
         private object DeleteActor(McpActorId p)
@@ -893,7 +934,11 @@ namespace Game.MCP
             {
                 Id = actor.ID.ToString("N"), TypeName = actor.TypeName, Name = actor.Name, Active = actor.IsActive,
                 ParentId = actor.Parent == null ? null : actor.Parent.ID.ToString("N"), Position = FromFloat3(actor.Position),
-                Scale = FromFloat3(actor.Scale), EulerAngles = FromFloat3(actor.EulerAngles), ScriptIds = includeScripts ? scripts.ToArray() : null,
+                Scale = FromFloat3(actor.Scale), EulerAngles = FromFloat3(actor.EulerAngles),
+                LocalPosition = FromFloat3(actor.LocalPosition), LocalScale = FromFloat3(actor.LocalScale), LocalEulerAngles = FromFloat3(actor.LocalEulerAngles),
+                Tags = ActorTagNames(actor, out var tagsTruncated), TagsTruncated = tagsTruncated, Layer = actor.Layer, LayerName = LimitForLog(actor.LayerName, MaxLayerNameChars),
+                ChildrenCount = actor.ChildrenCount, ActiveInHierarchy = actor.IsActiveInHierarchy, StaticFlags = (int)actor.StaticFlags, OrderInParent = actor.OrderInParent,
+                ScriptIds = includeScripts ? scripts.ToArray() : null,
             };
             if (depth < requestedDepth)
             {
@@ -916,7 +961,11 @@ namespace Game.MCP
             {
                 Id = actor.ID.ToString("N"), TypeName = actor.TypeName, Name = actor.Name, Active = actor.IsActive,
                 ParentId = actor.Parent == null ? null : actor.Parent.ID.ToString("N"), Position = FromFloat3(actor.Position),
-                Scale = FromFloat3(actor.Scale), EulerAngles = FromFloat3(actor.EulerAngles), ScriptIds = scripts.ToArray(),
+                Scale = FromFloat3(actor.Scale), EulerAngles = FromFloat3(actor.EulerAngles),
+                LocalPosition = FromFloat3(actor.LocalPosition), LocalScale = FromFloat3(actor.LocalScale), LocalEulerAngles = FromFloat3(actor.LocalEulerAngles),
+                Tags = ActorTagNames(actor, out var tagsTruncated), TagsTruncated = tagsTruncated, Layer = actor.Layer, LayerName = LimitForLog(actor.LayerName, MaxLayerNameChars),
+                ChildrenCount = actor.ChildrenCount, ActiveInHierarchy = actor.IsActiveInHierarchy, StaticFlags = (int)actor.StaticFlags, OrderInParent = actor.OrderInParent,
+                ScriptIds = scripts.ToArray(),
                 ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision,
             };
             if (recursive)
@@ -1141,6 +1190,21 @@ namespace Game.MCP
         private static Script RequireScript(string id) { Guid guid; if (!Guid.TryParseExact(id ?? "", "N", out guid)) throw new McpProtocolException("INVALID_REQUEST", "scriptId must be a 32-character GUID."); var script = FObject.TryFind<Script>(ref guid); if (script == null) throw new McpProtocolException("NOT_FOUND", "Script was not found."); return script; }
         private static McpVector3 FromFloat3(Float3 v) { return new McpVector3 { X = v.X, Y = v.Y, Z = v.Z }; }
         private static Float3 ToFloat3(McpVector3 v) { return new Float3(v.X, v.Y, v.Z); }
+        private static void ValidateVector(McpVector3 value, string name)
+        {
+            if (value == null) return;
+            if (float.IsNaN(value.X) || float.IsInfinity(value.X) || float.IsNaN(value.Y) || float.IsInfinity(value.Y) || float.IsNaN(value.Z) || float.IsInfinity(value.Z))
+                throw new McpProtocolException("VALIDATION_FAILED", name + " must contain only finite values.");
+        }
+        private static string[] ActorTagNames(Actor actor, out bool truncated)
+        {
+            var tags = actor.Tags ?? new Tag[0];
+            var count = Math.Min(tags.Length, MaxActorTags);
+            var result = new string[count];
+            for (var i = 0; i < count; i++) result[i] = LimitForLog(tags[i].ToString(), MaxActorTagChars);
+            truncated = tags.Length > count;
+            return result;
+        }
         private static string Limit(string value, int max, string fallback) { value = value ?? fallback; if (value.Length > max) throw new McpProtocolException("VALIDATION_FAILED", "String exceeds " + max + " characters."); return value; }
 
         private static Type ResolveType(string typeName, Type requiredBase)

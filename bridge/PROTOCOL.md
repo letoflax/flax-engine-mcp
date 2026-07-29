@@ -31,13 +31,24 @@ exists only so the local client can reject a bridge from another project.
 Bridge v5 methods remain available: `status`, `scene.list_loaded`, `scene.get_tree`, `scene.save`,
 `project.save_all`, actor CRUD/find/duplicate/reparent, narrowly scoped script
 attach/detach/instance read/update, and `edit.undo`/`edit.redo`. The script update
-surface only permits `Enabled`; arbitrary reflection-based property changes are
-not exposed. `actor.update` permits only name, active, position, scale, and Euler
-angles. The public Flax 1.12 API does not expose a reliable transaction/rollback
+surface only permits an optional `Enabled` patch; an empty patch fails, and arbitrary
+reflection-based or serialized-property changes are not exposed. `actor.update`
+permits only name, active, world position/scale/Euler angles, local
+position/scale/Euler angles, and layer. World-space and local-space patches cannot
+be combined in one request. The public Flax 1.12 API does not expose a reliable transaction/rollback
 primitive for arbitrary operations, so the bridge advertises `TransactionsSupported:false`
 and intentionally does not claim an atomic batch operation.
 Recursive actor-tree results are bounded to 64 levels and 2,000 actors; larger
 trees fail with `RESPONSE_TOO_LARGE` instead of exhausting the editor or client.
+
+Bridge v7 actor DTOs additionally expose bounded, public Flax 1.12 metadata:
+`ParentId`, `OrderInParent`, `ChildrenCount`, `ActiveInHierarchy`, world and local
+position/scale/Euler angles, `Layer`, `LayerName`, numeric `StaticFlags`, and up to
+64 tag names (`TagsTruncated` reports the remainder). `actor.find` retains its
+v5 name-substring filter and adds v7-only exact `TypeName`, direct `ParentId`, and
+`Active` filters. These fields are explicit allowlisted DTO members; arbitrary
+actor components/properties, prefab overrides, and script serialized properties
+remain unsupported.
 
 Bridge v6 adds:
 

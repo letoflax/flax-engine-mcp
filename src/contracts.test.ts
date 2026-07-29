@@ -52,6 +52,17 @@ test('dispatch rejects unknown arguments with a stable domain error', async () =
   assert.equal(result.content[0]?.type === 'text' && result.content[0].text.startsWith('INVALID_ARGUMENT:'), true);
 });
 
+test('actor and script patch tools reject unknown fields before any editor RPC', async () => {
+  const actor = await dispatchToolCall(tools, 'actor_update', {
+    actor_id: 'a'.repeat(32), layer: 4, arbitrary_property: true,
+  }, ctx);
+  const script = await dispatchToolCall(tools, 'script_instance_update', {
+    script_id: 'a'.repeat(32), enabled: true, properties: { Speed: 1 },
+  }, ctx);
+  assert.equal((actor.structuredContent as Record<string, any>).error.code, 'INVALID_ARGUMENT');
+  assert.equal((script.structuredContent as Record<string, any>).error.code, 'INVALID_ARGUMENT');
+});
+
 test('permission policy parses profiles and repeated overrides', () => {
   assert.deepEqual(parsePermissionPolicy(['node', 'server', '--permission-profile', 'code-edit', '--allow-tool', 'actor_create', '--deny-tool', 'write_script', '--allow-tool', 'read_doc']), {
     profile: 'code-edit', allowTools: ['actor_create', 'read_doc'], denyTools: ['write_script'], emergencyReadOnly: false,

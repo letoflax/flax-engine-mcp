@@ -34,3 +34,21 @@ test('bridge v7 contains bounded revision, lease, and idempotency state guards',
   assert.match(source, /ExecuteIdempotent\("script\.attach"/);
   assert.match(source, /errorDetails/);
 });
+
+test('bridge v7 keeps actor/script editing allowlisted, validated before undo, and bounded', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /McpVector3 LocalPosition/);
+  assert.match(source, /int\? Layer/);
+  assert.match(source, /string\[\] Tags; public bool TagsTruncated/);
+  assert.match(source, /MaxActorTags\s*=\s*64/);
+  assert.match(source, /TypeName; public string ParentId; public bool\? Active/);
+  assert.match(source, /ValidateActorUpdate\(p\);/);
+  assert.match(source, /World-space and local-space transform patches cannot be combined/);
+  assert.match(source, /Layer must be between 0 and 31/);
+  assert.ok(source.indexOf('ValidateActorUpdate(p);') < source.indexOf('FEditor.Instance.Undo.RecordAction(actor, "Update actor"'));
+  assert.match(source, /if \(p\.LocalPosition != null\) actor\.LocalPosition/);
+  assert.match(source, /if \(p\.Layer\.HasValue\) actor\.Layer/);
+  assert.match(source, /if \(p == null \|\| !p\.Enabled\.HasValue\) throw new McpProtocolException\("INVALID_REQUEST"/);
+  assert.match(source, /McpScriptEnabledUndo/);
+  assert.doesNotMatch(source, /PropertyInfo\.SetValue/);
+});

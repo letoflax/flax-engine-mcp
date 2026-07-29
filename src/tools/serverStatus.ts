@@ -213,6 +213,10 @@ export async function handleGetServerCapabilities(
         sceneRevisions: phase3,
         editLeases: phase3,
         idempotentEditorWrites: phase3,
+        safeActorSurface: phase3,
+        arbitraryActorProperties: false,
+        scriptInstanceEnabledPatch: editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 5,
+        arbitrarySerializedScriptProperties: false,
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {
         profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false,

@@ -321,7 +321,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'actor_find',
-      description: 'Finds live actors by case-insensitive name substring.',
+      description: 'Finds live actors by case-insensitive name substring and optional exact type, direct parent, or active-state filters.',
       inputSchema: zodToJsonSchema(ActorFindSchema),
       handler: (a, c) => handleActorFind(a as Parameters<typeof handleActorFind>[0], c),
     },
@@ -333,7 +333,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'actor_update',
-      description: 'Updates live actor name, active state, or transform through Flax Editor.',
+      description: 'Patches allowlisted live actor fields: name, active, one transform space (world or local), and layer. Uses editor Undo; arbitrary properties are not exposed.',
       inputSchema: zodToJsonSchema(ActorUpdateSchema),
       handler: (a, c) => handleActorUpdate(a as Parameters<typeof handleActorUpdate>[0], c),
     },
@@ -369,13 +369,13 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'script_instance_get',
-      description: 'Reads a live script instance and its enabled state.',
+      description: 'Reads a live script instance and its enabled state. Arbitrary serialized script properties are not exposed.',
       inputSchema: zodToJsonSchema(ScriptInstanceGetSchema),
       handler: (a, c) => handleScriptInstanceGet(a as Parameters<typeof handleScriptInstanceGet>[0], c),
     },
     {
       name: 'script_instance_update',
-      description: 'Updates the enabled state of a live script instance.',
+      description: 'Patches the enabled state of a live script instance. Arbitrary serialized script properties are not exposed.',
       inputSchema: zodToJsonSchema(ScriptInstanceUpdateSchema),
       handler: (a, c) => handleScriptInstanceUpdate(a as Parameters<typeof handleScriptInstanceUpdate>[0], c),
     },
