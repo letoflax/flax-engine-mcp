@@ -143,6 +143,25 @@ create, duplicate, and script attach.
 
 ## Bridge v8: public asset registry and reference graph
 
+## MCP resource delivery (Node server)
+
+The Node MCP server exposes bridge data as bounded read-only resources; this does
+not add a bridge RPC or imply an Editor event stream. Fixed resources include
+project metadata/settings, bridge status, loaded scenes, diagnostics, logs,
+compile status, and script audit history. Live scene/actor URIs require bridge
+v5; live asset URIs require v8. All resource URIs use canonical `flax://` paths,
+reject queries/fragments/encoded traversal, redact host paths, and limit JSON to
+256 KiB. Capture PNG resources retain the existing cache confinement, TTL, and
+size checks.
+
+The MCP server may subscribe clients to Editor status, scene trees, diagnostics,
+and logs. It sends debounced `notifications/resources/updated` only after a
+successful MCP mutation known to affect a subscribed resource; Editor status is
+also bounded-polled through the heartbeat. The bridge has no verified callback
+for manual Editor edits or arbitrary plugin mutations, so those changes are not
+guaranteed to cause notifications. Successful captures cause the server to send
+`notifications/resources/list_changed`.
+
 Bridge v8 keeps protocol v1 because the asset RPCs and status fields are additive.
 `status` adds `AssetRegistrySupported:true`, `AssetReferenceGraphSupported:true`,
 `AssetImportSettingsSupported:false`, and `AssetReferenceLocationsSupported:false`.

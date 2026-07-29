@@ -7,17 +7,21 @@ import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
+  SubscribeRequestSchema,
+  UnsubscribeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createProjectContext } from './projectContext.js';
 import { buildToolRegistry, ToolDefinition } from './tools/index.js';
 import { finalizeToolResponse, toolError, ToolDomainError, ToolResponse } from './errors.js';
 import { ProjectMeta } from './projectContext.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
-import { listFlaxResources, readFlaxResource } from './resources.js';
+import { listFlaxResourceTemplates, listFlaxResources, readFlaxResource } from './resources.js';
 import { getFlaxPrompt, listFlaxPrompts } from './prompts.js';
+import { ResourceSubscriptionManager } from './resourceSubscriptions.js';
 import { allowedToolNames, assertPermissionRegistryCoverage, parsePermissionPolicy, policyForContext } from './permissions.js';
 import { createAssetImportPolicy } from './assetImportPolicy.js';
 
@@ -83,8 +87,15 @@ async function main(): Promise<void> {
 
   const server = new Server(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {}, resources: {}, prompts: {} } }
+    { capabilities: { tools: {}, resources: { subscribe: true, listChanged: true }, prompts: {} } }
   );
+  const subscriptions = new ResourceSubscriptionManager(ctx, async (method, params) => {
+    if (method === 'notifications/resources/updated') {
+      await server.notification({ method, params: params as { uri: string } });
+    } else {
+      await server.notification({ method, params });
+    }
+  });
 
   const tools = buildToolRegistry(ctx);
   assertPermissionRegistryCoverage(tools.map(tool => tool.name));
@@ -101,13 +112,24 @@ async function main(): Promise<void> {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
-    return dispatchToolCall(tools, name, args, ctx);
+    const response = await dispatchToolCall(tools, name, args, ctx);
+    subscriptions.afterTool(name, response);
+    return response;
   });
 
-  server.setRequestHandler(ListResourcesRequestSchema, async () => listFlaxResources(ctx));
+  server.setRequestHandler(ListResourcesRequestSchema, async request => listFlaxResources(ctx, request.params?.cursor));
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => listFlaxResourceTemplates(ctx));
   server.setRequestHandler(ReadResourceRequestSchema, async request => readFlaxResource(request.params.uri, ctx));
   server.setRequestHandler(ListPromptsRequestSchema, async () => listFlaxPrompts());
   server.setRequestHandler(GetPromptRequestSchema, async request => getFlaxPrompt(request.params.name, request.params.arguments));
+  server.setRequestHandler(SubscribeRequestSchema, async request => {
+    subscriptions.subscribe(request.params.uri);
+    return {};
+  });
+  server.setRequestHandler(UnsubscribeRequestSchema, async request => {
+    subscriptions.unsubscribe(request.params.uri);
+    return {};
+  });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
