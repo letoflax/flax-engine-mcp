@@ -34,7 +34,11 @@ attach/detach/instance read/update, and `edit.undo`/`edit.redo`. The script upda
 surface only permits an optional `Enabled` patch; an empty patch fails, and arbitrary
 reflection-based or serialized-property changes are not exposed. `actor.update`
 permits only name, active, world position/scale/Euler angles, local
-position/scale/Euler angles, and layer. World-space and local-space patches cannot
+position/scale/Euler angles, layer, and v15 component assignments for
+`FlaxEngine.AnimatedModel` (`SkinnedModel`, `AnimationGraph`,
+`UpdateWhenOffscreen`) and `FlaxEngine.StaticModel` (`Model`). Asset selectors
+accept either a 32-character GUID or a `Content/...` path, never both in the
+same field. World-space and local-space patches cannot
 be combined in one request. The public Flax 1.12 API does not expose a reliable transaction/rollback
 primitive for arbitrary operations, so the bridge advertises `TransactionsSupported:false`
 and intentionally does not claim an atomic batch operation.

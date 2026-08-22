@@ -28,7 +28,7 @@ test('release registry has a unique, version-aligned 120-tool contract', async (
   const packageMetadata = JSON.parse(await readFile(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string };
   assert.equal(tools.length, 120);
   assert.equal(new Set(names).size, tools.length);
-  assert.equal(SERVER_VERSION, '1.3.0');
+  assert.equal(SERVER_VERSION, '1.4.0');
   assert.equal(packageMetadata.version, SERVER_VERSION);
 });
 

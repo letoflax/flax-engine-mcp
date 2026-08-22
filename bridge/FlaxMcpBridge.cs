@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 14
+// MCP-BRIDGE-VERSION: 15
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -23,12 +23,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 14; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 15; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 14; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; }
+    public class McpStatus { public int BridgeVersion = 15; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -58,7 +58,7 @@ namespace Game.MCP
     public class McpActorFind { public string Name; public string TypeName; public string ParentId; public bool? Active; public int MaxResults = 50; }
     public class McpActorCreate { public string TypeName = "FlaxEngine.EmptyActor"; public string Name; public string ParentId; public bool Active = true; public McpVector3 Position; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpActorCreateValidation { public string TypeName; public string ParentId; }
-    public class McpActorUpdate { public string ActorId; public string Name; public bool? Active; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public McpVector3 LocalPosition; public McpVector3 LocalScale; public McpVector3 LocalEulerAngles; public int? Layer; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpActorUpdate { public string ActorId; public string Name; public bool? Active; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public McpVector3 LocalPosition; public McpVector3 LocalScale; public McpVector3 LocalEulerAngles; public int? Layer; public string SkinnedModelId; public string SkinnedModelPath; public string AnimationGraphId; public string AnimationGraphPath; public string StaticModelId; public string StaticModelPath; public bool? UpdateWhenOffscreen; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpActorReparent { public string ActorId; public string ParentId; public bool KeepWorldTransform = true; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptAttach { public string ActorId; public string ScriptType; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptId { public string ScriptId; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
@@ -170,7 +170,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 14;
+        private const int BridgeVersion = 15;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -2736,8 +2736,79 @@ namespace Game.MCP
                 if (p.Layer.HasValue) actor.Layer = p.Layer.Value;
                 MarkEdited(actor);
             });
+            if (HasActorComponentAssignments(p))
+            {
+                ApplyActorComponentAssignments(actor, p);
+                MarkEdited(actor);
+            }
             AdvanceSceneRevision(actor.Scene);
             return ActorDto(actor, false);
+        }
+
+        private static bool HasActorComponentAssignments(McpActorUpdate p)
+        {
+            return !string.IsNullOrEmpty(p.SkinnedModelId) || !string.IsNullOrEmpty(p.SkinnedModelPath)
+                || !string.IsNullOrEmpty(p.AnimationGraphId) || !string.IsNullOrEmpty(p.AnimationGraphPath)
+                || !string.IsNullOrEmpty(p.StaticModelId) || !string.IsNullOrEmpty(p.StaticModelPath)
+                || p.UpdateWhenOffscreen.HasValue;
+        }
+
+        private static void ApplyActorComponentAssignments(Actor actor, McpActorUpdate p)
+        {
+            var animated = actor as AnimatedModel;
+            if (animated != null)
+            {
+                if (!string.IsNullOrEmpty(p.SkinnedModelId) || !string.IsNullOrEmpty(p.SkinnedModelPath))
+                    animated.SkinnedModel = LoadActorModelAsset(p.SkinnedModelId, p.SkinnedModelPath);
+                if (!string.IsNullOrEmpty(p.AnimationGraphId) || !string.IsNullOrEmpty(p.AnimationGraphPath))
+                    animated.AnimationGraph = LoadContentAsset<AnimationGraph>(p.AnimationGraphId, p.AnimationGraphPath);
+                if (p.UpdateWhenOffscreen.HasValue)
+                    animated.UpdateWhenOffscreen = p.UpdateWhenOffscreen.Value;
+            }
+
+            var staticModel = actor as StaticModel;
+            if (staticModel != null && (!string.IsNullOrEmpty(p.StaticModelId) || !string.IsNullOrEmpty(p.StaticModelPath)))
+                staticModel.Model = LoadContentAsset<Model>(p.StaticModelId, p.StaticModelPath);
+
+            if (animated == null && staticModel == null)
+            {
+                var hasAnimatedFields = !string.IsNullOrEmpty(p.SkinnedModelId) || !string.IsNullOrEmpty(p.SkinnedModelPath)
+                    || !string.IsNullOrEmpty(p.AnimationGraphId) || !string.IsNullOrEmpty(p.AnimationGraphPath)
+                    || p.UpdateWhenOffscreen.HasValue;
+                var hasStaticFields = !string.IsNullOrEmpty(p.StaticModelId) || !string.IsNullOrEmpty(p.StaticModelPath);
+                if (hasAnimatedFields || hasStaticFields)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Component asset assignments require FlaxEngine.AnimatedModel or FlaxEngine.StaticModel.");
+            }
+        }
+
+        private static Model LoadActorModelAsset(string assetId, string assetPath)
+        {
+            ValidateAssetSelector(assetId, assetPath);
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = assetId, Path = assetPath }, BuildAssetRegistry());
+            var model = Content.LoadAsync<Model>(record.Id);
+            if (model == null)
+            {
+                var absolute = Path.Combine(Globals.ProjectFolder, record.Path.Replace('/', Path.DirectorySeparatorChar));
+                model = Content.LoadAsync<Model>(absolute);
+            }
+            if (model == null)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "Model asset could not be loaded: " + record.Path);
+            if (model.WaitForLoaded(30000) || model.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "Model asset failed to load: " + record.Path);
+            return model;
+        }
+
+        private static T LoadContentAsset<T>(string assetId, string assetPath) where T : Asset
+        {
+            ValidateAssetSelector(assetId, assetPath);
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = assetId, Path = assetPath }, BuildAssetRegistry());
+            var absolute = Path.Combine(Globals.ProjectFolder, record.Path.Replace('/', Path.DirectorySeparatorChar));
+            var asset = Content.LoadAsync<T>(absolute);
+            if (asset == null)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "Content asset could not be loaded: " + record.Path);
+            if (asset.WaitForLoaded(30000) || asset.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "Content asset failed to load: " + record.Path);
+            return asset;
         }
 
         private static void ValidateActorUpdate(McpActorUpdate p)
@@ -2745,7 +2816,11 @@ namespace Game.MCP
             if (p == null) throw new McpProtocolException("INVALID_REQUEST", "Actor update parameters are required.");
             var hasWorldTransform = p.Position != null || p.Scale != null || p.EulerAngles != null;
             var hasLocalTransform = p.LocalPosition != null || p.LocalScale != null || p.LocalEulerAngles != null;
-            if (p.Name == null && !p.Active.HasValue && !hasWorldTransform && !hasLocalTransform && !p.Layer.HasValue)
+            var hasComponentFields = !string.IsNullOrEmpty(p.SkinnedModelId) || !string.IsNullOrEmpty(p.SkinnedModelPath)
+                || !string.IsNullOrEmpty(p.AnimationGraphId) || !string.IsNullOrEmpty(p.AnimationGraphPath)
+                || !string.IsNullOrEmpty(p.StaticModelId) || !string.IsNullOrEmpty(p.StaticModelPath)
+                || p.UpdateWhenOffscreen.HasValue;
+            if (p.Name == null && !p.Active.HasValue && !hasWorldTransform && !hasLocalTransform && !p.Layer.HasValue && !hasComponentFields)
                 throw new McpProtocolException("INVALID_REQUEST", "Provide at least one allowlisted actor field to update.");
             if (hasWorldTransform && hasLocalTransform)
                 throw new McpProtocolException("VALIDATION_FAILED", "World-space and local-space transform patches cannot be combined in one actor update.");
@@ -2758,6 +2833,12 @@ namespace Game.MCP
             ValidateVector(p.LocalEulerAngles, "LocalEulerAngles");
             if (p.Layer.HasValue && (p.Layer.Value < 0 || p.Layer.Value > MaxActorLayer))
                 throw new McpProtocolException("VALIDATION_FAILED", "Layer must be between 0 and 31.");
+            if (!string.IsNullOrEmpty(p.SkinnedModelId) || !string.IsNullOrEmpty(p.SkinnedModelPath))
+                ValidateAssetSelector(p.SkinnedModelId, p.SkinnedModelPath);
+            if (!string.IsNullOrEmpty(p.AnimationGraphId) || !string.IsNullOrEmpty(p.AnimationGraphPath))
+                ValidateAssetSelector(p.AnimationGraphId, p.AnimationGraphPath);
+            if (!string.IsNullOrEmpty(p.StaticModelId) || !string.IsNullOrEmpty(p.StaticModelPath))
+                ValidateAssetSelector(p.StaticModelId, p.StaticModelPath);
         }
 
         private object DeleteActor(McpActorId p)

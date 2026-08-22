@@ -133,6 +133,31 @@ test('actor_update rejects an empty update without writing an RPC request', asyn
   }
 });
 
+test('actor_update maps component asset assignments in PascalCase', async () => {
+  const f = await fixture(7);
+  try {
+    const pending = handleActorUpdate(ActorUpdateSchema.parse({
+      actor_id: ACTOR_ID,
+      skinned_model_path: 'Content/Characters/MotusMan/MotusMan_v2.flax',
+      update_when_offscreen: true,
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ Id: ACTOR_ID, Name: 'MotusMan' }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'actor.update');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {
+      ActorId: ACTOR_ID,
+      SkinnedModelPath: 'Content/Characters/MotusMan/MotusMan_v2.flax',
+      UpdateWhenOffscreen: true,
+    });
+    await pending;
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('actor_update maps v7-only local transform and layer fields in PascalCase', async () => {
   const f = await fixture(7);
   try {

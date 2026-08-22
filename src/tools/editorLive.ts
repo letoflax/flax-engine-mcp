@@ -56,6 +56,20 @@ export const ActorUpdateSchema = z.object({
   local_euler_angles: Vector3.optional(),
   layer: z.number().int().min(0).max(31).optional()
     .describe('Flax layer index. Only the actor itself is changed; children are not updated recursively.'),
+  skinned_model_id: FlaxId.optional()
+    .describe('Assign a SkinnedModel to a FlaxEngine.AnimatedModel actor (by asset GUID).'),
+  skinned_model_path: z.string().min(1).max(512).optional()
+    .describe('Assign a SkinnedModel to a FlaxEngine.AnimatedModel actor (by Content path).'),
+  animation_graph_id: FlaxId.optional()
+    .describe('Assign an AnimationGraph to a FlaxEngine.AnimatedModel actor (by asset GUID).'),
+  animation_graph_path: z.string().min(1).max(512).optional()
+    .describe('Assign an AnimationGraph to a FlaxEngine.AnimatedModel actor (by Content path).'),
+  static_model_id: FlaxId.optional()
+    .describe('Assign a Model to a FlaxEngine.StaticModel actor (by asset GUID).'),
+  static_model_path: z.string().min(1).max(512).optional()
+    .describe('Assign a Model to a FlaxEngine.StaticModel actor (by Content path).'),
+  update_when_offscreen: z.boolean().optional()
+    .describe('Set AnimatedModel.UpdateWhenOffscreen.'),
   dry_run: z.boolean().optional().default(false),
   ...RevisionedLiveWrite,
 });
@@ -256,7 +270,14 @@ export async function handleActorUpdate(args: z.infer<typeof ActorUpdateSchema>,
     args.local_position === undefined &&
     args.local_scale === undefined &&
     args.local_euler_angles === undefined &&
-    args.layer === undefined
+    args.layer === undefined &&
+    args.skinned_model_id === undefined &&
+    args.skinned_model_path === undefined &&
+    args.animation_graph_id === undefined &&
+    args.animation_graph_path === undefined &&
+    args.static_model_id === undefined &&
+    args.static_model_path === undefined &&
+    args.update_when_offscreen === undefined
   ) {
     return toolError(new ToolDomainError('VALIDATION_FAILED', 'Provide at least one actor field to update.'));
   }
@@ -276,6 +297,13 @@ export async function handleActorUpdate(args: z.infer<typeof ActorUpdateSchema>,
     LocalScale: toBridgeVector(args.local_scale),
     LocalEulerAngles: toBridgeVector(args.local_euler_angles),
     Layer: args.layer,
+    SkinnedModelId: args.skinned_model_id,
+    SkinnedModelPath: args.skinned_model_path,
+    AnimationGraphId: args.animation_graph_id,
+    AnimationGraphPath: args.animation_graph_path,
+    StaticModelId: args.static_model_id,
+    StaticModelPath: args.static_model_path,
+    UpdateWhenOffscreen: args.update_when_offscreen,
     ExpectedSceneRevision: args.expected_scene_revision,
     LeaseId: args.lease_id,
     IdempotencyKey: args.idempotency_key,
@@ -286,7 +314,10 @@ export async function handleActorUpdate(args: z.infer<typeof ActorUpdateSchema>,
     'actor.update',
     params,
     [{ kind: 'actor.updated', id: args.actor_id }],
-    hasLocalTransform || args.layer !== undefined ? 7 : undefined,
+    hasLocalTransform || args.layer !== undefined || args.skinned_model_id !== undefined || args.skinned_model_path !== undefined
+      || args.animation_graph_id !== undefined || args.animation_graph_path !== undefined
+      || args.static_model_id !== undefined || args.static_model_path !== undefined
+      || args.update_when_offscreen !== undefined ? 7 : undefined,
   );
 }
 

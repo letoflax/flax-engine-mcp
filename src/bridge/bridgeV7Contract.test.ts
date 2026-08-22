@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v14 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v15 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*14/);
-  assert.match(source, /BridgeVersion\s*=\s*14/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*15/);
+  assert.match(source, /BridgeVersion\s*=\s*15/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -17,6 +17,8 @@ test('bridge v14 preserves revisioned edit leases without claiming atomic transa
   assert.match(source, /case "edit\.lease_commit"/);
   assert.match(source, /case "edit\.lease_release"/);
   assert.doesNotMatch(source, /edit\.rollback_transaction/);
+  assert.match(source, /SkinnedModelPath/);
+  assert.match(source, /LoadActorModelAsset/);
 });
 
 test('bridge v9 contains bounded revision, lease, and idempotency state guards', async () => {
@@ -174,7 +176,7 @@ test('bridge v13 exposes only verified public material and animation reads and k
   assert.doesNotMatch(source, /\.CreateVirtualInstance\(/);
 });
 
-test('bridge v14 keeps domain mutations unsupported while exposing bounded public queries', async () => {
+test('bridge v15 keeps domain mutations unsupported while exposing bounded public queries', async () => {
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /case "physics\.raycast"/);
   assert.match(source, /case "physics\.find_overlaps"/);
