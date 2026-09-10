@@ -31,7 +31,7 @@ const TOOL_FAMILIES = {
     'get_physics_settings', 'get_compiler_errors', 'validate_project', 'operation_get_status', 'build_list_targets', 'build_validate', 'build_get_status', 'build_get_result',
     'physics_validate_colliders', 'physics_raycast', 'physics_get_layer_matrix', 'physics_find_overlaps', 'navigation_get_status', 'navigation_validate_agents', 'navigation_query_path',
     'lighting_get_status', 'lighting_validate', 'terrain_get_summary', 'foliage_get_summary', 'list_docs',
-    'read_doc', 'get_latest_log',
+    'read_doc', 'get_latest_log', 'mm_tuning',
   ],
   code: [
     'install_editor_bridge', 'code_compile', 'code_generate_project', 'operation_cancel', 'write_script',
@@ -41,7 +41,7 @@ const TOOL_FAMILIES = {
     'scene_save', 'project_save_all', 'actor_create', 'actor_update', 'actor_delete',
     'actor_duplicate', 'actor_reparent', 'script_attach', 'script_detach',
     'script_instance_update', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'create_actor', 'modify_actor',
-    'prefab_instantiate', 'prefab_revert_overrides', 'prefab_break_link', 'material_assign_to_actor', 'animation_set_graph_parameter',
+    'prefab_instantiate', 'prefab_revert_overrides', 'prefab_break_link', 'material_assign_to_actor', 'animation_set_graph_parameter', 'mm_apply_preset',
   ],
   asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete', 'prefab_create_from_actor', 'prefab_apply_overrides', 'material_set_parameters', 'material_create_instance'],
   runtime: [

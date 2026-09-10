@@ -89,6 +89,7 @@ import {
 } from './materialAnimationLive.js';
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
+import { MMTuningSchema, MMApplyPresetSchema, handleMMTuning, handleMMApplyPreset } from './mmTuning.js';
 import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyActor } from './sceneWrite.js';
 import { GetProjectSummarySchema, GetCompilerErrorsSchema, ValidateProjectSchema, handleGetProjectSummary, handleGetCompilerErrors, handleValidateProject } from './intelligence.js';
 import { GetInputActionsSchema, GetPhysicsSettingsSchema, handleGetInputActions, handleGetPhysicsSettings } from './config.js';
@@ -338,6 +339,8 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   animation_get_graph_parameters: AnimationGetGraphParametersSchema,
   animation_set_graph_parameter: AnimationSetGraphParameterSchema,
   animation_validate_bindings: AnimationValidateBindingsSchema,
+  mm_tuning: MMTuningSchema,
+  mm_apply_preset: MMApplyPresetSchema,
   read_settings: ReadSettingsSchema,
   get_input_actions: GetInputActionsSchema,
   get_physics_settings: GetPhysicsSettingsSchema,
@@ -385,6 +388,7 @@ const WRITE_TOOL_NAMES = new Set([
   'material_create_instance',
   'material_assign_to_actor',
   'animation_set_graph_parameter',
+  'mm_apply_preset',
   'install_editor_bridge',
   'scene_save',
   'project_save_all',
@@ -1060,6 +1064,18 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Validates one loaded AnimatedModel against its public SkinnedModel, AnimationGraph, and graph BaseModel references. Requires bridge v13.',
       inputSchema: zodToJsonSchema(AnimationValidateBindingsSchema),
       handler: (a, c) => handleAnimationValidateBindings(a as Parameters<typeof handleAnimationValidateBindings>[0], c),
+    },
+    {
+      name: 'mm_tuning',
+      description: 'Motion-matching tuning reads (M6): live telemetry snapshot, top-N cost ranking from a trace file, deterministic replay verify, or native search self-test. Requires bridge v15 with mm.tuning.',
+      inputSchema: zodToJsonSchema(MMTuningSchema),
+      handler: (a, c) => handleMMTuning(a as Parameters<typeof handleMMTuning>[0], c),
+    },
+    {
+      name: 'mm_apply_preset',
+      description: 'Applies a motion-matching weight preset (baseline, pose, turn) to live scene weights without rebaking. Marks the scene edited.',
+      inputSchema: zodToJsonSchema(MMApplyPresetSchema),
+      handler: (a, c) => handleMMApplyPreset(a as Parameters<typeof handleMMApplyPreset>[0], c),
     },
 
     // ── Settings ──────────────────────────────────────────────────────────────

@@ -115,7 +115,11 @@ export type AnimationBridgeMethod =
   | 'animation.list_clips'
   | 'animation.get_graph_parameters'
   | 'animation.set_graph_parameter'
-  | 'animation.validate_bindings';
+   | 'animation.validate_bindings';
+
+/** Bridge v15 motion-matching tuning surface (read ops + weight presets). */
+export type MMTuningBridgeMethod =
+  | 'mm.tuning';
 
 /** Bridge v14 bounded physics/navigation/lighting/terrain domain queries. */
 export type DomainBridgeMethod =
@@ -138,7 +142,8 @@ export type BridgeMethod =
   | PrefabBridgeMethod
   | BuildBridgeMethod
   | MaterialBridgeMethod
-  | AnimationBridgeMethod
+   | AnimationBridgeMethod
+  | MMTuningBridgeMethod
   | DomainBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */
