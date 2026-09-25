@@ -38,6 +38,10 @@ namespace FlaxMcpCompileSmoke
             Asset surfaceAsset = visject.VisjectAsset;
             bool assetLoaded = surfaceAsset.IsLoaded;
             bool assetLoadFailed = surfaceAsset.LastLoadFailed;
+            // Enabled gate: all in-scope windows construct their surface
+            // disabled and enable it only in OnSurfaceEditingStart(), after
+            // LoadSurface() ran in an Update() frame.
+            bool surfaceEnabled = surface.Enabled;
 
             VisjectSurface animSurface = animWindow.Surface;
             FlaxEditor.Undo animUndo = animWindow.Undo;
@@ -57,6 +61,7 @@ namespace FlaxMcpCompileSmoke
             GC.KeepAlive(ownerUndo);
             GC.KeepAlive(assetLoaded);
             GC.KeepAlive(assetLoadFailed);
+            GC.KeepAlive(surfaceEnabled);
             GC.KeepAlive(animSurface);
             GC.KeepAlive(animUndo);
             GC.KeepAlive(animVisject);

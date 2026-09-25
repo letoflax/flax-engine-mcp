@@ -449,22 +449,30 @@ MaterialInstance, and Function assets are rejected even though they share
 headless `SaveSurface(byte[])` path is never used for writes.
 
 `graph.inspect` is read-only. It reuses an already-open editor window or
-opens the asset hidden (`disableAutoShow`), reads `Surface.Nodes`,
+opens the asset SHOWN (visible tab), reads `Surface.Nodes`,
 `Surface.Parameters`, and per-node boxes via `TryGetBox` (connections are
 reported as `nodeID:boxID` pairs through the public `Box.ParentNode`), then
 closes the window only when the bridge opened it. Node identity is the
 `UInt16` groupID + typeID pair; values are a bounded safe projection.
+Opening shown is mandatory, not a preference: `AssetEditorWindow` links the
+(cloned) asset in `OnShow()`, so a hidden (`disableAutoShow`) window never
+loads and its surface stays blank forever (verified against engine source
+plus live reads: 7/7 hidden-open reads returned blank surfaces).
 
 Readiness contract (engine-grounded): `VisjectSurfaceWindow.LoadSurface()`
-runs in a later `Update()` frame, so a same-tick read after `Open()` always
+runs in a later `Update()` frame and enables the surface only in
+`OnSurfaceEditingStart()`, so a same-tick read after `Open()` always
 sees a blank surface. The bridge therefore gates every graph operation on
-`IVisjectSurfaceWindow.VisjectAsset.IsLoaded` (fail fast with
-`ASSET_OPERATION_FAILED` when `LastLoadFailed`), keeps a bridge-opened
-hidden window open across not-ready attempts, and reports `INVALID_STATE`
-with `details = { NotReady: true, RetryAfterMs: 1500, ... }`. Node clients
+`IVisjectSurfaceWindow.VisjectAsset.IsLoaded` AND `VisjectSurface.Enabled`
+(all in-scope windows construct their surface disabled), fails fast with
+`ASSET_OPERATION_FAILED` when `LastLoadFailed`, keeps a bridge-opened
+window open across not-ready attempts, and reports `INVALID_STATE`
+with `details = { NotReady: true, RetryAfterMs: 1500, ... }` (a named
+field-based DTO: `FlaxEngine.Json` drops anonymous-type properties to
+`{}`, which would silently disable client retries). Node clients
 auto-retry not-ready responses (6 attempts max, honor `RetryAfterMs`
 clamped to 250–5000 ms) instead of hand-pumping retries. Bridge-owned
-hidden windows are tracked per asset ID, closed after the operation
+windows are tracked per asset ID, closed after the operation
 completes, and swept when stale (>120 s); user-opened windows are reused
 and always left open.
 

@@ -181,6 +181,11 @@ namespace Game.MCP
     // Topology node/wire edits stay forbidden; this is the only additive
     // mutation besides default-value writes.
     public class McpGraphAddParameterRequest { public string AssetId; public string Path; public string Name; public string Type; public McpMaterialTypedValue Value; public bool IsPublic = true; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    // Not-ready/load-failed details MUST be a named field-based DTO:
+    // FlaxEngine.Json serializes public fields (like McpResponse) but drops
+    // anonymous-type properties to "{}". Node clients gate auto-retry on
+    // details.NotReady, so an empty object would silently disable retries.
+    public class McpGraphReadinessDetails { public bool NotReady; public int RetryAfterMs; public string AssetId; public string Path; }
     internal sealed class McpAssetRecord { public Guid Id; public AssetInfo Info; public string Path; public string Extension; public string Folder; }
     internal sealed class McpAssetGraphIndex { public Dictionary<Guid, McpAssetRecord> ById; public Dictionary<Guid, List<Guid>> Direct; public Dictionary<Guid, int> Missing; public Dictionary<Guid, int> Reverse; }
     internal sealed class McpAssetCursor { public string Method; public string Scope; public string IndexRevision; public int Offset; public long ExpiresUnixMs; }
@@ -1431,7 +1436,7 @@ namespace Game.MCP
 
         // Bridge v16 Visject node-graph surface (docs/VISJECT_GRAPH_EDIT_PLAN.md).
         // Window-backed only: AnimationGraph / Material / ParticleEmitter via
-        // ContentEditing.Open(disableAutoShow) + Windows.FindEditor +
+        // ContentEditing.Open(shown) + Windows.FindEditor +
         // IVisjectSurfaceWindow.VisjectSurface + AssetEditorWindow.Save().
         // Headless SaveSurface(byte[]) is never the write path; direct .flax
         // byte edits are forbidden. VisualScript/BehaviorTree/Function assets
@@ -1439,12 +1444,16 @@ namespace Game.MCP
         // windows do not inherit VisjectSurfaceWindow`3 (Cecil-verified).
         private const int MaxGraphNodes = 500;
         private const int MaxGraphBoxesPerNode = 64;
-        // Asset IDs of graph windows the bridge opened hidden. A same-tick
-        // read after Open() always sees a blank surface because
+        // Asset IDs of graph windows the bridge opened. The window must be
+        // opened SHOWN (disableAutoShow:false): AssetEditorWindow links the
+        // (cloned) asset in OnShow(), so a hidden window never loads and its
+        // surface stays blank forever (engine source:
+        // Source/Editor/Windows/Assets/AssetEditorWindow.cs). A same-tick
+        // read after Open() still sees a blank surface because
         // VisjectSurfaceWindow.LoadSurface() runs in a later Update() frame,
         // so not-ready retries reuse (and finally close) these windows
-        // instead of leaking one hidden window per attempt. User-opened
-        // windows are never in this set and are left open.
+        // instead of leaking one window per attempt. User-opened windows are
+        // never in this set and are left open.
         private static readonly Dictionary<Guid, long> _graphBridgeWindows = new Dictionary<Guid, long>();
         private const long GraphBridgeWindowStaleMs = 120000;
 
@@ -1466,17 +1475,22 @@ namespace Game.MCP
             }
         }
 
-        private static object GraphNotReadyDetails(McpAssetRecord record)
+        private static McpGraphReadinessDetails GraphNotReadyDetails(McpAssetRecord record)
         {
-            return new { NotReady = true, RetryAfterMs = 1500, AssetId = record.Id.ToString("N"), Path = record.Path };
+            return new McpGraphReadinessDetails { NotReady = true, RetryAfterMs = 1500, AssetId = record.Id.ToString("N"), Path = record.Path };
         }
 
         // Fail-closed readiness gate: the window's (cloned) asset must be
-        // loaded before the surface is trustworthy. A hidden window kept
-        // open across retries finishes loading on the main-thread pump;
-        // sleeping here would freeze that same pump, so report not-ready
-        // and let the caller retry instead.
-        private static void EnsureGraphSurfaceLoaded(IVisjectSurfaceWindow visjectWindow, McpAssetRecord record)
+        // loaded AND the surface must be enabled before the surface is
+        // trustworthy. AssetEditorWindow links the asset in OnShow() (hidden
+        // windows never link: engine Source/Editor/Windows/Assets/
+        // AssetEditorWindow.cs), and VisjectSurfaceWindow runs LoadSurface()
+        // in a later Update() frame, enabling the surface only in
+        // OnSurfaceEditingStart(). All three in-scope windows construct
+        // their surface disabled, so Enabled is a true loaded signal.
+        // Sleeping here would freeze the main-thread pump that drives the
+        // load, so report not-ready and let the caller retry instead.
+        private static void EnsureGraphSurfaceLoaded(IVisjectSurfaceWindow visjectWindow, VisjectSurface surface, McpAssetRecord record)
         {
             Asset asset = null;
             try { asset = visjectWindow.VisjectAsset; } catch { asset = null; }
@@ -1485,11 +1499,15 @@ namespace Game.MCP
             bool failed = false;
             try { failed = asset.LastLoadFailed; } catch { failed = false; }
             if (failed)
-                throw new McpProtocolException("ASSET_OPERATION_FAILED", "The graph asset failed to load in the Editor; the surface cannot be read or edited.", new { AssetId = record.Id.ToString("N"), Path = record.Path });
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "The graph asset failed to load in the Editor; the surface cannot be read or edited.", new McpGraphReadinessDetails { NotReady = false, RetryAfterMs = 0, AssetId = record.Id.ToString("N"), Path = record.Path });
             bool loaded = false;
             try { loaded = asset.IsLoaded; } catch { loaded = false; }
             if (!loaded)
-                throw new McpProtocolException("INVALID_STATE", "The graph asset is still loading in the editor window. Retry shortly; a bridge-opened hidden window is kept open for the retry.", GraphNotReadyDetails(record));
+                throw new McpProtocolException("INVALID_STATE", "The graph asset is still loading in the editor window. Retry shortly; a bridge-opened window is kept open for the retry.", GraphNotReadyDetails(record));
+            bool enabled = false;
+            try { enabled = surface != null && surface.Enabled; } catch { enabled = false; }
+            if (!enabled)
+                throw new McpProtocolException("INVALID_STATE", "The graph surface is still loading in the editor window. Retry shortly; a bridge-opened window is kept open for the retry.", GraphNotReadyDetails(record));
         }
 
         private static void EnsureGraphEditorReady(bool forWrite)
@@ -1535,24 +1553,26 @@ namespace Game.MCP
             if (window != null)
             {
                 ValidateGraphWindow(window, record);
-                // Only windows the bridge opened hidden are bridge-owned
+                // Only windows the bridge opened are bridge-owned
                 // (closed after the operation). User-opened windows are
                 // reused and left open.
                 openedByBridge = _graphBridgeWindows.ContainsKey(record.Id);
                 var existing = ((IVisjectSurfaceWindow)window).VisjectSurface;
                 if (existing == null)
                     throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.", GraphNotReadyDetails(record));
-                EnsureGraphSurfaceLoaded((IVisjectSurfaceWindow)window, record);
+                EnsureGraphSurfaceLoaded((IVisjectSurfaceWindow)window, existing, record);
                 return existing;
             }
             FlaxEditor.Windows.EditorWindow opened = null;
-            try { opened = FEditor.Instance.ContentEditing.Open(item, true); }
+            // disableAutoShow:false is mandatory (see _graphBridgeWindows
+            // comment): hidden windows never link their asset.
+            try { opened = FEditor.Instance.ContentEditing.Open(item, false); }
             catch (Exception) { opened = null; }
             if (opened == null)
                 throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not open the selected graph asset.");
             ValidateGraphWindow(opened, record);
             // Record ownership before the readiness check so a not-ready
-            // retry reuses this hidden window (FindEditor) instead of
+            // retry reuses this window (FindEditor) instead of
             // leaking one window per attempt.
             _graphBridgeWindows[record.Id] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             try
@@ -1560,7 +1580,7 @@ namespace Game.MCP
                 var surface = ((IVisjectSurfaceWindow)opened).VisjectSurface;
                 if (surface == null)
                     throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.", GraphNotReadyDetails(record));
-                EnsureGraphSurfaceLoaded((IVisjectSurfaceWindow)opened, record);
+                EnsureGraphSurfaceLoaded((IVisjectSurfaceWindow)opened, surface, record);
                 window = opened;
                 openedByBridge = true;
                 return surface;
@@ -1705,8 +1725,8 @@ namespace Game.MCP
                     ValuesIncluded = request.IncludeValues,
                     Warnings = new[]
                     {
-                        "Graph inspection is read-only through the window-backed Visject surface (disableAutoShow). Node identity is UInt16 groupID + typeID; values are a bounded safe projection capped at 32 entries per node.",
-                        openedByBridge ? "The editor window was opened hidden by the bridge and closed after the read." : "A window already open for this asset was reused and left open.",
+                        "Graph inspection is read-only through the window-backed Visject surface (shown on demand, closed after the read). Node identity is UInt16 groupID + typeID; values are a bounded safe projection capped at 32 entries per node.",
+                        openedByBridge ? "The editor window was opened (shown) by the bridge and closed after the read." : "A window already open for this asset was reused and left open.",
                     },
                 };
             }
@@ -1801,7 +1821,7 @@ namespace Game.MCP
                     Warnings = new[]
                     {
                         "Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone: per-window graph undo only covers edits made before saving.",
-                        openedByBridge ? "The editor window was opened hidden by the bridge and closed after saving." : "A window already open for this asset was reused and left open.",
+                        openedByBridge ? "The editor window was opened (shown) by the bridge and closed after saving." : "A window already open for this asset was reused and left open.",
                     },
                 };
             }
@@ -1921,7 +1941,7 @@ namespace Game.MCP
                     Warnings = new[]
                     {
                         "Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone.",
-                        openedByBridge ? "The editor window was opened hidden by the bridge and closed after saving." : "A window already open for this asset was reused and left open.",
+                        openedByBridge ? "The editor window was opened (shown) by the bridge and closed after saving." : "A window already open for this asset was reused and left open.",
                     },
                 };
             }
