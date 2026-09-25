@@ -1572,11 +1572,15 @@ namespace Game.MCP
                             try
                             {
                                 FlaxEditor.Surface.Elements.Box found;
-                                if (!node.TryGetBox(bi, out found)) break;
+                                // Box IDs may be sparse: skip misses instead of
+                                // stopping at the first gap, otherwise boxes
+                                // after a hole would be silently dropped.
+                                // MaxGraphBoxesPerNode still caps the scan.
+                                if (!node.TryGetBox(bi, out found)) continue;
                                 box = found;
                             }
-                            catch { break; }
-                            if (box == null) break;
+                            catch { continue; }
+                            if (box == null) continue;
                             var conns = new List<string>();
                             try
                             {
@@ -1698,8 +1702,8 @@ namespace Game.MCP
                 if (!request.Confirm)
                     throw new McpProtocolException("VALIDATION_FAILED", "Graph parameter writes require confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
                 target.Value = nextValue;
-                try { surface.OnParamEdited(target); } catch { }
-                try { surface.MarkAsEdited(true); } catch { }
+                try { surface.OnParamEdited(target); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface OnParamEdited notification failed: " + ex.Message); }
+                try { surface.MarkAsEdited(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface MarkAsEdited notification failed: " + ex.Message); }
                 var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
                 if (saver == null)
                     throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
@@ -1818,8 +1822,8 @@ namespace Game.MCP
                     Value = value,
                 };
                 list.Add(created);
-                try { surface.OnParamCreated(created); } catch { }
-                try { surface.MarkAsEdited(true); } catch { }
+                try { surface.OnParamCreated(created); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface OnParamCreated notification failed: " + ex.Message); }
+                try { surface.MarkAsEdited(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface MarkAsEdited notification failed: " + ex.Message); }
                 var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
                 if (saver == null)
                     throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
@@ -1962,8 +1966,12 @@ namespace Game.MCP
             if (window == null)
                 throw new McpProtocolException("NOT_FOUND", "No open editor window holds this graph asset. Per-window undo only applies to unsaved edits in an open window.");
             ValidateGraphWindow(window, record);
-            var prop = window.GetType().GetProperty("Undo", BindingFlags.Instance | BindingFlags.Public);
-            var undo = prop == null ? null : prop.GetValue(window, null) as FlaxEditor.Undo;
+            // IVisjectSurfaceOwner.Undo is public API (FlaxEngine.CSharp.xml,
+            // compile-proven by VisjectGraphApiCompileProbe): direct cast
+            // instead of GetProperty("Undo") reflection. Fewer fail-modes,
+            // same fail-closed behavior when the window exposes no stack.
+            var owner = window as IVisjectSurfaceOwner;
+            var undo = owner == null ? null : owner.Undo;
             if (undo == null)
                 throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose a public undo stack.");
             bool canUndo = false;

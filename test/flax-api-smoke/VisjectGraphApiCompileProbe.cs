@@ -26,6 +26,11 @@ namespace FlaxMcpCompileSmoke
             IVisjectSurfaceWindow visject = animWindow;
             VisjectSurface viaInterface = visject.VisjectSurface;
             Asset visjectAsset = visject.VisjectAsset;
+            // IVisjectSurfaceOwner.Undo is public API (FlaxEngine.CSharp.xml):
+            // the bridge casts windows to this interface instead of reflecting
+            // over GetProperty("Undo").
+            IVisjectSurfaceOwner owner = animWindow;
+            FlaxEditor.Undo ownerUndo = owner.Undo;
 
             VisjectSurface animSurface = animWindow.Surface;
             FlaxEditor.Undo animUndo = animWindow.Undo;
@@ -42,6 +47,7 @@ namespace FlaxMcpCompileSmoke
             GC.KeepAlive(fxWindow.Undo);
             GC.KeepAlive(viaInterface);
             GC.KeepAlive(visjectAsset);
+            GC.KeepAlive(ownerUndo);
             GC.KeepAlive(animSurface);
             GC.KeepAlive(animUndo);
             GC.KeepAlive(animVisject);
