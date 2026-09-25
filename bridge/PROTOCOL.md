@@ -438,3 +438,30 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v16: window-backed Visject node-graph editing
+
+Bridge v16 keeps protocol v1. It adds a window-backed Visject surface for
+`FlaxEngine.AnimationGraph`, `FlaxEngine.Material`, and
+`FlaxEngine.ParticleEmitter` assets only. VisualScript, BehaviorTree,
+MaterialInstance, and Function assets are rejected even though they share
+`IVisjectSurfaceWindow`, because their windows do not inherit
+`VisjectSurfaceWindow`3. Direct `.flax` byte edits are forbidden and the
+headless `SaveSurface(byte[])` path is never used for writes.
+
+`graph.inspect` is read-only. It reuses an already-open editor window or
+opens the asset hidden (`disableAutoShow`), reads `Surface.Nodes`,
+`Surface.Parameters`, and per-node boxes via `TryGetBox` (connections are
+reported as `nodeID:boxID` pairs through the public `Box.ParentNode`), then
+closes the window only when the bridge opened it. Node identity is the
+`UInt16` groupID + typeID pair; values are a bounded safe projection.
+
+`graph.set_default_parameter` persists one surface default value through the
+public window path (`SurfaceParameter.Value` plus `OnParamEdited` and
+`MarkAsEdited`, then `AssetEditorWindow.Save()`). It is dry-run by default
+and requires `confirm: true` for a real save. `graph.add_parameter` is the
+only bounded additive macro: it appends one parameter whose type must appear
+in the window's own `NewParameterTypes` allowlist. Node spawn, wire
+connect/remove, and state/transition macros remain unavailable. Every save
+goes through `SaveToOriginal` internally and cannot be undone afterwards;
+`graph.undo` only reverts unsaved steps on the window-local undo stack and is
+separate from the global `edit.undo`.

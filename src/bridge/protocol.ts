@@ -121,6 +121,13 @@ export type AnimationBridgeMethod =
 export type MMTuningBridgeMethod =
   | 'mm.tuning';
 
+/** Bridge v16 window-backed Visject node-graph surface (AnimGraph/Material/ParticleEmitter). */
+export type GraphBridgeMethod =
+  | 'graph.inspect'
+  | 'graph.set_default_parameter'
+  | 'graph.add_parameter'
+  | 'graph.undo';
+
 /** Bridge v14 bounded physics/navigation/lighting/terrain domain queries. */
 export type DomainBridgeMethod =
   | 'physics.validate_colliders' | 'physics.raycast' | 'physics.get_layer_matrix' | 'physics.find_overlaps'
@@ -142,8 +149,9 @@ export type BridgeMethod =
   | PrefabBridgeMethod
   | BuildBridgeMethod
   | MaterialBridgeMethod
-   | AnimationBridgeMethod
+  | AnimationBridgeMethod
   | MMTuningBridgeMethod
+  | GraphBridgeMethod
   | DomainBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */

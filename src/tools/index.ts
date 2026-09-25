@@ -90,6 +90,16 @@ import {
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
 import { MMTuningSchema, MMApplyPresetSchema, handleMMTuning, handleMMApplyPreset } from './mmTuning.js';
+import {
+  GraphAddParameterSchema,
+  GraphInspectSchema,
+  GraphSetDefaultParameterSchema,
+  GraphUndoSchema,
+  handleGraphAddParameter,
+  handleGraphInspect,
+  handleGraphSetDefaultParameter,
+  handleGraphUndo,
+} from './graphLive.js';
 import { CreateActorSchema, ModifyActorSchema, handleCreateActor, handleModifyActor } from './sceneWrite.js';
 import { GetProjectSummarySchema, GetCompilerErrorsSchema, ValidateProjectSchema, handleGetProjectSummary, handleGetCompilerErrors, handleValidateProject } from './intelligence.js';
 import { GetInputActionsSchema, GetPhysicsSettingsSchema, handleGetInputActions, handleGetPhysicsSettings } from './config.js';
@@ -339,6 +349,10 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   animation_get_graph_parameters: AnimationGetGraphParametersSchema,
   animation_set_graph_parameter: AnimationSetGraphParameterSchema,
   animation_validate_bindings: AnimationValidateBindingsSchema,
+  graph_inspect: GraphInspectSchema,
+  graph_set_default_parameter: GraphSetDefaultParameterSchema,
+  graph_add_parameter: GraphAddParameterSchema,
+  graph_undo: GraphUndoSchema,
   mm_tuning: MMTuningSchema,
   mm_apply_preset: MMApplyPresetSchema,
   read_settings: ReadSettingsSchema,
@@ -388,6 +402,9 @@ const WRITE_TOOL_NAMES = new Set([
   'material_create_instance',
   'material_assign_to_actor',
   'animation_set_graph_parameter',
+  'graph_set_default_parameter',
+  'graph_add_parameter',
+  'graph_undo',
   'mm_apply_preset',
   'install_editor_bridge',
   'scene_save',
@@ -1064,6 +1081,30 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Validates one loaded AnimatedModel against its public SkinnedModel, AnimationGraph, and graph BaseModel references. Requires bridge v13.',
       inputSchema: zodToJsonSchema(AnimationValidateBindingsSchema),
       handler: (a, c) => handleAnimationValidateBindings(a as Parameters<typeof handleAnimationValidateBindings>[0], c),
+    },
+    {
+      name: 'graph_inspect',
+      description: 'Reads a window-backed Visject node graph (AnimationGraph, Material, or ParticleEmitter) as nodes, boxes, and parameters without mutating it. Requires bridge v16.',
+      inputSchema: zodToJsonSchema(GraphInspectSchema),
+      handler: (a, c) => handleGraphInspect(a as Parameters<typeof handleGraphInspect>[0], c),
+    },
+    {
+      name: 'graph_set_default_parameter',
+      description: 'Persists one Visject surface default parameter value via the window save path. Dry-run by default; saving cannot be undone. Requires bridge v16.',
+      inputSchema: zodToJsonSchema(GraphSetDefaultParameterSchema),
+      handler: (a, c) => handleGraphSetDefaultParameter(a as Parameters<typeof handleGraphSetDefaultParameter>[0], c),
+    },
+    {
+      name: 'graph_add_parameter',
+      description: 'Adds one surface parameter to a Visject graph via the window save path. Bounded Phase 3 macro; dry-run by default and saving cannot be undone. Requires bridge v16.',
+      inputSchema: zodToJsonSchema(GraphAddParameterSchema),
+      handler: (a, c) => handleGraphAddParameter(a as Parameters<typeof handleGraphAddParameter>[0], c),
+    },
+    {
+      name: 'graph_undo',
+      description: 'Undoes one step on the window-local Visject undo stack for unsaved edits. Never reverts an already-saved window. Requires bridge v16.',
+      inputSchema: zodToJsonSchema(GraphUndoSchema),
+      handler: (a, c) => handleGraphUndo(a as Parameters<typeof handleGraphUndo>[0], c),
     },
     {
       name: 'mm_tuning',

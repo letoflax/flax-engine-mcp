@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v15 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v16 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*15/);
-  assert.match(source, /BridgeVersion\s*=\s*15/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*16/);
+  assert.match(source, /BridgeVersion\s*=\s*16/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -67,8 +67,8 @@ test('bridge v9 exposes only verified, bounded public Content APIs for asset reg
   assert.match(source, /case "asset\.import_start"/);
   assert.match(source, /case "asset\.reimport_start"/);
   assert.match(source, /AssetImportSupported = true/);
-  assert.match(source, /FEditor\.Import\(source, output\)/);
-  assert.match(source, /ContentImporting\.Reimport\(item, null, true\)/);
+  assert.match(source, /FEditor\.Import\(source, output/);
+  assert.match(source, /ContentImporting\.Reimport\(item, BuildModelReimportSettings\(item/);
   assert.match(source, /ImportFileEnd \+= OnAssetImportFileEnd/);
   assert.doesNotMatch(source, /Process\.Start\(/);
   assert.match(source, /Content\.GetAllAssets\(\)/);
@@ -174,6 +174,25 @@ test('bridge v13 exposes only verified public material and animation reads and k
   assert.match(source, /UNSUPPORTED_FLAX_VERSION/);
   assert.doesNotMatch(source, /\.SetParameterValue\(/);
   assert.doesNotMatch(source, /\.CreateVirtualInstance\(/);
+});
+
+test('bridge v16 exposes only the window-backed Visject graph surface and keeps topology writes forbidden', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "graph\.inspect"/);
+  assert.match(source, /case "graph\.set_default_parameter"/);
+  assert.match(source, /case "graph\.add_parameter"/);
+  assert.match(source, /case "graph\.undo"/);
+  assert.match(source, /GraphInspectSupported = true/);
+  assert.match(source, /GraphDefaultParameterWriteSupported = true/);
+  assert.match(source, /GraphTopologyWriteSupported = false/);
+  assert.match(source, /GraphUndoSupported = true/);
+  assert.match(source, /AcquireGraphSurface/);
+  assert.match(source, /NewParameterTypes/);
+  assert.match(source, /AssetEditorWindow\.Save/);
+  assert.match(source, /ExecuteIdempotent\("graph\.set_default_parameter"/);
+  assert.match(source, /ExecuteIdempotent\("graph\.add_parameter"/);
+  assert.doesNotMatch(source, /new VisjectSurface\(/);
+  assert.doesNotMatch(source, /\.SaveSurface\(/);
 });
 
 test('bridge v15 keeps domain mutations unsupported while exposing bounded public queries', async () => {

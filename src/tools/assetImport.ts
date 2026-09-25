@@ -27,6 +27,7 @@ export const AssetImportSchema = z.object({
   destination: ProjectContentPath,
   collision_policy: z.enum(['error', 'rename']).optional().default('error'),
   dry_run: z.boolean().optional().default(false),
+  model_import_type: z.enum(['Model', 'SkinnedModel', 'Animation', 'Prefab']).optional(),
   operation_id: OperationId.optional(),
   idempotency_key: IdempotencyKey.optional(),
   ...WaitArgs,
@@ -42,6 +43,8 @@ function exactlyOneSelector(value: { asset_id?: string; path?: string }, ctx: z.
 export const AssetReimportSchema = z.object({
   ...AssetSelectorShape,
   dry_run: z.boolean().optional().default(false),
+  model_import_type: z.enum(['Model', 'SkinnedModel', 'Animation', 'Prefab']).optional()
+    .describe('Optional Flax model importer type override for FBX/OBJ reimports.'),
   operation_id: OperationId.optional(),
   idempotency_key: IdempotencyKey.optional(),
   ...WaitArgs,
@@ -163,6 +166,7 @@ export async function handleAssetImport(args: z.infer<typeof AssetImportSchema>,
       DestinationPath: destination.relativePath,
       CollisionPolicy: args.collision_policy,
       DryRun: args.dry_run,
+      ModelImportType: args.model_import_type,
       AllowedImportRoots: policy.roots,
       MaxSourceBytes: policy.maxSourceBytes,
     }, ctx));
@@ -185,6 +189,7 @@ export async function handleAssetReimport(args: z.infer<typeof AssetReimportSche
       AssetId: args.asset_id,
       Path: args.path,
       DryRun: args.dry_run,
+      ModelImportType: args.model_import_type,
       AllowedImportRoots: policy.roots,
       MaxSourceBytes: policy.maxSourceBytes,
     }, ctx));

@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 15
+// MCP-BRIDGE-VERSION: 16
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -15,6 +15,8 @@ using System.Threading.Tasks;
 using FlaxEditor;
 using FlaxEditor.Content;
 using FlaxEditor.Content.Import;
+using FlaxEditor.Surface;
+using FlaxEngine.Tools;
 using FEditor = FlaxEditor.Editor;
 using FlaxEngine;
 using FlaxEngine.Json;
@@ -23,12 +25,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 15; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 16; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 15; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; }
+    public class McpStatus { public int BridgeVersion = 16; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = false; public bool GraphUndoSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -99,8 +101,8 @@ namespace Game.MCP
     // Import settings deliberately remain absent. Flax exposes typed options, but
     // accepting arbitrary serialized settings would require a larger reviewed
     // allowlist; v9 therefore uses the verified default importer settings only.
-    public class McpAssetImportStart { public string OperationId; public string IdempotencyKey; public string SourcePath; public long SourceSizeBytes; public long SourceLastWriteUnixMs; public string DestinationPath; public string CollisionPolicy = "error"; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; }
-    public class McpAssetReimportStart { public string OperationId; public string IdempotencyKey; public string AssetId; public string Path; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; }
+    public class McpAssetImportStart { public string OperationId; public string IdempotencyKey; public string SourcePath; public long SourceSizeBytes; public long SourceLastWriteUnixMs; public string DestinationPath; public string CollisionPolicy = "error"; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; public string ModelImportType; }
+    public class McpAssetReimportStart { public string OperationId; public string IdempotencyKey; public string AssetId; public string Path; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; public string ModelImportType; }
     public class McpAssetOperationStatusRequest { public string OperationId; }
     public class McpAssetOperation { public string OperationId; public string Kind; public string Phase; public float Progress; public long StartedUnixMs; public long FinishedUnixMs; public string ResultPath; public string ResultAssetId; public bool Renamed; public bool DryRun; public string ErrorCode; public string Error; }
     // v10 asset organization stays intentionally narrow: each request selects a
@@ -159,6 +161,26 @@ namespace Game.MCP
     public class McpAnimationGraphParametersResult { public string ActorId; public McpAssetMetadata AnimationGraph; public McpAnimationGraphParameterDto[] Parameters; public string[] Warnings; }
     public class McpAnimationGraphMutationRequest { public string ActorId; public string ParameterId; public string ParameterName; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
     public class McpAnimationBindingValidationResult { public string ActorId; public McpAssetMetadata SkinnedModel; public McpAssetMetadata AnimationGraph; public McpAssetMetadata GraphBaseModel; public bool HasSkinnedModel; public bool HasAnimationGraph; public bool HasGraphBaseModel; public bool BaseModelMatchesActor; public bool Valid; public string[] Warnings; }
+    // Bridge v16 Visject node-graph surface (see docs/VISJECT_GRAPH_EDIT_PLAN.md).
+    // Scope is window-backed only: AnimationGraph / Material / ParticleEmitter.
+    // VisualScript / BehaviorTree / Function assets are rejected here even
+    // though they share IVisjectSurfaceWindow, because their windows do not
+    // inherit VisjectSurfaceWindow`3 (verified by Cecil). All writes go via
+    // Window.Surface + AssetEditorWindow.Save(); headless SaveSurface(byte[])
+    // is never the write path and direct .flax byte edits are forbidden.
+    public class McpGraphInspectRequest { public string AssetId; public string Path; public bool IncludeValues; public bool IncludeBoxes = true; public int Limit = 200; }
+    public class McpGraphNodeDto { public uint Id; public ushort GroupID; public ushort TypeID; public string Title; public float X; public float Y; public int ValuesCount; public McpMaterialTypedValue[] Values; }
+    public class McpGraphBoxDto { public uint NodeID; public int BoxID; public bool IsOutput; public string[] Connections; }
+    public class McpGraphParameterDto { public string Id; public string Name; public string Type; public bool IsPublic; public McpMaterialTypedValue Value; }
+    public class McpGraphInspectResult { public McpAssetMetadata Asset; public bool OpenedByBridge; public McpGraphNodeDto[] Nodes; public McpGraphBoxDto[] Boxes; public McpGraphParameterDto[] Parameters; public bool HasMore; public bool BoxesIncluded; public bool ValuesIncluded; public string[] Warnings; }
+    public class McpGraphSetDefaultParameterRequest { public string AssetId; public string Path; public string ParameterId; public string ParameterName; public McpMaterialTypedValue Value; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    public class McpGraphSetDefaultParameterResult { public McpAssetMetadata Asset; public McpGraphParameterDto Parameter; public McpMaterialTypedValue PreviousValue; public bool DryRun; public bool Saved; public bool OpenedByBridge; public long ProjectRevision; public string[] Warnings; }
+    public class McpGraphUndoRequest { public string AssetId; public string Path; }
+    public class McpGraphUndoResult { public McpAssetMetadata Asset; public bool Undone; public bool CanUndo; public string FirstUndoName; public long ProjectRevision; public string[] Warnings; }
+    // Bridge v16 Phase 3: bounded macro to append one surface parameter.
+    // Topology node/wire edits stay forbidden; this is the only additive
+    // mutation besides default-value writes.
+    public class McpGraphAddParameterRequest { public string AssetId; public string Path; public string Name; public string Type; public McpMaterialTypedValue Value; public bool IsPublic = true; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
     internal sealed class McpAssetRecord { public Guid Id; public AssetInfo Info; public string Path; public string Extension; public string Folder; }
     internal sealed class McpAssetGraphIndex { public Dictionary<Guid, McpAssetRecord> ById; public Dictionary<Guid, List<Guid>> Direct; public Dictionary<Guid, int> Missing; public Dictionary<Guid, int> Reverse; }
     internal sealed class McpAssetCursor { public string Method; public string Scope; public string IndexRevision; public int Offset; public long ExpiresUnixMs; }
@@ -170,7 +192,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 15;
+        private const int BridgeVersion = 16;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -290,7 +312,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v14 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v16 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -501,6 +523,10 @@ namespace Game.MCP
                 case "animation.get_graph_parameters": result = OnMain(() => GetAnimationGraphParameters(JsonSerializer.Deserialize<McpAnimationActorRequest>(p)), request.deadlineUnixMs); break;
                 case "animation.set_graph_parameter": result = OnMain(() => UnsupportedAnimationOperation("animation_set_graph_parameter", JsonSerializer.Deserialize<McpAnimationGraphMutationRequest>(p)), request.deadlineUnixMs); break;
                 case "animation.validate_bindings": result = OnMain(() => ValidateAnimationBindings(JsonSerializer.Deserialize<McpAnimationActorRequest>(p)), request.deadlineUnixMs); break;
+                case "graph.inspect": result = OnMain(() => GraphInspect(JsonSerializer.Deserialize<McpGraphInspectRequest>(p)), request.deadlineUnixMs); break;
+                case "graph.set_default_parameter": { var q = JsonSerializer.Deserialize<McpGraphSetDefaultParameterRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.set_default_parameter", q == null ? null : q.IdempotencyKey, q, () => SetGraphDefaultParameter(q)), request.deadlineUnixMs); break; }
+                case "graph.undo": result = OnMain(() => GraphUndo(JsonSerializer.Deserialize<McpGraphUndoRequest>(p)), request.deadlineUnixMs); break;
+                case "graph.add_parameter": { var q = JsonSerializer.Deserialize<McpGraphAddParameterRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.add_parameter", q == null ? null : q.IdempotencyKey, q, () => AddGraphParameter(q)), request.deadlineUnixMs); break; }
                 default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method is not in the bridge allowlist.");
             }
             var resultJson = JsonSerializer.Serialize(result, true);
@@ -944,13 +970,13 @@ namespace Game.MCP
         private static object AssetImportFingerprintInput(McpAssetImportStart request)
         {
             if (request == null) return new { Missing = true };
-            return new { request.SourcePath, request.SourceSizeBytes, request.SourceLastWriteUnixMs, request.DestinationPath, request.CollisionPolicy, request.DryRun, request.AllowedImportRoots, request.MaxSourceBytes };
+            return new { request.SourcePath, request.SourceSizeBytes, request.SourceLastWriteUnixMs, request.DestinationPath, request.CollisionPolicy, request.DryRun, request.AllowedImportRoots, request.MaxSourceBytes, request.ModelImportType };
         }
 
         private static object AssetReimportFingerprintInput(McpAssetReimportStart request)
         {
             if (request == null) return new { Missing = true };
-            return new { request.AssetId, request.Path, request.DryRun, request.AllowedImportRoots, request.MaxSourceBytes };
+            return new { request.AssetId, request.Path, request.DryRun, request.AllowedImportRoots, request.MaxSourceBytes, request.ModelImportType };
         }
 
         private McpAssetOperation StartAssetImport(McpAssetImportStart request)
@@ -977,7 +1003,15 @@ namespace Game.MCP
                 // A destination directory may have appeared as a junction while
                 // this request was queued. Re-check it immediately before import.
                 EnsureAssetImportOutputParent(output);
-                if (FEditor.Import(source, output))
+                if (!string.IsNullOrWhiteSpace(request.ModelImportType))
+                {
+                    // Options is a struct: `new` zero-initializes Scale/Rotation and imports a collapsed model. Start from the engine defaults.
+                    var options = ModelTool.Options.Default;
+                    options.Type = ParseModelImportType(request.ModelImportType);
+                    if (FEditor.Import(source, output, options))
+                        throw new McpProtocolException("IMPORT_FAILED", "Flax Editor failed to import the allowlisted source.");
+                }
+                else if (FEditor.Import(source, output))
                     throw new McpProtocolException("IMPORT_FAILED", "Flax Editor failed to import the allowlisted source.");
                 FinishAssetImportOperation(operation, "succeeded", null, null);
                 return CopyAssetImportOperation(operation);
@@ -1037,7 +1071,7 @@ namespace Game.MCP
                     operation.Phase = "running";
                     operation.Progress = 0.0f;
                 }
-                FEditor.Instance.ContentImporting.Reimport(item, null, true);
+                FEditor.Instance.ContentImporting.Reimport(item, BuildModelReimportSettings(item, request.ModelImportType), true);
                 return CopyAssetImportOperation(operation);
             }
             catch (McpProtocolException ex)
@@ -1049,6 +1083,33 @@ namespace Game.MCP
             {
                 FinishAssetImportOperation(operation, "failed", "IMPORT_FAILED", "Flax Editor failed to reimport the selected asset.");
                 throw new McpProtocolException("IMPORT_FAILED", "Flax Editor failed to reimport the selected asset.");
+            }
+        }
+
+        private static object BuildModelReimportSettings(BinaryAssetItem item, string modelImportType)
+        {
+            if (string.IsNullOrWhiteSpace(modelImportType)) return null;
+            var importSettings = new ModelImportSettings();
+            FEditor.TryRestoreImportOptions(ref importSettings.Settings, item.Path);
+            // Repair options persisted by an earlier zero-initialized import (Scale 0, clamped to 0.0001 by the importer / null rotation collapse the skeleton).
+            if (!(importSettings.Settings.Scale >= 0.001f)) importSettings.Settings.Scale = 1.0f;
+            if (importSettings.Settings.Rotation.LengthSquared < 0.5f) importSettings.Settings.Rotation = Quaternion.Identity;
+            importSettings.Settings.Type = ParseModelImportType(modelImportType);
+            return importSettings;
+        }
+
+        private static ModelTool.ModelType ParseModelImportType(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                throw new McpProtocolException("VALIDATION_FAILED", "ModelImportType is required when provided.");
+            switch (value.Trim().Replace(" ", string.Empty).Replace("_", string.Empty).ToLowerInvariant())
+            {
+                case "model": return ModelTool.ModelType.Model;
+                case "skinnedmodel": return ModelTool.ModelType.SkinnedModel;
+                case "animation": return ModelTool.ModelType.Animation;
+                case "prefab": return ModelTool.ModelType.Prefab;
+                default:
+                    throw new McpProtocolException("VALIDATION_FAILED", "Unsupported ModelImportType. Use Model, SkinnedModel, Animation, or Prefab.");
             }
         }
 
@@ -1366,6 +1427,576 @@ namespace Game.MCP
             var model = RequireActor(request.ActorId) as AnimatedModel;
             if (model == null) throw new McpProtocolException("VALIDATION_FAILED", "ActorId must identify a loaded FlaxEngine.AnimatedModel.");
             return model;
+        }
+
+        // Bridge v16 Visject node-graph surface (docs/VISJECT_GRAPH_EDIT_PLAN.md).
+        // Window-backed only: AnimationGraph / Material / ParticleEmitter via
+        // ContentEditing.Open(disableAutoShow) + Windows.FindEditor +
+        // IVisjectSurfaceWindow.VisjectSurface + AssetEditorWindow.Save().
+        // Headless SaveSurface(byte[]) is never the write path; direct .flax
+        // byte edits are forbidden. VisualScript/BehaviorTree/Function assets
+        // are rejected even though they share the interface, because their
+        // windows do not inherit VisjectSurfaceWindow`3 (Cecil-verified).
+        private const int MaxGraphNodes = 500;
+        private const int MaxGraphBoxesPerNode = 64;
+
+        private static void EnsureGraphEditorReady(bool forWrite)
+        {
+            if (FEditor.Instance.IsHeadlessMode)
+                throw new McpProtocolException("INVALID_STATE", "Visject graph editing is unavailable in headless editor mode because the surface is a GUI control.");
+            if (!forWrite) return;
+            if (FEditor.IsPlayMode || FEditor.Instance.Simulation.IsPlayModeRequested || ScriptsBuilder.IsCompiling || !ScriptsBuilder.IsReady || FEditor.Instance.ContentImporting.IsImporting)
+                throw new McpProtocolException("EDITOR_BUSY", "Visject graph writes are unavailable while the editor is playing, compiling, reloading, or importing content.");
+        }
+
+        private static McpAssetRecord ResolveGraphRecord(string assetId, string path)
+        {
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = assetId, Path = path }, BuildAssetRegistry());
+            if (!string.Equals(record.Info.TypeName, "FlaxEngine.AnimationGraph", StringComparison.Ordinal)
+                && !string.Equals(record.Info.TypeName, "FlaxEngine.Material", StringComparison.Ordinal)
+                && !string.Equals(record.Info.TypeName, "FlaxEngine.ParticleEmitter", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "Graph operations support only FlaxEngine.AnimationGraph, FlaxEngine.Material, and FlaxEngine.ParticleEmitter in this phase. VisualScript, BehaviorTree, MaterialInstance, and Function assets are out of scope.", new { TypeName = record.Info.TypeName });
+            return record;
+        }
+
+        private static void ValidateGraphWindow(FlaxEditor.Windows.EditorWindow window, McpAssetRecord record)
+        {
+            if (window == null)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The selected graph asset has no editor window.");
+            var isAnim = window is FlaxEditor.Windows.Assets.AnimationGraphWindow;
+            var isMat = window is FlaxEditor.Windows.Assets.MaterialWindow;
+            var isFx = window is FlaxEditor.Windows.Assets.ParticleEmitterWindow;
+            if (!isAnim && !isMat && !isFx)
+                throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected asset window is not a VisjectSurfaceWindow-backed editor in this phase (VisualScript/BehaviorTree/Function windows are out of scope).", new { TypeName = record.Info.TypeName, Window = window.GetType().FullName });
+            if (!(window is IVisjectSurfaceWindow))
+                throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose a Visject surface.", new { TypeName = record.Info.TypeName });
+        }
+
+        private static VisjectSurface AcquireGraphSurface(McpAssetRecord record, out ContentItem item, out FlaxEditor.Windows.EditorWindow window, out bool openedByBridge)
+        {
+            item = FEditor.Instance.ContentDatabase.FindAsset(record.Id);
+            if (item == null)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The selected graph asset is unavailable in the Editor Content database.");
+            window = FEditor.Instance.Windows.FindEditor(item);
+            openedByBridge = false;
+            if (window != null)
+            {
+                ValidateGraphWindow(window, record);
+                var existing = ((IVisjectSurfaceWindow)window).VisjectSurface;
+                if (existing == null)
+                    throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.");
+                return existing;
+            }
+            FlaxEditor.Windows.EditorWindow opened = null;
+            try { opened = FEditor.Instance.ContentEditing.Open(item, true); }
+            catch (Exception) { opened = null; }
+            if (opened == null)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not open the selected graph asset.");
+            ValidateGraphWindow(opened, record);
+            var surface = ((IVisjectSurfaceWindow)opened).VisjectSurface;
+            if (surface == null)
+            {
+                try { FEditor.Instance.Windows.CloseAllEditors(item); } catch { }
+                throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.");
+            }
+            window = opened;
+            openedByBridge = true;
+            return surface;
+        }
+
+        private static void ReleaseGraphWindow(ContentItem item, bool openedByBridge)
+        {
+            if (!openedByBridge || item == null) return;
+            try { FEditor.Instance.Windows.CloseAllEditors(item); } catch { }
+        }
+
+        private McpGraphInspectResult GraphInspect(McpGraphInspectRequest request)
+        {
+            if (request == null) request = new McpGraphInspectRequest();
+            if (FEditor.Instance.IsHeadlessMode)
+                throw new McpProtocolException("INVALID_STATE", "Graph inspection is unavailable in headless editor mode because the surface is a GUI control.");
+            if (request.Limit < 1 || request.Limit > MaxGraphNodes)
+                throw new McpProtocolException("VALIDATION_FAILED", "Limit must be between 1 and " + MaxGraphNodes + ".");
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            ContentItem item;
+            FlaxEditor.Windows.EditorWindow window;
+            bool openedByBridge;
+            var surface = AcquireGraphSurface(record, out item, out window, out openedByBridge);
+            try
+            {
+                var nodes = surface.Nodes;
+                var parameters = surface.Parameters;
+                if (nodes == null || parameters == null)
+                    throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.");
+                var limit = Math.Min(request.Limit, MaxGraphNodes);
+                var hasMore = nodes.Count > limit;
+                var nodeDtos = new List<McpGraphNodeDto>(Math.Min(nodes.Count, limit));
+                var boxDtos = new List<McpGraphBoxDto>();
+                for (var i = 0; i < nodes.Count && i < limit; i++)
+                {
+                    var node = nodes[i];
+                    if (node == null) continue;
+                    ushort groupId = 0;
+                    ushort typeId = 0;
+                    string title = "";
+                    float x = 0.0f;
+                    float y = 0.0f;
+                    int valuesCount = 0;
+                    McpMaterialTypedValue[] values = null;
+                    try { title = TruncateGraphText(node.Title, 256); } catch { title = ""; }
+                    try { groupId = node.GroupArchetype == null ? (ushort)0 : node.GroupArchetype.GroupID; } catch { groupId = 0; }
+                    try { typeId = node.Archetype == null ? (ushort)0 : node.Archetype.TypeID; } catch { typeId = 0; }
+                    try { x = node.Location.X; y = node.Location.Y; } catch { x = 0.0f; y = 0.0f; }
+                    try
+                    {
+                        var raw = node.Values;
+                        valuesCount = raw == null ? 0 : raw.Length;
+                        if (request.IncludeValues && raw != null)
+                        {
+                            var projected = new List<McpMaterialTypedValue>(Math.Min(raw.Length, 32));
+                            for (var vi = 0; vi < raw.Length && vi < 32; vi++)
+                            {
+                                try { projected.Add(SafeMaterialAnimationValue(raw[vi])); }
+                                catch { projected.Add(new McpMaterialTypedValue { Kind = "unavailable" }); }
+                            }
+                            values = projected.ToArray();
+                        }
+                    }
+                    catch { valuesCount = 0; values = null; }
+                    nodeDtos.Add(new McpGraphNodeDto { Id = node.ID, GroupID = groupId, TypeID = typeId, Title = title, X = x, Y = y, ValuesCount = valuesCount, Values = values });
+                    if (request.IncludeBoxes)
+                    {
+                        for (var bi = 0; bi < MaxGraphBoxesPerNode; bi++)
+                        {
+                            FlaxEditor.Surface.Elements.Box box = null;
+                            try
+                            {
+                                FlaxEditor.Surface.Elements.Box found;
+                                if (!node.TryGetBox(bi, out found)) break;
+                                box = found;
+                            }
+                            catch { break; }
+                            if (box == null) break;
+                            var conns = new List<string>();
+                            try
+                            {
+                                var list = box.Connections;
+                                if (list != null)
+                                {
+                                    foreach (var other in list)
+                                    {
+                                        if (other == null || other.ParentNode == null) continue;
+                                        conns.Add(other.ParentNode.ID + ":" + other.ID);
+                                        if (conns.Count >= MaxGraphBoxesPerNode) break;
+                                    }
+                                }
+                            }
+                            catch { }
+                            boxDtos.Add(new McpGraphBoxDto { NodeID = node.ID, BoxID = box.ID, IsOutput = box.IsOutput, Connections = conns.ToArray() });
+                        }
+                    }
+                }
+                var paramDtos = new List<McpGraphParameterDto>(parameters.Count);
+                foreach (var param in parameters)
+                {
+                    if (param == null) continue;
+                    McpMaterialTypedValue projected;
+                    try { projected = SafeMaterialAnimationValue(param.Value); }
+                    catch { projected = new McpMaterialTypedValue { Kind = "unavailable" }; }
+                    string typeText;
+                    try { typeText = param.Type.ToString(); }
+                    catch { typeText = "unknown"; }
+                    paramDtos.Add(new McpGraphParameterDto
+                    {
+                        Id = param.ID.ToString("N"),
+                        Name = TruncateGraphText(param.Name, 256),
+                        Type = TruncateGraphText(typeText, 256),
+                        IsPublic = param.IsPublic,
+                        Value = request.IncludeValues ? projected : null,
+                    });
+                }
+                paramDtos.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+                return new McpGraphInspectResult
+                {
+                    Asset = AssetMetadata(record),
+                    OpenedByBridge = openedByBridge,
+                    Nodes = nodeDtos.ToArray(),
+                    Boxes = request.IncludeBoxes ? boxDtos.ToArray() : new McpGraphBoxDto[0],
+                    Parameters = paramDtos.ToArray(),
+                    HasMore = hasMore,
+                    BoxesIncluded = request.IncludeBoxes,
+                    ValuesIncluded = request.IncludeValues,
+                    Warnings = new[]
+                    {
+                        "Graph inspection is read-only through the window-backed Visject surface (disableAutoShow). Node identity is UInt16 groupID + typeID; values are a bounded safe projection capped at 32 entries per node.",
+                        openedByBridge ? "The editor window was opened hidden by the bridge and closed after the read." : "A window already open for this asset was reused and left open.",
+                    },
+                };
+            }
+            finally { ReleaseGraphWindow(item, openedByBridge); }
+        }
+
+        private McpGraphSetDefaultParameterResult SetGraphDefaultParameter(McpGraphSetDefaultParameterRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph parameter mutation parameters are required.");
+            if ((string.IsNullOrEmpty(request.ParameterId) && string.IsNullOrEmpty(request.ParameterName)) || (!string.IsNullOrEmpty(request.ParameterId) && !string.IsNullOrEmpty(request.ParameterName)))
+                throw new McpProtocolException("INVALID_REQUEST", "Provide exactly one graph ParameterId or ParameterName.");
+            if (request.Value == null) throw new McpProtocolException("INVALID_REQUEST", "A typed Value is required.");
+            EnsureGraphEditorReady(true);
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            ContentItem item;
+            FlaxEditor.Windows.EditorWindow window;
+            bool openedByBridge;
+            var surface = AcquireGraphSurface(record, out item, out window, out openedByBridge);
+            try
+            {
+                SurfaceParameter target = null;
+                if (!string.IsNullOrEmpty(request.ParameterId))
+                {
+                    Guid id;
+                    if (!Guid.TryParseExact(request.ParameterId, "N", out id))
+                        throw new McpProtocolException("INVALID_REQUEST", "ParameterId must be a 32-character GUID.");
+                    try { target = surface.GetParameter(id); } catch { target = null; }
+                }
+                else
+                {
+                    var list = surface.Parameters;
+                    if (list != null)
+                    {
+                        foreach (var candidate in list)
+                        {
+                            if (candidate != null && string.Equals(candidate.Name, request.ParameterName, StringComparison.Ordinal)) { target = candidate; break; }
+                        }
+                    }
+                }
+                if (target == null)
+                    throw new McpProtocolException("NOT_FOUND", "The requested graph parameter was not found on the Visject surface.");
+                var previous = SafeMaterialAnimationValue(target.Value);
+                var nextValue = FromGraphTypedValue(request.Value);
+                var preview = new McpGraphParameterDto
+                {
+                    Id = target.ID.ToString("N"),
+                    Name = TruncateGraphText(target.Name, 256),
+                    Type = TruncateGraphText(SafeGraphTypeName(target), 256),
+                    IsPublic = target.IsPublic,
+                    Value = SafeMaterialAnimationValue(nextValue),
+                };
+                if (request.DryRun)
+                {
+                    return new McpGraphSetDefaultParameterResult
+                    {
+                        Asset = AssetMetadata(record),
+                        Parameter = preview,
+                        PreviousValue = previous,
+                        DryRun = true,
+                        Saved = false,
+                        OpenedByBridge = openedByBridge,
+                        ProjectRevision = _projectRevision,
+                        Warnings = new[] { "Dry-run preview only: the surface was not mutated and nothing was saved. Reissue with dryRun:false + confirm:true to persist via Window.Save()." },
+                    };
+                }
+                if (!request.Confirm)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Graph parameter writes require confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
+                target.Value = nextValue;
+                try { surface.OnParamEdited(target); } catch { }
+                try { surface.MarkAsEdited(true); } catch { }
+                var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
+                if (saver == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
+                saver.Save();
+                var revision = AdvanceProjectRevision();
+                return new McpGraphSetDefaultParameterResult
+                {
+                    Asset = AssetMetadata(record),
+                    Parameter = new McpGraphParameterDto
+                    {
+                        Id = target.ID.ToString("N"),
+                        Name = TruncateGraphText(target.Name, 256),
+                        Type = TruncateGraphText(SafeGraphTypeName(target), 256),
+                        IsPublic = target.IsPublic,
+                        Value = SafeMaterialAnimationValue(target.Value),
+                    },
+                    PreviousValue = previous,
+                    DryRun = false,
+                    Saved = true,
+                    OpenedByBridge = openedByBridge,
+                    ProjectRevision = revision,
+                    Warnings = new[]
+                    {
+                        "Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone: per-window graph undo only covers edits made before saving.",
+                        openedByBridge ? "The editor window was opened hidden by the bridge and closed after saving." : "A window already open for this asset was reused and left open.",
+                    },
+                };
+            }
+            finally { ReleaseGraphWindow(item, openedByBridge); }
+        }
+
+        // Bridge v16 Phase 3 bounded macro: append one surface parameter.
+        // This is the only additive topology mutation in scope. Node spawn,
+        // wire connect/remove, and state/transition macros stay forbidden
+        // until their archetype allowlists are grounded in real inspect data.
+        private McpGraphSetDefaultParameterResult AddGraphParameter(McpGraphAddParameterRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph add-parameter parameters are required.");
+            if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 256)
+                throw new McpProtocolException("INVALID_REQUEST", "Parameter name must be between 1 and 256 characters.");
+            if (string.IsNullOrWhiteSpace(request.Type))
+                throw new McpProtocolException("INVALID_REQUEST", "Parameter type is required (boolean, integer, number, string, vector2, vector3, vector4, or color).");
+            EnsureGraphEditorReady(true);
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            ContentItem item;
+            FlaxEditor.Windows.EditorWindow window;
+            bool openedByBridge;
+            var surface = AcquireGraphSurface(record, out item, out window, out openedByBridge);
+            try
+            {
+                var list = surface.Parameters;
+                if (list == null)
+                    throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.");
+                foreach (var existing in list)
+                {
+                    if (existing != null && string.Equals(existing.Name, request.Name, StringComparison.Ordinal))
+                        throw new McpProtocolException("VALIDATION_FAILED", "A graph parameter with this name already exists.");
+                }
+                Type clrType;
+                object defaultValue;
+                GraphParameterTypeMapping(request.Type, out clrType, out defaultValue);
+                var visjectWindow = window as IVisjectSurfaceWindow;
+                if (visjectWindow == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose a Visject surface.");
+                var allowed = false;
+                try
+                {
+                    var offered = visjectWindow.NewParameterTypes;
+                    if (offered != null)
+                    {
+                        foreach (var offeredType in offered)
+                        {
+                            if (offeredType != null && offeredType.Type == clrType) { allowed = true; break; }
+                        }
+                    }
+                }
+                catch { allowed = false; }
+                if (!allowed)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Parameter type '" + request.Type + "' is not offered by this graph window.", new { TypeName = record.Info.TypeName });
+                object value = defaultValue;
+                if (request.Value != null)
+                {
+                    value = FromGraphTypedValue(request.Value);
+                    value = CoerceGraphParameterValue(value, clrType, request.Type);
+                }
+                var preview = new McpGraphParameterDto
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = TruncateGraphText(request.Name, 256),
+                    Type = TruncateGraphText(clrType.FullName, 256),
+                    IsPublic = request.IsPublic,
+                    Value = SafeMaterialAnimationValue(value),
+                };
+                if (request.DryRun)
+                {
+                    return new McpGraphSetDefaultParameterResult
+                    {
+                        Asset = AssetMetadata(record),
+                        Parameter = preview,
+                        PreviousValue = null,
+                        DryRun = true,
+                        Saved = false,
+                        OpenedByBridge = openedByBridge,
+                        ProjectRevision = _projectRevision,
+                        Warnings = new[] { "Dry-run preview only: no parameter was added and nothing was saved. Reissue with dryRun:false + confirm:true to persist via Window.Save()." },
+                    };
+                }
+                if (!request.Confirm)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Graph parameter adds require confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
+                var created = new SurfaceParameter
+                {
+                    ID = Guid.NewGuid(),
+                    Name = request.Name,
+                    Type = new FlaxEditor.Scripting.ScriptType(clrType),
+                    IsPublic = request.IsPublic,
+                    Value = value,
+                };
+                list.Add(created);
+                try { surface.OnParamCreated(created); } catch { }
+                try { surface.MarkAsEdited(true); } catch { }
+                var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
+                if (saver == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
+                saver.Save();
+                var revision = AdvanceProjectRevision();
+                return new McpGraphSetDefaultParameterResult
+                {
+                    Asset = AssetMetadata(record),
+                    Parameter = new McpGraphParameterDto
+                    {
+                        Id = created.ID.ToString("N"),
+                        Name = TruncateGraphText(created.Name, 256),
+                        Type = TruncateGraphText(SafeGraphTypeName(created), 256),
+                        IsPublic = created.IsPublic,
+                        Value = SafeMaterialAnimationValue(created.Value),
+                    },
+                    PreviousValue = null,
+                    DryRun = false,
+                    Saved = true,
+                    OpenedByBridge = openedByBridge,
+                    ProjectRevision = revision,
+                    Warnings = new[]
+                    {
+                        "Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone.",
+                        openedByBridge ? "The editor window was opened hidden by the bridge and closed after saving." : "A window already open for this asset was reused and left open.",
+                    },
+                };
+            }
+            finally { ReleaseGraphWindow(item, openedByBridge); }
+        }
+
+        private static object CoerceGraphParameterValue(object value, Type clrType, string kind)
+        {
+            if (value == null) return null;
+            var actual = value.GetType();
+            if (actual == clrType) return value;
+            // The Node client sends every JSON number as Kind:number (float).
+            // Coerce numerics instead of failing closed on float/int/double drift.
+            if (clrType == typeof(int) && value is float) return (int)(float)value;
+            if (clrType == typeof(int) && value is double) return (int)(double)value;
+            if (clrType == typeof(float) && value is double) return (float)(double)value;
+            if (clrType == typeof(float) && value is int) return (float)(int)value;
+            if (clrType == typeof(double) && value is float) return (double)(float)value;
+            if (clrType == typeof(double) && value is int) return (double)(int)value;
+            // The Node client has no distinct color shape; accept a 4-vector.
+            if (clrType == typeof(Color) && value is Float4)
+            {
+                var v = (Float4)value;
+                return new Color(v.X, v.Y, v.Z, v.W);
+            }
+            throw new McpProtocolException("VALIDATION_FAILED", "Value kind does not match the requested parameter type '" + (kind ?? "unknown") + "'.");
+        }
+
+        private static void GraphParameterTypeMapping(string kind, out Type clrType, out object defaultValue)
+        {
+            var normalized = (kind ?? "").Trim().ToLowerInvariant();
+            if (normalized == "boolean" || normalized == "bool") { clrType = typeof(bool); defaultValue = false; return; }
+            if (normalized == "integer" || normalized == "int") { clrType = typeof(int); defaultValue = (int)0; return; }
+            if (normalized == "number" || normalized == "float" || normalized == "double") { clrType = typeof(float); defaultValue = (float)0; return; }
+            if (normalized == "string") { clrType = typeof(string); defaultValue = ""; return; }
+            if (normalized == "vector2" || normalized == "float2") { clrType = typeof(Float2); defaultValue = new Float2(0.0f, 0.0f); return; }
+            if (normalized == "vector3" || normalized == "float3") { clrType = typeof(Float3); defaultValue = new Float3(0.0f, 0.0f, 0.0f); return; }
+            if (normalized == "vector4" || normalized == "float4") { clrType = typeof(Float4); defaultValue = new Float4(0.0f, 0.0f, 0.0f, 0.0f); return; }
+            if (normalized == "color") { clrType = typeof(Color); defaultValue = new Color(0.0f, 0.0f, 0.0f, 1.0f); return; }
+            throw new McpProtocolException("VALIDATION_FAILED", "Parameter type '" + (kind ?? "unknown") + "' is not supported. Use boolean, integer, number, string, vector2, vector3, vector4, or color.");
+        }
+
+        private static string TruncateGraphText(string value, int max)
+        {
+            if (string.IsNullOrEmpty(value)) return value ?? "";
+            return value.Length <= max ? value : value.Substring(0, max);
+        }
+
+        private static string SafeGraphTypeName(SurfaceParameter target)
+        {
+            try
+            {
+                var text = target.Type.ToString();
+                return string.IsNullOrEmpty(text) ? "unknown" : text;
+            }
+            catch { return "unknown"; }
+        }
+
+        private static object FromGraphTypedValue(McpMaterialTypedValue value)
+        {
+            if (value == null || string.Equals(value.Kind, "null", StringComparison.Ordinal)) return null;
+            if (string.Equals(value.Kind, "boolean", StringComparison.Ordinal))
+            {
+                if (!value.Boolean.HasValue) throw new McpProtocolException("INVALID_REQUEST", "Boolean value is missing.");
+                return value.Boolean.Value;
+            }
+            if (string.Equals(value.Kind, "integer", StringComparison.Ordinal))
+            {
+                if (!value.Integer.HasValue) throw new McpProtocolException("INVALID_REQUEST", "Integer value is missing.");
+                return (int)value.Integer.Value;
+            }
+            if (string.Equals(value.Kind, "number", StringComparison.Ordinal))
+            {
+                if (!value.Number.HasValue) throw new McpProtocolException("INVALID_REQUEST", "Number value is missing.");
+                return (float)value.Number.Value;
+            }
+            if (string.Equals(value.Kind, "string", StringComparison.Ordinal)) return Limit(value.Text ?? "", 512, "Parameter value");
+            if (string.Equals(value.Kind, "vector2", StringComparison.Ordinal))
+            {
+                if (value.Vector2 == null) throw new McpProtocolException("INVALID_REQUEST", "Vector2 value is missing.");
+                return new Float2(value.Vector2.X, value.Vector2.Y);
+            }
+            if (string.Equals(value.Kind, "vector3", StringComparison.Ordinal))
+            {
+                if (value.Vector3 == null) throw new McpProtocolException("INVALID_REQUEST", "Vector3 value is missing.");
+                return new Float3(value.Vector3.X, value.Vector3.Y, value.Vector3.Z);
+            }
+            if (string.Equals(value.Kind, "vector4", StringComparison.Ordinal))
+            {
+                if (value.Vector4 == null) throw new McpProtocolException("INVALID_REQUEST", "Vector4 value is missing.");
+                return new Float4(value.Vector4.X, value.Vector4.Y, value.Vector4.Z, value.Vector4.W);
+            }
+            if (string.Equals(value.Kind, "color", StringComparison.Ordinal))
+            {
+                if (value.Vector4 == null) throw new McpProtocolException("INVALID_REQUEST", "Color value is missing.");
+                return new Color(value.Vector4.X, value.Vector4.Y, value.Vector4.Z, value.Vector4.W);
+            }
+            throw new McpProtocolException("VALIDATION_FAILED", "Value kind '" + (value.Kind ?? "unknown") + "' is not writable in this phase. Use boolean, integer, number, string, vector2/3/4, or color.");
+        }
+
+        // Per-window undo for Visject edits made before Window.Save().
+        // This is intentionally separate from edit.undo (global
+        // FEditor.Instance.PerformUndo): the global stack cannot undo a
+        // window-local Visject stack, and nothing can undo SaveToOriginal.
+        private McpGraphUndoResult GraphUndo(McpGraphUndoRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph undo parameters are required.");
+            if (FEditor.Instance.IsHeadlessMode)
+                throw new McpProtocolException("INVALID_STATE", "Graph undo is unavailable in headless editor mode.");
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            var item = FEditor.Instance.ContentDatabase.FindAsset(record.Id);
+            if (item == null)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The selected graph asset is unavailable in the Editor Content database.");
+            var window = FEditor.Instance.Windows.FindEditor(item);
+            if (window == null)
+                throw new McpProtocolException("NOT_FOUND", "No open editor window holds this graph asset. Per-window undo only applies to unsaved edits in an open window.");
+            ValidateGraphWindow(window, record);
+            var prop = window.GetType().GetProperty("Undo", BindingFlags.Instance | BindingFlags.Public);
+            var undo = prop == null ? null : prop.GetValue(window, null) as FlaxEditor.Undo;
+            if (undo == null)
+                throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose a public undo stack.");
+            bool canUndo = false;
+            string firstName = null;
+            try { canUndo = undo.CanUndo; } catch { canUndo = false; }
+            try { firstName = undo.FirstUndoName; } catch { firstName = null; }
+            if (!canUndo)
+            {
+                return new McpGraphUndoResult
+                {
+                    Asset = AssetMetadata(record),
+                    Undone = false,
+                    CanUndo = false,
+                    FirstUndoName = firstName,
+                    ProjectRevision = _projectRevision,
+                    Warnings = new[] { "Nothing to undo on this window stack. Edits already saved via Window.Save() cannot be undone." },
+                };
+            }
+            undo.PerformUndo();
+            var revision = AdvanceProjectRevision();
+            string afterName = null;
+            bool stillCan = false;
+            try { stillCan = undo.CanUndo; } catch { stillCan = false; }
+            try { afterName = undo.FirstUndoName; } catch { afterName = null; }
+            return new McpGraphUndoResult
+            {
+                Asset = AssetMetadata(record),
+                Undone = true,
+                CanUndo = stillCan,
+                FirstUndoName = afterName,
+                ProjectRevision = revision,
+                Warnings = new[] { "Undid one step on the window-local Visject stack. This never reverts an already-saved Window.Save()." },
+            };
         }
 
         private static McpAnimationClipDto AnimationClipDto(McpAssetRecord record)
@@ -2759,7 +3390,7 @@ namespace Game.MCP
             if (animated != null)
             {
                 if (!string.IsNullOrEmpty(p.SkinnedModelId) || !string.IsNullOrEmpty(p.SkinnedModelPath))
-                    animated.SkinnedModel = LoadActorModelAsset(p.SkinnedModelId, p.SkinnedModelPath);
+                    animated.SkinnedModel = LoadActorSkinnedModelAsset(p.SkinnedModelId, p.SkinnedModelPath);
                 if (!string.IsNullOrEmpty(p.AnimationGraphId) || !string.IsNullOrEmpty(p.AnimationGraphPath))
                     animated.AnimationGraph = LoadContentAsset<AnimationGraph>(p.AnimationGraphId, p.AnimationGraphPath);
                 if (p.UpdateWhenOffscreen.HasValue)
@@ -2779,6 +3410,28 @@ namespace Game.MCP
                 if (hasAnimatedFields || hasStaticFields)
                     throw new McpProtocolException("VALIDATION_FAILED", "Component asset assignments require FlaxEngine.AnimatedModel or FlaxEngine.StaticModel.");
             }
+        }
+
+        private static SkinnedModel LoadActorSkinnedModelAsset(string assetId, string assetPath)
+        {
+            ValidateAssetSelector(assetId, assetPath);
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = assetId, Path = assetPath }, BuildAssetRegistry());
+            var absolute = Path.Combine(Globals.ProjectFolder, record.Path.Replace('/', Path.DirectorySeparatorChar));
+
+            SkinnedModel skinned = Content.LoadAsync<SkinnedModel>(record.Id);
+            if (skinned == null)
+                skinned = Content.LoadAsync<SkinnedModel>(absolute);
+            if (skinned == null)
+            {
+                var model = Content.LoadAsync<Model>(record.Id) ?? Content.LoadAsync<Model>(absolute);
+                if (model != null && !(model.WaitForLoaded(30000) || model.LastLoadFailed))
+                    throw new McpProtocolException("VALIDATION_FAILED", "Asset is a static Model, not a SkinnedModel. Reimport the source FBX with model type Skinned Model: " + record.Path);
+            }
+            if (skinned == null)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "Skinned model asset could not be loaded: " + record.Path);
+            if (skinned.WaitForLoaded(30000) || skinned.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "Skinned model asset failed to load: " + record.Path);
+            return skinned;
         }
 
         private static Model LoadActorModelAsset(string assetId, string assetPath)
