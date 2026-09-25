@@ -5,10 +5,10 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v16 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v17 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*16/);
-  assert.match(source, /BridgeVersion\s*=\s*16/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*17/);
+  assert.match(source, /BridgeVersion\s*=\s*17/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -176,21 +176,31 @@ test('bridge v13 exposes only verified public material and animation reads and k
   assert.doesNotMatch(source, /\.CreateVirtualInstance\(/);
 });
 
-test('bridge v16 exposes only the window-backed Visject graph surface and keeps topology writes forbidden', async () => {
+test('bridge v17 exposes the window-backed Visject graph surface with bounded AnimGraph topology macros', async () => {
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /case "graph\.inspect"/);
   assert.match(source, /case "graph\.set_default_parameter"/);
   assert.match(source, /case "graph\.add_parameter"/);
   assert.match(source, /case "graph\.undo"/);
+  assert.match(source, /case "animgraph\.add_state"/);
+  assert.match(source, /case "animgraph\.add_transition"/);
   assert.match(source, /GraphInspectSupported = true/);
   assert.match(source, /GraphDefaultParameterWriteSupported = true/);
-  assert.match(source, /GraphTopologyWriteSupported = false/);
+  assert.match(source, /GraphTopologyWriteSupported = true/);
+  assert.match(source, /AnimgraphStateWriteSupported = true/);
+  assert.match(source, /AnimgraphTransitionWriteSupported = true/);
   assert.match(source, /GraphUndoSupported = true/);
   assert.match(source, /AcquireGraphSurface/);
   assert.match(source, /NewParameterTypes/);
   assert.match(source, /AssetEditorWindow\.Save/);
   assert.match(source, /ExecuteIdempotent\("graph\.set_default_parameter"/);
   assert.match(source, /ExecuteIdempotent\("graph\.add_parameter"/);
+  assert.match(source, /ExecuteIdempotent\("animgraph\.add_state"/);
+  assert.match(source, /ExecuteIdempotent\("animgraph\.add_transition"/);
+  assert.match(source, /AnimGraphStateMachineNode = 18/);
+  assert.match(source, /AnimGraphStateNode = 20/);
+  assert.match(source, /CanUseNodeType\(AnimGraphGroup/);
+  assert.match(source, /IConnectionInstigator/);
   assert.doesNotMatch(source, /new VisjectSurface\(/);
   assert.doesNotMatch(source, /\.SaveSurface\(/);
 });

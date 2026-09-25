@@ -128,6 +128,11 @@ export type GraphBridgeMethod =
   | 'graph.add_parameter'
   | 'graph.undo';
 
+/** Bridge v17 bounded AnimGraph state-machine macros (additive only). */
+export type AnimgraphBridgeMethod =
+  | 'animgraph.add_state'
+  | 'animgraph.add_transition';
+
 /** Bridge v14 bounded physics/navigation/lighting/terrain domain queries. */
 export type DomainBridgeMethod =
   | 'physics.validate_colliders' | 'physics.raycast' | 'physics.get_layer_matrix' | 'physics.find_overlaps'
@@ -152,6 +157,7 @@ export type BridgeMethod =
   | AnimationBridgeMethod
   | MMTuningBridgeMethod
   | GraphBridgeMethod
+  | AnimgraphBridgeMethod
   | DomainBridgeMethod;
 
 /** Exact on-disk DTO written to requests/<id>.json by the Node client. */

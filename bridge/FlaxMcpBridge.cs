@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 16
+// MCP-BRIDGE-VERSION: 17
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -25,12 +25,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 16; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 17; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 16; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = false; public bool GraphUndoSupported = true; }
+    public class McpStatus { public int BridgeVersion = 17; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -197,7 +197,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 16;
+        private const int BridgeVersion = 17;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -532,6 +532,8 @@ namespace Game.MCP
                 case "graph.set_default_parameter": { var q = JsonSerializer.Deserialize<McpGraphSetDefaultParameterRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.set_default_parameter", q == null ? null : q.IdempotencyKey, q, () => SetGraphDefaultParameter(q)), request.deadlineUnixMs); break; }
                 case "graph.undo": result = OnMain(() => GraphUndo(JsonSerializer.Deserialize<McpGraphUndoRequest>(p)), request.deadlineUnixMs); break;
                 case "graph.add_parameter": { var q = JsonSerializer.Deserialize<McpGraphAddParameterRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.add_parameter", q == null ? null : q.IdempotencyKey, q, () => AddGraphParameter(q)), request.deadlineUnixMs); break; }
+                case "animgraph.add_state": { var q = JsonSerializer.Deserialize<McpGraphAddStateRequest>(p); result = OnMain(() => ExecuteIdempotent("animgraph.add_state", q == null ? null : q.IdempotencyKey, q, () => AddAnimgraphState(q)), request.deadlineUnixMs); break; }
+                case "animgraph.add_transition": { var q = JsonSerializer.Deserialize<McpGraphAddTransitionRequest>(p); result = OnMain(() => ExecuteIdempotent("animgraph.add_transition", q == null ? null : q.IdempotencyKey, q, () => AddAnimgraphTransition(q)), request.deadlineUnixMs); break; }
                 default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method is not in the bridge allowlist.");
             }
             var resultJson = JsonSerializer.Serialize(result, true);
@@ -1945,6 +1947,329 @@ namespace Game.MCP
                         "Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone.",
                         openedByBridge ? "The editor window was opened (shown) by the bridge and closed after saving." : "A window already open for this asset was reused and left open.",
                     },
+                };
+            }
+            finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
+        }
+
+        // Bridge v17 Phase 3: bounded AnimGraph state-machine macros.
+        // Archetype IDs grounded by Cecil dump of FlaxEngine.CSharp.dll
+        // 1.12.6912 (group 9 table) + live verify; runtime gates below
+        // re-check everything, so a version drift fails closed instead of
+        // corrupting the graph. State Machine=(9,18), Entry=(9,19) [engine
+        // auto-ensures], State=(9,20), State Output=(9,21) [auto-ensured per
+        // state], TransitionSrc=(9,23), Any=(9,34). Values are always cloned
+        // from the resolved archetype defaults at runtime — no hardcoded
+        // value arrays. clip_guid is intentionally NOT supported: a state
+        // stores (title, ?, transitions), the clip lives in the state's
+        // sub-context and is a separate follow-up.
+        private const ushort AnimGraphGroup = 9;
+        private const ushort AnimGraphStateMachineNode = 18;
+        private const ushort AnimGraphStateNode = 20;
+        private const ushort AnimGraphAnyStateNode = 34;
+
+        public class McpGraphAddStateRequest { public string AssetId; public string Path; public string Name; public float? X; public float? Y; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public string LeaseId; }
+        public class McpGraphAddStateResult { public McpAssetMetadata Asset; public McpGraphNodeDto State; public McpGraphNodeDto Machine; public bool MachineCreated; public bool DryRun; public bool Saved; public bool OpenedByBridge; public long ProjectRevision; public string[] Warnings; }
+        public class McpGraphAddTransitionRequest { public string AssetId; public string Path; public string FromState; public string ToState; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public string LeaseId; }
+        public class McpGraphAddTransitionResult { public McpAssetMetadata Asset; public string FromState; public uint FromId; public string ToState; public uint ToId; public bool DryRun; public bool Saved; public bool OpenedByBridge; public long ProjectRevision; public string[] Warnings; }
+
+        private static void EnsureAnimgraphAsset(McpAssetRecord record)
+        {
+            if (!string.Equals(record.Info.TypeName, "FlaxEngine.AnimationGraph", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "State-machine macros support only FlaxEngine.AnimationGraph assets in this phase.", new { TypeName = record.Info.TypeName });
+        }
+
+        private static void EnsureAnimgraphNodeUsable(VisjectSurface surface, ushort typeId)
+        {
+            GroupArchetype groupArch;
+            NodeArchetype nodeArch;
+            if (!NodeFactory.GetArchetype(NodeFactory.DefaultGroups, AnimGraphGroup, typeId, out groupArch, out nodeArch) || nodeArch == null)
+                throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The editor does not offer the required AnimGraph node archetype in this version.", new { GroupID = AnimGraphGroup, TypeID = typeId });
+            if (!surface.CanUseNodeType(AnimGraphGroup, typeId))
+                throw new McpProtocolException("VALIDATION_FAILED", "The AnimGraph node archetype is not usable on this surface.", new { GroupID = AnimGraphGroup, TypeID = typeId });
+        }
+
+        private static SurfaceNode FindRootAnimgraphNode(VisjectSurface surface, ushort typeId)
+        {
+            var root = surface.RootContext;
+            if (root == null || root.Nodes == null)
+                throw new McpProtocolException("INVALID_STATE", "The graph root context is not ready. Retry shortly.", null);
+            foreach (var node in root.Nodes)
+            {
+                if (node == null) continue;
+                ushort g = 0;
+                ushort t = 0;
+                try { g = node.GroupArchetype == null ? (ushort)0 : node.GroupArchetype.GroupID; } catch { g = 0; }
+                try { t = node.Archetype == null ? (ushort)0 : node.Archetype.TypeID; } catch { t = 0; }
+                if (g == AnimGraphGroup && t == typeId) return node;
+            }
+            return null;
+        }
+
+        private static object[] CloneAnimgraphDefaults(ushort typeId)
+        {
+            GroupArchetype groupArch;
+            NodeArchetype nodeArch;
+            if (!NodeFactory.GetArchetype(NodeFactory.DefaultGroups, AnimGraphGroup, typeId, out groupArch, out nodeArch) || nodeArch == null || nodeArch.DefaultValues == null)
+                throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The editor does not offer the required AnimGraph node archetype in this version.", new { GroupID = AnimGraphGroup, TypeID = typeId });
+            var src = nodeArch.DefaultValues;
+            var dst = new object[src.Length];
+            for (var i = 0; i < src.Length; i++) dst[i] = src[i] is byte[] bytes ? (object)bytes.Clone() : src[i];
+            return dst;
+        }
+
+        private static SurfaceNode FindAnimgraphState(VisjectSurfaceContext machineCtx, string name)
+        {
+            if (machineCtx == null || machineCtx.Nodes == null) return null;
+            foreach (var node in machineCtx.Nodes)
+            {
+                if (node == null) continue;
+                ushort g = 0;
+                ushort t = 0;
+                try { g = node.GroupArchetype == null ? (ushort)0 : node.GroupArchetype.GroupID; } catch { g = 0; }
+                try { t = node.Archetype == null ? (ushort)0 : node.Archetype.TypeID; } catch { t = 0; }
+                if (g != AnimGraphGroup || (t != AnimGraphStateNode && t != AnimGraphAnyStateNode)) continue;
+                string title = null;
+                try { title = node.Title; } catch { title = null; }
+                if (string.Equals(title, name, StringComparison.Ordinal)) return node;
+            }
+            return null;
+        }
+
+        private static int CountAnimgraphStates(VisjectSurfaceContext machineCtx)
+        {
+            var count = 0;
+            if (machineCtx == null || machineCtx.Nodes == null) return 0;
+            foreach (var node in machineCtx.Nodes)
+            {
+                if (node == null) continue;
+                ushort g = 0;
+                ushort t = 0;
+                try { g = node.GroupArchetype == null ? (ushort)0 : node.GroupArchetype.GroupID; } catch { g = 0; }
+                try { t = node.Archetype == null ? (ushort)0 : node.Archetype.TypeID; } catch { t = 0; }
+                if (g == AnimGraphGroup && (t == AnimGraphStateNode || t == AnimGraphAnyStateNode)) count++;
+            }
+            return count;
+        }
+
+        private static McpGraphNodeDto AnimgraphNodeDto(SurfaceNode node)
+        {
+            ushort g = 0;
+            ushort t = 0;
+            string title = "";
+            float x = 0.0f;
+            float y = 0.0f;
+            try { g = node.GroupArchetype == null ? (ushort)0 : node.GroupArchetype.GroupID; } catch { g = 0; }
+            try { t = node.Archetype == null ? (ushort)0 : node.Archetype.TypeID; } catch { t = 0; }
+            try { title = TruncateGraphText(node.Title, 256); } catch { title = ""; }
+            try { x = node.Location.X; y = node.Location.Y; } catch { x = 0.0f; y = 0.0f; }
+            return new McpGraphNodeDto { Id = node.ID, GroupID = g, TypeID = t, Title = title, X = x, Y = y, ValuesCount = 0, Values = null };
+        }
+
+        private McpGraphAddStateResult AddAnimgraphState(McpGraphAddStateRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph add-state parameters are required.");
+            if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 256)
+                throw new McpProtocolException("INVALID_REQUEST", "State name must be between 1 and 256 characters.");
+            if ((request.X.HasValue != request.Y.HasValue) || (request.X.HasValue && (!float.IsFinite(request.X.Value) || !float.IsFinite(request.Y.Value))))
+                throw new McpProtocolException("INVALID_REQUEST", "State position requires both finite X and Y, or neither for auto-layout.");
+            EnsureGraphEditorReady(true);
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            EnsureAnimgraphAsset(record);
+            CheckGraphWrite(record, request.LeaseId);
+            ContentItem item;
+            FlaxEditor.Windows.EditorWindow window;
+            bool openedByBridge;
+            var surface = AcquireGraphSurface(record, out item, out window, out openedByBridge);
+            var warnings = new List<string>();
+            try
+            {
+                EnsureAnimgraphNodeUsable(surface, AnimGraphStateMachineNode);
+                EnsureAnimgraphNodeUsable(surface, AnimGraphStateNode);
+                var machine = FindRootAnimgraphNode(surface, AnimGraphStateMachineNode);
+                var machineCreated = false;
+                if (machine == null)
+                {
+                    if (request.DryRun)
+                    {
+                        return new McpGraphAddStateResult
+                        {
+                            Asset = AssetMetadata(record),
+                            State = new McpGraphNodeDto { Id = 0, GroupID = AnimGraphGroup, TypeID = AnimGraphStateNode, Title = TruncateGraphText(request.Name, 256), X = request.X ?? 300.0f, Y = request.Y ?? 140.0f },
+                            Machine = null,
+                            MachineCreated = true,
+                            DryRun = true,
+                            Saved = false,
+                            OpenedByBridge = openedByBridge,
+                            ProjectRevision = _projectRevision,
+                            Warnings = new[] { "Dry-run preview only: no state machine and no state were created and nothing was saved. Reissue with dryRun:false + confirm:true to persist via Window.Save()." },
+                        };
+                    }
+                    if (!request.Confirm)
+                        throw new McpProtocolException("VALIDATION_FAILED", "Graph state adds require confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
+                    var machineValues = CloneAnimgraphDefaults(AnimGraphStateMachineNode);
+                    var rootCtx = surface.RootContext;
+                    if (rootCtx == null)
+                        throw new McpProtocolException("INVALID_STATE", "The graph root context is not ready. Retry shortly.", GraphNotReadyDetails(record));
+                    machine = rootCtx.SpawnNode(AnimGraphGroup, AnimGraphStateMachineNode, new Float2(140.0f, 80.0f), machineValues, null);
+                    if (machine == null)
+                        throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not spawn the state machine node.");
+                    machineCreated = true;
+                    warnings.Add("Created the missing state machine container node with archetype defaults.");
+                }
+                var machineCtx = surface.OpenContext(new Span<uint>(new uint[] { machine.ID }));
+                if (machineCtx == null)
+                    throw new McpProtocolException("INVALID_STATE", "The state machine context is not ready. Retry shortly.", GraphNotReadyDetails(record));
+                if (FindAnimgraphState(machineCtx, request.Name) != null)
+                    throw new McpProtocolException("VALIDATION_FAILED", "A state with this name already exists in the state machine.");
+                var stateCount = CountAnimgraphStates(machineCtx);
+                var pos = new Float2(request.X ?? (300.0f + stateCount * 200.0f), request.Y ?? 140.0f);
+                if (request.DryRun)
+                {
+                    return new McpGraphAddStateResult
+                    {
+                        Asset = AssetMetadata(record),
+                        State = new McpGraphNodeDto { Id = 0, GroupID = AnimGraphGroup, TypeID = AnimGraphStateNode, Title = TruncateGraphText(request.Name, 256), X = pos.X, Y = pos.Y },
+                        Machine = AnimgraphNodeDto(machine),
+                        MachineCreated = machineCreated,
+                        DryRun = true,
+                        Saved = false,
+                        OpenedByBridge = openedByBridge,
+                        ProjectRevision = _projectRevision,
+                        Warnings = new[] { "Dry-run preview only: no state was created and nothing was saved. Reissue with dryRun:false + confirm:true to persist via Window.Save()." },
+                    };
+                }
+                if (!request.Confirm)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Graph state adds require confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
+                var values = CloneAnimgraphDefaults(AnimGraphStateNode);
+                if (values.Length == 0 || !(values[0] is string))
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The state node archetype does not carry a name value in this version.", new { GroupID = AnimGraphGroup, TypeID = AnimGraphStateNode });
+                values[0] = request.Name;
+                var state = machineCtx.SpawnNode(AnimGraphGroup, AnimGraphStateNode, pos, values, null);
+                if (state == null)
+                    throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not spawn the state node.");
+                try { machineCtx.MarkAsModified(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph context MarkAsModified notification failed: " + ex.Message); }
+                try { surface.RootContext.MarkAsModified(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph root MarkAsModified notification failed: " + ex.Message); }
+                try { surface.MarkAsEdited(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface MarkAsEdited notification failed: " + ex.Message); }
+                if (!openedByBridge)
+                {
+                    try { surface.OpenContext(new Span<uint>(new uint[0])); }
+                    catch (Exception ex) { warnings.Add("Could not navigate the reused window back to the graph root: " + ex.Message); }
+                }
+                var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
+                if (saver == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
+                saver.Save();
+                var revision = AdvanceProjectRevision();
+                warnings.Add("Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone.");
+                warnings.Add(openedByBridge ? "The editor window was opened (shown) by the bridge and closed after saving." : "A window already open for this asset was reused and left open.");
+                return new McpGraphAddStateResult
+                {
+                    Asset = AssetMetadata(record),
+                    State = AnimgraphNodeDto(state),
+                    Machine = AnimgraphNodeDto(machine),
+                    MachineCreated = machineCreated,
+                    DryRun = false,
+                    Saved = true,
+                    OpenedByBridge = openedByBridge,
+                    ProjectRevision = revision,
+                    Warnings = warnings.ToArray(),
+                };
+            }
+            finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
+        }
+
+        private McpGraphAddTransitionResult AddAnimgraphTransition(McpGraphAddTransitionRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph add-transition parameters are required.");
+            if (string.IsNullOrWhiteSpace(request.FromState) || request.FromState.Length > 256)
+                throw new McpProtocolException("INVALID_REQUEST", "FromState must be between 1 and 256 characters.");
+            if (string.IsNullOrWhiteSpace(request.ToState) || request.ToState.Length > 256)
+                throw new McpProtocolException("INVALID_REQUEST", "ToState must be between 1 and 256 characters.");
+            EnsureGraphEditorReady(true);
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            EnsureAnimgraphAsset(record);
+            CheckGraphWrite(record, request.LeaseId);
+            ContentItem item;
+            FlaxEditor.Windows.EditorWindow window;
+            bool openedByBridge;
+            var surface = AcquireGraphSurface(record, out item, out window, out openedByBridge);
+            var warnings = new List<string>();
+            try
+            {
+                EnsureAnimgraphNodeUsable(surface, AnimGraphStateNode);
+                var machine = FindRootAnimgraphNode(surface, AnimGraphStateMachineNode);
+                if (machine == null)
+                    throw new McpProtocolException("NOT_FOUND", "The graph has no state machine node. Add a state first (it creates the container).");
+                var machineCtx = surface.OpenContext(new Span<uint>(new uint[] { machine.ID }));
+                if (machineCtx == null)
+                    throw new McpProtocolException("INVALID_STATE", "The state machine context is not ready. Retry shortly.", GraphNotReadyDetails(record));
+                var src = FindAnimgraphState(machineCtx, request.FromState);
+                if (src == null)
+                    throw new McpProtocolException("NOT_FOUND", "The source state was not found in the state machine.");
+                var dst = FindAnimgraphState(machineCtx, request.ToState);
+                if (dst == null)
+                    throw new McpProtocolException("NOT_FOUND", "The destination state was not found in the state machine.");
+                ushort dstType = 0;
+                try { dstType = dst.Archetype == null ? (ushort)0 : dst.Archetype.TypeID; } catch { dstType = 0; }
+                if (dstType != AnimGraphStateNode)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Transition destinations must be State nodes.", new { GroupID = AnimGraphGroup, TypeID = dstType });
+                var srcInst = src as IConnectionInstigator;
+                var dstInst = dst as IConnectionInstigator;
+                if (srcInst == null || dstInst == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The state nodes do not expose the public transition path in this version.");
+                if (request.DryRun)
+                {
+                    bool wouldConnect = false;
+                    try { wouldConnect = srcInst.CanConnectWith(dstInst); } catch { wouldConnect = false; }
+                    return new McpGraphAddTransitionResult
+                    {
+                        Asset = AssetMetadata(record),
+                        FromState = request.FromState,
+                        FromId = src.ID,
+                        ToState = request.ToState,
+                        ToId = dst.ID,
+                        DryRun = true,
+                        Saved = false,
+                        OpenedByBridge = openedByBridge,
+                        ProjectRevision = _projectRevision,
+                        Warnings = new[] { wouldConnect ? "Dry-run preview only: the transition was not created and nothing was saved. Reissue with dryRun:false + confirm:true to persist via Window.Save()." : "Dry-run preview: the states cannot be connected (already connected or incompatible). Confirm would fail closed." },
+                    };
+                }
+                if (!request.Confirm)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Graph transition adds require confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
+                bool canConnect = false;
+                try { canConnect = srcInst.CanConnectWith(dstInst); } catch { canConnect = false; }
+                if (!canConnect)
+                    throw new McpProtocolException("VALIDATION_FAILED", "The states cannot be connected (already connected or incompatible).");
+                srcInst.Connect(dstInst);
+                try { machineCtx.MarkAsModified(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph context MarkAsModified notification failed: " + ex.Message); }
+                try { surface.RootContext.MarkAsModified(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph root MarkAsModified notification failed: " + ex.Message); }
+                try { surface.MarkAsEdited(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface MarkAsEdited notification failed: " + ex.Message); }
+                if (!openedByBridge)
+                {
+                    try { surface.OpenContext(new Span<uint>(new uint[0])); }
+                    catch (Exception ex) { warnings.Add("Could not navigate the reused window back to the graph root: " + ex.Message); }
+                }
+                var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
+                if (saver == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
+                saver.Save();
+                var revision = AdvanceProjectRevision();
+                warnings.Add("Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone. The transition uses default rule data (Enabled, no rule graph), same as an editor drop-connect.");
+                warnings.Add(openedByBridge ? "The editor window was opened (shown) by the bridge and closed after saving." : "A window already open for this asset was reused and left open.");
+                return new McpGraphAddTransitionResult
+                {
+                    Asset = AssetMetadata(record),
+                    FromState = request.FromState,
+                    FromId = src.ID,
+                    ToState = request.ToState,
+                    ToId = dst.ID,
+                    DryRun = false,
+                    Saved = true,
+                    OpenedByBridge = openedByBridge,
+                    ProjectRevision = revision,
+                    Warnings = warnings.ToArray(),
                 };
             }
             finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }

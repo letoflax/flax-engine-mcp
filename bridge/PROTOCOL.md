@@ -448,6 +448,28 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v17: bounded AnimGraph state-machine macros
+
+Bridge v17 keeps protocol v1 and the full v16 surface. It adds two additive-only
+AnimGraph macros gated by a Cecil-verified Flax 1.12 group-9 allowlist
+(StateMachine=(9,18), State=(9,20); Entry=(9,19) and State-Output=(9,21) are
+engine auto-ensured, Transition=(9,23), Any=(9,34)).
+
+`animgraph.add_state` spawns one `(9,20)` state node inside the graph's state
+machine context (creating the `(9,18)` container from archetype defaults when
+missing), with the name stored in the archetype-cloned values — never hardcoded
+value arrays. `animgraph.add_transition` connects two states through the public
+`IConnectionInstigator.Connect` path (the same flow as an editor drop-connect,
+including native undo recording) with default rule data and no rule graph, after
+a runtime `CanConnectWith` gate. Both ops are dry-run by default, require
+`confirm:true`, honor idempotency keys and per-asset edit leases, persist via
+`AssetEditorWindow.Save()`, and reuse the v16 readiness/retry contract
+(`IsLoaded` + `Surface.Enabled`, `INVALID_STATE` + `details.NotReady`).
+State clip wiring (sampler inside the state sub-context) is out of scope:
+states are created empty and the schema accepts no clip field. Node clients
+require bridge v17 for these two tools (`GraphTopologyWriteSupported`,
+`AnimgraphStateWriteSupported`, `AnimgraphTransitionWriteSupported`).
+
 ## Bridge v16: window-backed Visject node-graph editing
 
 Bridge v16 keeps protocol v1. It adds a window-backed Visject surface for

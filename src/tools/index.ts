@@ -91,10 +91,14 @@ import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchem
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
 import { MMTuningSchema, MMApplyPresetSchema, handleMMTuning, handleMMApplyPreset } from './mmTuning.js';
 import {
+  AnimgraphAddStateSchema,
+  AnimgraphAddTransitionSchema,
   GraphAddParameterSchema,
   GraphInspectSchema,
   GraphSetDefaultParameterSchema,
   GraphUndoSchema,
+  handleAnimgraphAddState,
+  handleAnimgraphAddTransition,
   handleGraphAddParameter,
   handleGraphInspect,
   handleGraphSetDefaultParameter,
@@ -353,6 +357,8 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   graph_set_default_parameter: GraphSetDefaultParameterSchema,
   graph_add_parameter: GraphAddParameterSchema,
   graph_undo: GraphUndoSchema,
+  animgraph_add_state: AnimgraphAddStateSchema,
+  animgraph_add_transition: AnimgraphAddTransitionSchema,
   mm_tuning: MMTuningSchema,
   mm_apply_preset: MMApplyPresetSchema,
   read_settings: ReadSettingsSchema,
@@ -405,6 +411,8 @@ const WRITE_TOOL_NAMES = new Set([
   'graph_set_default_parameter',
   'graph_add_parameter',
   'graph_undo',
+  'animgraph_add_state',
+  'animgraph_add_transition',
   'mm_apply_preset',
   'install_editor_bridge',
   'scene_save',
@@ -1105,6 +1113,18 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Undoes one step on the window-local Visject undo stack for unsaved edits. Never reverts an already-saved window. Requires bridge v16.',
       inputSchema: zodToJsonSchema(GraphUndoSchema),
       handler: (a, c) => handleGraphUndo(a as Parameters<typeof handleGraphUndo>[0], c),
+    },
+    {
+      name: 'animgraph_add_state',
+      description: 'Adds one state node to an AnimationGraph state machine via the window save path (creates the container when missing). Bounded Phase 3 macro; dry-run by default and saving cannot be undone. Requires bridge v17.',
+      inputSchema: zodToJsonSchema(AnimgraphAddStateSchema),
+      handler: (a, c) => handleAnimgraphAddState(a as Parameters<typeof handleAnimgraphAddState>[0], c),
+    },
+    {
+      name: 'animgraph_add_transition',
+      description: 'Adds one state-to-state transition to an AnimationGraph state machine via the window save path, using default rule data like an editor drop-connect. Dry-run by default and saving cannot be undone. Requires bridge v17.',
+      inputSchema: zodToJsonSchema(AnimgraphAddTransitionSchema),
+      handler: (a, c) => handleAnimgraphAddTransition(a as Parameters<typeof handleAnimgraphAddTransition>[0], c),
     },
     {
       name: 'mm_tuning',

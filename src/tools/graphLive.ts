@@ -83,6 +83,35 @@ export const GraphUndoSchema = z.object({
   ...AssetSelector,
 }).strict().superRefine(exactlyOneSelector);
 
+const FiniteCoordinate = z.number().finite().min(-10000).max(10000).optional();
+
+export const AnimgraphAddStateSchema = z.object({
+  ...AssetSelector,
+  name: z.string().min(1).max(256),
+  x: FiniteCoordinate,
+  y: FiniteCoordinate,
+  dry_run: z.boolean().optional().default(true),
+  confirm: z.literal(true).optional(),
+  idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
+}).strict().superRefine((value, ctx) => {
+  exactlyOneSelector(value, ctx);
+  requiresConfirmation(value, ctx);
+  if ((value.x === undefined) !== (value.y === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide both x and y, or neither for auto-layout.' });
+  }
+});
+
+export const AnimgraphAddTransitionSchema = z.object({
+  ...AssetSelector,
+  from_state: z.string().min(1).max(256),
+  to_state: z.string().min(1).max(256),
+  dry_run: z.boolean().optional().default(true),
+  confirm: z.literal(true).optional(),
+  idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
+}).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
+
 function graphError(error: unknown): ToolDomainError {
   if (!(error instanceof BridgeRpcError)) {
     return new ToolDomainError('INTERNAL_ERROR', error instanceof Error ? error.message : String(error));
@@ -115,15 +144,16 @@ async function graphCall(
   method: BridgeMethod,
   params: Record<string, unknown>,
   changes: unknown[] = [],
+  minimumBridgeVersion = 16,
 ): Promise<ToolResponse> {
-  // A hidden window opened by the bridge needs frames before
-  // VisjectSurfaceWindow.Update() runs LoadSurface(). The bridge keeps the
-  // window open and reports INVALID_STATE + details.NotReady; retry here so
+  // A bridge-opened window needs frames before VisjectSurfaceWindow.Update()
+  // runs LoadSurface(). The bridge keeps the window open and reports
+  // INVALID_STATE + details.NotReady; retry here so
   // callers never hand-pump retries. Bounded: 5 attempts, ~9s max.
   let lastError: unknown;
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
-      const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion: 16 });
+      const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion });
       const result = response.data as { Warnings?: unknown } | undefined;
       const warnings = Array.isArray(result?.Warnings)
         ? result.Warnings.filter((warning): warning is string => typeof warning === 'string')
@@ -189,6 +219,29 @@ export const handleGraphAddParameter = (args: z.infer<typeof GraphAddParameterSc
 
 export const handleGraphUndo = (args: z.infer<typeof GraphUndoSchema>, ctx: ProjectMeta) =>
   graphCall(ctx, 'graph.undo', { ...selector(args) });
+
+export const handleAnimgraphAddState = (args: z.infer<typeof AnimgraphAddStateSchema>, ctx: ProjectMeta) =>
+  graphCall(ctx, 'animgraph.add_state', {
+    ...selector(args),
+    Name: args.name,
+    X: args.x,
+    Y: args.y,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
+  }, args.dry_run ? [] : [{ kind: 'animgraph-state', asset_id: args.asset_id, path: args.path }], 17);
+
+export const handleAnimgraphAddTransition = (args: z.infer<typeof AnimgraphAddTransitionSchema>, ctx: ProjectMeta) =>
+  graphCall(ctx, 'animgraph.add_transition', {
+    ...selector(args),
+    FromState: args.from_state,
+    ToState: args.to_state,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
+  }, args.dry_run ? [] : [{ kind: 'animgraph-transition', asset_id: args.asset_id, path: args.path }], 17);
 
 function toBridgeValue(value: unknown): unknown {
   if (typeof value === 'boolean') return { Kind: 'boolean', Boolean: value };

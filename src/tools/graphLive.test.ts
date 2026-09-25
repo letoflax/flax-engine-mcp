@@ -5,10 +5,14 @@ import path from 'node:path';
 import test from 'node:test';
 import { createProjectContext, ProjectMeta } from '../projectContext.js';
 import {
+  AnimgraphAddStateSchema,
+  AnimgraphAddTransitionSchema,
   GraphAddParameterSchema,
   GraphInspectSchema,
   GraphSetDefaultParameterSchema,
   GraphUndoSchema,
+  handleAnimgraphAddState,
+  handleAnimgraphAddTransition,
   handleGraphAddParameter,
   handleGraphInspect,
   handleGraphSetDefaultParameter,
@@ -251,6 +255,73 @@ test('graph writes marshal lease_id and surface lease conflicts', async () => {
     const out = await conflicted;
     assert.equal(out.isError, true);
     assert.equal((out.structuredContent as any).error.code, 'EDIT_LEASE_CONFLICT');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('animgraph macros validate scope, names, and confirmation', () => {
+  assert.equal(AnimgraphAddStateSchema.safeParse({ asset_id: GRAPH_ID, path: 'Content/Graphs/G.flax', name: 'Idle' }).success, false);
+  assert.equal(AnimgraphAddStateSchema.safeParse({ path: 'Content/Graphs/G.flax' }).success, false);
+  assert.equal(AnimgraphAddStateSchema.safeParse({ asset_id: GRAPH_ID, name: 'Idle', x: 1 }).success, false);
+  assert.equal(AnimgraphAddStateSchema.safeParse({ asset_id: GRAPH_ID, name: 'Idle' }).success, true);
+  assert.equal(AnimgraphAddStateSchema.safeParse({ asset_id: GRAPH_ID, name: 'Idle', x: 1, y: 2, dry_run: false }).success, false);
+  assert.equal(AnimgraphAddStateSchema.safeParse({ asset_id: GRAPH_ID, name: 'Idle', x: 1, y: 2 }).success, true);
+  assert.equal(AnimgraphAddTransitionSchema.safeParse({ asset_id: GRAPH_ID, from_state: 'Idle', to_state: 'Run' }).success, true);
+  assert.equal(AnimgraphAddTransitionSchema.safeParse({ asset_id: GRAPH_ID, from_state: 'Idle' }).success, false);
+  assert.equal(AnimgraphAddTransitionSchema.safeParse({ asset_id: GRAPH_ID, from_state: 'Idle', to_state: 'Run', dry_run: false }).success, false);
+});
+
+test('animgraph macros marshal PascalCase requests against bridge v17', async () => {
+  const f = await fixture(17);
+  try {
+    const addState = handleAnimgraphAddState(AnimgraphAddStateSchema.parse({
+      asset_id: GRAPH_ID,
+      name: 'Idle',
+      lease_id: 'd'.repeat(32),
+    }), f.ctx);
+    const first = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Saved: false }) });
+    assert.equal(first.body.method, 'animgraph.add_state');
+    assert.deepEqual(first.params, {
+      AssetId: GRAPH_ID,
+      Name: 'Idle',
+      DryRun: true,
+      Confirm: false,
+      LeaseId: 'd'.repeat(32),
+    });
+    assert.equal((await addState).isError, undefined);
+
+    const addTransition = handleAnimgraphAddTransition(AnimgraphAddTransitionSchema.parse({
+      path: 'Content/Graphs/G.flax',
+      from_state: 'Idle',
+      to_state: 'Run',
+      dry_run: false,
+      confirm: true,
+      idempotency_key: 'key-2',
+    }), f.ctx);
+    const second = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: false, Saved: true }) });
+    assert.equal(second.body.method, 'animgraph.add_transition');
+    assert.deepEqual(second.params, {
+      Path: 'Content/Graphs/G.flax',
+      FromState: 'Idle',
+      ToState: 'Run',
+      DryRun: false,
+      Confirm: true,
+      IdempotencyKey: 'key-2',
+    });
+    assert.equal((await addTransition).isError, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('animgraph macros fail closed on bridges older than v17', async () => {
+  const f = await fixture(16);
+  try {
+    const result = await handleAnimgraphAddState(AnimgraphAddStateSchema.parse({ asset_id: GRAPH_ID, name: 'Idle' }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
   } finally {
     await f.cleanup();
   }

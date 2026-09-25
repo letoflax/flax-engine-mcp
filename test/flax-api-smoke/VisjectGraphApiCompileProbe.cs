@@ -142,6 +142,40 @@ namespace FlaxMcpCompileSmoke
             GC.KeepAlive(hasArchetype);
             GC.KeepAlive(spawned);
             GC.KeepAlive(spawned2);
+
+            // Bridge v17 Phase 3 bounded AnimGraph macros (compile-proof only):
+            // archetype IDs come from a Cecil dump of the local 1.12 binary
+            // (machine=(9,18), state=(9,20)); every ID is re-gated at runtime
+            // via GetArchetype + CanUseNodeType, and spawn values are cloned
+            // from the resolved archetype defaults (never hardcoded).
+            GroupArchetype stateGroup;
+            NodeArchetype stateArch;
+            bool hasStateArch = NodeFactory.GetArchetype(NodeFactory.DefaultGroups, (ushort)9, (ushort)20, out stateGroup, out stateArch);
+            object[] stateDefaults = stateArch == null || stateArch.DefaultValues == null ? null : (object[])stateArch.DefaultValues.Clone();
+            bool canUseState = surface.CanUseNodeType((ushort)9, (ushort)20);
+            SurfaceNode machineByType = surface.FindNode((ushort)9, (ushort)18);
+            SurfaceNode machineById = node == null ? null : surface.FindNode(node.ID);
+            VisjectSurfaceContext machineCtx = node == null ? null : surface.FindContext(new Span<uint>(new uint[] { node.ID }));
+            uint ownerCheck = machineCtx == null ? 0u : machineCtx.OwnerNodeID;
+            int nestedCount = machineCtx == null || machineCtx.Nodes == null ? 0 : machineCtx.Nodes.Count;
+            SurfaceNode nestedState = machineCtx == null ? null : machineCtx.FindNode((ushort)9, (ushort)20);
+            VisjectSurfaceContext rootAgain = surface.OpenContext(new Span<uint>(new uint[0]));
+            IConnectionInstigator instigator = node as IConnectionInstigator;
+            bool canConnect = instigator != null && nestedState != null && instigator.CanConnectWith(nestedState as IConnectionInstigator);
+            if (instigator != null && nestedState != null && canConnect) instigator.Connect(nestedState as IConnectionInstigator);
+            try { root.MarkAsModified(true); } catch { }
+            try { if (machineCtx != null) machineCtx.MarkAsModified(true); } catch { }
+            GC.KeepAlive(hasStateArch);
+            GC.KeepAlive(stateDefaults);
+            GC.KeepAlive(canUseState);
+            GC.KeepAlive(machineByType);
+            GC.KeepAlive(machineById);
+            GC.KeepAlive(machineCtx);
+            GC.KeepAlive(ownerCheck);
+            GC.KeepAlive(nestedCount);
+            GC.KeepAlive(nestedState);
+            GC.KeepAlive(rootAgain);
+            GC.KeepAlive(canConnect);
         }
 
         internal static void Modules(ContentItem item, Asset asset)
