@@ -158,3 +158,66 @@ test('graph methods fail closed before writing a request to bridges older than v
     await f.cleanup();
   }
 });
+
+// Pops exactly one pending request (mimics the editor bridge pickup, which
+// moves the file to processing/) so retry tests pair responses 1:1.
+async function respondOnce(f: Fixture, body: Record<string, unknown>): Promise<{ body: Record<string, unknown>; params: Record<string, unknown> }> {
+  const request = await waitForRequest(f.requests);
+  await fs.unlink(request.file);
+  const target = path.join(f.responses, String(request.body.id) + '.json');
+  await fs.writeFile(target + '.tmp', JSON.stringify({ id: request.body.id, token: TOKEN, timestamp: Date.now(), ...body }));
+  await fs.rename(target + '.tmp', target);
+  return { body: request.body, params: JSON.parse(String(request.body.paramsJson)) as Record<string, unknown> };
+}
+
+function notReadyResponse(retryAfterMs = 25): Record<string, unknown> {
+  return {
+    ok: false,
+    errorCode: 'INVALID_STATE',
+    error: 'The graph asset is still loading in the editor window.',
+    errorDetails: JSON.stringify({ NotReady: true, RetryAfterMs: retryAfterMs, AssetId: GRAPH_ID }),
+  };
+}
+
+test('graph calls retry not-ready surface responses then succeed', async () => {
+  const f = await fixture();
+  try {
+    const inspect = handleGraphInspect(GraphInspectSchema.parse({ path: 'Content/Graphs/G.flax' }), f.ctx);
+    await respondOnce(f, notReadyResponse());
+    await respondOnce(f, notReadyResponse());
+    const third = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ Nodes: [{ Id: 7 }], Boxes: [], Parameters: [] }) });
+    assert.equal(third.body.method, 'graph.inspect');
+    const out = await inspect;
+    assert.equal(out.isError, undefined);
+    assert.match(JSON.stringify(out.structuredContent), /"Id":7/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('graph calls stop retrying after repeated not-ready responses', async () => {
+  const f = await fixture();
+  try {
+    const inspect = handleGraphInspect(GraphInspectSchema.parse({ path: 'Content/Graphs/G.flax' }), f.ctx);
+    for (let i = 0; i < 6; i++) await respondOnce(f, notReadyResponse(10));
+    const out = await inspect;
+    assert.equal(out.isError, true);
+    assert.equal((out.structuredContent as any).error.code, 'EDITOR_BUSY');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('graph calls do not retry INVALID_STATE without the not-ready marker', async () => {
+  const f = await fixture();
+  try {
+    const inspect = handleGraphInspect(GraphInspectSchema.parse({ path: 'Content/Graphs/G.flax' }), f.ctx);
+    await respondOnce(f, { ok: false, errorCode: 'INVALID_STATE', error: 'Headless mode has no GUI surface.' });
+    const out = await inspect;
+    assert.equal(out.isError, true);
+    assert.equal((out.structuredContent as any).error.code, 'EDITOR_BUSY');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});

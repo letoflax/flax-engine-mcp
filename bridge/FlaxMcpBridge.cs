@@ -1439,6 +1439,58 @@ namespace Game.MCP
         // windows do not inherit VisjectSurfaceWindow`3 (Cecil-verified).
         private const int MaxGraphNodes = 500;
         private const int MaxGraphBoxesPerNode = 64;
+        // Asset IDs of graph windows the bridge opened hidden. A same-tick
+        // read after Open() always sees a blank surface because
+        // VisjectSurfaceWindow.LoadSurface() runs in a later Update() frame,
+        // so not-ready retries reuse (and finally close) these windows
+        // instead of leaking one hidden window per attempt. User-opened
+        // windows are never in this set and are left open.
+        private static readonly Dictionary<Guid, long> _graphBridgeWindows = new Dictionary<Guid, long>();
+        private const long GraphBridgeWindowStaleMs = 120000;
+
+        private static void SweepStaleGraphWindows()
+        {
+            if (_graphBridgeWindows.Count == 0) return;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var stale = new List<Guid>();
+            foreach (var pair in _graphBridgeWindows) if (now - pair.Value > GraphBridgeWindowStaleMs) stale.Add(pair.Key);
+            foreach (var id in stale)
+            {
+                try
+                {
+                    var staleItem = FEditor.Instance.ContentDatabase.FindAsset(id);
+                    if (staleItem != null) FEditor.Instance.Windows.CloseAllEditors(staleItem);
+                }
+                catch { }
+                _graphBridgeWindows.Remove(id);
+            }
+        }
+
+        private static object GraphNotReadyDetails(McpAssetRecord record)
+        {
+            return new { NotReady = true, RetryAfterMs = 1500, AssetId = record.Id.ToString("N"), Path = record.Path };
+        }
+
+        // Fail-closed readiness gate: the window's (cloned) asset must be
+        // loaded before the surface is trustworthy. A hidden window kept
+        // open across retries finishes loading on the main-thread pump;
+        // sleeping here would freeze that same pump, so report not-ready
+        // and let the caller retry instead.
+        private static void EnsureGraphSurfaceLoaded(IVisjectSurfaceWindow visjectWindow, McpAssetRecord record)
+        {
+            Asset asset = null;
+            try { asset = visjectWindow.VisjectAsset; } catch { asset = null; }
+            if (asset == null)
+                throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.", GraphNotReadyDetails(record));
+            bool failed = false;
+            try { failed = asset.LastLoadFailed; } catch { failed = false; }
+            if (failed)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "The graph asset failed to load in the Editor; the surface cannot be read or edited.", new { AssetId = record.Id.ToString("N"), Path = record.Path });
+            bool loaded = false;
+            try { loaded = asset.IsLoaded; } catch { loaded = false; }
+            if (!loaded)
+                throw new McpProtocolException("INVALID_STATE", "The graph asset is still loading in the editor window. Retry shortly; a bridge-opened hidden window is kept open for the retry.", GraphNotReadyDetails(record));
+        }
 
         private static void EnsureGraphEditorReady(bool forWrite)
         {
@@ -1474,6 +1526,7 @@ namespace Game.MCP
 
         private static VisjectSurface AcquireGraphSurface(McpAssetRecord record, out ContentItem item, out FlaxEditor.Windows.EditorWindow window, out bool openedByBridge)
         {
+            SweepStaleGraphWindows();
             item = FEditor.Instance.ContentDatabase.FindAsset(record.Id);
             if (item == null)
                 throw new McpProtocolException("ASSET_NOT_FOUND", "The selected graph asset is unavailable in the Editor Content database.");
@@ -1482,9 +1535,14 @@ namespace Game.MCP
             if (window != null)
             {
                 ValidateGraphWindow(window, record);
+                // Only windows the bridge opened hidden are bridge-owned
+                // (closed after the operation). User-opened windows are
+                // reused and left open.
+                openedByBridge = _graphBridgeWindows.ContainsKey(record.Id);
                 var existing = ((IVisjectSurfaceWindow)window).VisjectSurface;
                 if (existing == null)
-                    throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.");
+                    throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.", GraphNotReadyDetails(record));
+                EnsureGraphSurfaceLoaded((IVisjectSurfaceWindow)window, record);
                 return existing;
             }
             FlaxEditor.Windows.EditorWindow opened = null;
@@ -1493,19 +1551,34 @@ namespace Game.MCP
             if (opened == null)
                 throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not open the selected graph asset.");
             ValidateGraphWindow(opened, record);
-            var surface = ((IVisjectSurfaceWindow)opened).VisjectSurface;
-            if (surface == null)
+            // Record ownership before the readiness check so a not-ready
+            // retry reuses this hidden window (FindEditor) instead of
+            // leaking one window per attempt.
+            _graphBridgeWindows[record.Id] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            try
             {
-                try { FEditor.Instance.Windows.CloseAllEditors(item); } catch { }
-                throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.");
+                var surface = ((IVisjectSurfaceWindow)opened).VisjectSurface;
+                if (surface == null)
+                    throw new McpProtocolException("INVALID_STATE", "The graph editor surface is not ready. Retry after the asset finishes loading.", GraphNotReadyDetails(record));
+                EnsureGraphSurfaceLoaded((IVisjectSurfaceWindow)opened, record);
+                window = opened;
+                openedByBridge = true;
+                return surface;
             }
-            window = opened;
-            openedByBridge = true;
-            return surface;
+            catch (McpProtocolException ex)
+            {
+                if (!string.Equals(ex.Code, "INVALID_STATE", StringComparison.Ordinal))
+                {
+                    _graphBridgeWindows.Remove(record.Id);
+                    try { FEditor.Instance.Windows.CloseAllEditors(item); } catch { }
+                }
+                throw;
+            }
         }
 
-        private static void ReleaseGraphWindow(ContentItem item, bool openedByBridge)
+        private static void ReleaseGraphWindow(ContentItem item, bool openedByBridge, Guid assetId)
         {
+            _graphBridgeWindows.Remove(assetId);
             if (!openedByBridge || item == null) return;
             try { FEditor.Instance.Windows.CloseAllEditors(item); } catch { }
         }
@@ -1637,7 +1710,7 @@ namespace Game.MCP
                     },
                 };
             }
-            finally { ReleaseGraphWindow(item, openedByBridge); }
+            finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
         }
 
         private McpGraphSetDefaultParameterResult SetGraphDefaultParameter(McpGraphSetDefaultParameterRequest request)
@@ -1732,7 +1805,7 @@ namespace Game.MCP
                     },
                 };
             }
-            finally { ReleaseGraphWindow(item, openedByBridge); }
+            finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
         }
 
         // Bridge v16 Phase 3 bounded macro: append one surface parameter.
@@ -1852,7 +1925,7 @@ namespace Game.MCP
                     },
                 };
             }
-            finally { ReleaseGraphWindow(item, openedByBridge); }
+            finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
         }
 
         private static object CoerceGraphParameterValue(object value, Type clrType, string kind)

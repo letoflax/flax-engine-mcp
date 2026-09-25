@@ -455,6 +455,19 @@ reported as `nodeID:boxID` pairs through the public `Box.ParentNode`), then
 closes the window only when the bridge opened it. Node identity is the
 `UInt16` groupID + typeID pair; values are a bounded safe projection.
 
+Readiness contract (engine-grounded): `VisjectSurfaceWindow.LoadSurface()`
+runs in a later `Update()` frame, so a same-tick read after `Open()` always
+sees a blank surface. The bridge therefore gates every graph operation on
+`IVisjectSurfaceWindow.VisjectAsset.IsLoaded` (fail fast with
+`ASSET_OPERATION_FAILED` when `LastLoadFailed`), keeps a bridge-opened
+hidden window open across not-ready attempts, and reports `INVALID_STATE`
+with `details = { NotReady: true, RetryAfterMs: 1500, ... }`. Node clients
+auto-retry not-ready responses (6 attempts max, honor `RetryAfterMs`
+clamped to 250–5000 ms) instead of hand-pumping retries. Bridge-owned
+hidden windows are tracked per asset ID, closed after the operation
+completes, and swept when stale (>120 s); user-opened windows are reused
+and always left open.
+
 `graph.set_default_parameter` persists one surface default value through the
 public window path (`SurfaceParameter.Value` plus `OnParamEdited` and
 `MarkAsEdited`, then `AssetEditorWindow.Save()`). It is dry-run by default

@@ -31,6 +31,13 @@ namespace FlaxMcpCompileSmoke
             // over GetProperty("Undo").
             IVisjectSurfaceOwner owner = animWindow;
             FlaxEditor.Undo ownerUndo = owner.Undo;
+            // Readiness gate (AcquireGraphSurface/EnsureGraphSurfaceLoaded):
+            // the window edits a cloned asset that loads async; the bridge
+            // retries while it is not loaded yet and fails fast when loading
+            // failed. LoadSurface() itself runs in a later Update() frame.
+            Asset surfaceAsset = visject.VisjectAsset;
+            bool assetLoaded = surfaceAsset.IsLoaded;
+            bool assetLoadFailed = surfaceAsset.LastLoadFailed;
 
             VisjectSurface animSurface = animWindow.Surface;
             FlaxEditor.Undo animUndo = animWindow.Undo;
@@ -48,6 +55,8 @@ namespace FlaxMcpCompileSmoke
             GC.KeepAlive(viaInterface);
             GC.KeepAlive(visjectAsset);
             GC.KeepAlive(ownerUndo);
+            GC.KeepAlive(assetLoaded);
+            GC.KeepAlive(assetLoadFailed);
             GC.KeepAlive(animSurface);
             GC.KeepAlive(animUndo);
             GC.KeepAlive(animVisject);

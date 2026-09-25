@@ -111,17 +111,38 @@ async function graphCall(
   params: Record<string, unknown>,
   changes: unknown[] = [],
 ): Promise<ToolResponse> {
-  try {
-    const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion: 16 });
-    const result = response.data as { Warnings?: unknown } | undefined;
-    const warnings = Array.isArray(result?.Warnings)
-      ? result.Warnings.filter((warning): warning is string => typeof warning === 'string')
-      : response.warnings;
-    const data = { result: response.data, bridge: response.bridge };
-    return toolResult(JSON.stringify(data, null, 2), { mode: response.mode, data, warnings, changes });
-  } catch (error) {
-    return toolError(graphError(error));
+  // A hidden window opened by the bridge needs frames before
+  // VisjectSurfaceWindow.Update() runs LoadSurface(). The bridge keeps the
+  // window open and reports INVALID_STATE + details.NotReady; retry here so
+  // callers never hand-pump retries. Bounded: 5 attempts, ~9s max.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion: 16 });
+      const result = response.data as { Warnings?: unknown } | undefined;
+      const warnings = Array.isArray(result?.Warnings)
+        ? result.Warnings.filter((warning): warning is string => typeof warning === 'string')
+        : response.warnings;
+      const data = { result: response.data, bridge: response.bridge };
+      return toolResult(JSON.stringify(data, null, 2), { mode: response.mode, data, warnings, changes });
+    } catch (error) {
+      lastError = error;
+      const delay = graphNotReadyDelay(error);
+      if (delay === null || attempt === 5) break;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
+  return toolError(graphError(lastError));
+}
+
+function graphNotReadyDelay(error: unknown): number | null {
+  if (!(error instanceof BridgeRpcError) || error.code !== 'BRIDGE_REMOTE_ERROR') return null;
+  const remote = error.details as { code?: unknown; details?: unknown } | undefined;
+  if (remote?.code !== 'INVALID_STATE') return null;
+  const inner = remote.details as { NotReady?: unknown; RetryAfterMs?: unknown } | undefined;
+  if (inner?.NotReady !== true) return null;
+  const hint = typeof inner.RetryAfterMs === 'number' && Number.isFinite(inner.RetryAfterMs) ? inner.RetryAfterMs : 1500;
+  return Math.min(Math.max(hint, 250), 5000);
 }
 
 function selector(args: { asset_id?: string; path?: string }): Record<string, unknown> {
