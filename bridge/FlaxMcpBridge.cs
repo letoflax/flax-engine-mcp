@@ -49,7 +49,7 @@ namespace Game.MCP
     public class McpDetachedDto { public string DetachedId; public long ProjectRevision; public string SceneId; public long SceneRevision; }
     public class McpDuplicatedDto { public string SourceId; public string NewActorId; public bool Verified; public long ProjectRevision; public string SceneId; public long SceneRevision; }
     internal sealed class McpRevision { public long ProjectRevision; public long SceneRevision; }
-    public class McpLeaseBegin { public string SceneId; public string Owner; public int TtlMs = 30000; }
+    public class McpLeaseBegin { public string SceneId; public string AssetId; public string Path; public string Owner; public int TtlMs = 30000; }
     public class McpLeaseGet { public string SceneId; public string LeaseId; }
     public class McpLeaseRelease { public string LeaseId; }
     public class McpEditLease { public string LeaseId; public string SceneId; public string Owner; public long AcquiredUnixMs; public long ExpiresUnixMs; public string State; public string Semantics = "visible-immediately-no-rollback"; public long ProjectRevision; public long SceneRevision; }
@@ -173,14 +173,14 @@ namespace Game.MCP
     public class McpGraphBoxDto { public uint NodeID; public int BoxID; public bool IsOutput; public string[] Connections; }
     public class McpGraphParameterDto { public string Id; public string Name; public string Type; public bool IsPublic; public McpMaterialTypedValue Value; }
     public class McpGraphInspectResult { public McpAssetMetadata Asset; public bool OpenedByBridge; public McpGraphNodeDto[] Nodes; public McpGraphBoxDto[] Boxes; public McpGraphParameterDto[] Parameters; public bool HasMore; public bool BoxesIncluded; public bool ValuesIncluded; public string[] Warnings; }
-    public class McpGraphSetDefaultParameterRequest { public string AssetId; public string Path; public string ParameterId; public string ParameterName; public McpMaterialTypedValue Value; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    public class McpGraphSetDefaultParameterRequest { public string AssetId; public string Path; public string ParameterId; public string ParameterName; public McpMaterialTypedValue Value; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public string LeaseId; }
     public class McpGraphSetDefaultParameterResult { public McpAssetMetadata Asset; public McpGraphParameterDto Parameter; public McpMaterialTypedValue PreviousValue; public bool DryRun; public bool Saved; public bool OpenedByBridge; public long ProjectRevision; public string[] Warnings; }
     public class McpGraphUndoRequest { public string AssetId; public string Path; }
     public class McpGraphUndoResult { public McpAssetMetadata Asset; public bool Undone; public bool CanUndo; public string FirstUndoName; public long ProjectRevision; public string[] Warnings; }
     // Bridge v16 Phase 3: bounded macro to append one surface parameter.
     // Topology node/wire edits stay forbidden; this is the only additive
     // mutation besides default-value writes.
-    public class McpGraphAddParameterRequest { public string AssetId; public string Path; public string Name; public string Type; public McpMaterialTypedValue Value; public bool IsPublic = true; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    public class McpGraphAddParameterRequest { public string AssetId; public string Path; public string Name; public string Type; public McpMaterialTypedValue Value; public bool IsPublic = true; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public string LeaseId; }
     // Not-ready/load-failed details MUST be a named field-based DTO:
     // FlaxEngine.Json serializes public fields (like McpResponse) but drops
     // anonymous-type properties to "{}". Node clients gate auto-retry on
@@ -1741,6 +1741,7 @@ namespace Game.MCP
             if (request.Value == null) throw new McpProtocolException("INVALID_REQUEST", "A typed Value is required.");
             EnsureGraphEditorReady(true);
             var record = ResolveGraphRecord(request.AssetId, request.Path);
+            CheckGraphWrite(record, request.LeaseId);
             ContentItem item;
             FlaxEditor.Windows.EditorWindow window;
             bool openedByBridge;
@@ -1841,6 +1842,7 @@ namespace Game.MCP
                 throw new McpProtocolException("INVALID_REQUEST", "Parameter type is required (boolean, integer, number, string, vector2, vector3, vector4, or color).");
             EnsureGraphEditorReady(true);
             var record = ResolveGraphRecord(request.AssetId, request.Path);
+            CheckGraphWrite(record, request.LeaseId);
             ContentItem item;
             FlaxEditor.Windows.EditorWindow window;
             bool openedByBridge;
@@ -3837,21 +3839,61 @@ namespace Game.MCP
             }
         }
 
+        // Bridge v16 B3: per-asset edit lease for scene-less graph writes.
+        // Same fail-closed semantics as CheckSceneWrite, keyed by
+        // "graph:<assetId>". Enforced on dry-run previews too: while a
+        // foreign lease is active, even a preview is refused.
+        private void CheckGraphWrite(McpAssetRecord record, string leaseId)
+        {
+            var scopeKey = "graph:" + record.Id.ToString("N");
+            lock (_stateLock)
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                CleanupExpiredStateLocked(now);
+                McpLeaseState lease;
+                if (_sceneLeases.TryGetValue(scopeKey, out lease))
+                {
+                    if (!string.Equals(lease.LeaseId, leaseId, StringComparison.Ordinal))
+                        throw new McpProtocolException("EDIT_LEASE_CONFLICT", "A different edit lease is active for this graph asset.", LeaseDetails(lease, "active"));
+                }
+                else if (!string.IsNullOrEmpty(leaseId))
+                {
+                    throw new McpProtocolException("EDIT_LEASE_EXPIRED", "The supplied edit lease is no longer active.", new { Scope = scopeKey, LeaseId = leaseId, ProjectRevision = _projectRevision });
+                }
+            }
+        }
+
         private McpEditLease BeginLease(McpLeaseBegin request)
         {
             if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Edit lease parameters are required.");
-            var scene = RequireScene(request.SceneId);
+            // Scene-less graph scope (bridge v16 B3): per-asset lease key.
+            // SceneId and a graph asset selector are mutually exclusive.
+            string scopeKey;
+            string scopeKind;
+            if (!string.IsNullOrEmpty(request.SceneId))
+            {
+                if (!string.IsNullOrEmpty(request.AssetId) || !string.IsNullOrEmpty(request.Path))
+                    throw new McpProtocolException("INVALID_REQUEST", "Edit lease takes exactly one scope: SceneId or a graph AssetId/Path.");
+                var scene = RequireScene(request.SceneId);
+                scopeKey = scene.ID.ToString("N");
+                scopeKind = "scene";
+            }
+            else
+            {
+                var record = ResolveGraphRecord(request.AssetId, request.Path);
+                scopeKey = "graph:" + record.Id.ToString("N");
+                scopeKind = "graph asset";
+            }
             if (string.IsNullOrWhiteSpace(request.Owner) || request.Owner.Length > 128) throw new McpProtocolException("VALIDATION_FAILED", "Owner must be between 1 and 128 characters.");
             if (request.TtlMs < MinLeaseTtlMs || request.TtlMs > MaxLeaseTtlMs) throw new McpProtocolException("VALIDATION_FAILED", "TtlMs must be between " + MinLeaseTtlMs + " and " + MaxLeaseTtlMs + ".");
-            var sceneId = scene.ID.ToString("N");
             lock (_stateLock)
             {
                 var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 CleanupExpiredStateLocked(now);
                 McpLeaseState existing;
-                if (_sceneLeases.TryGetValue(sceneId, out existing)) throw new McpProtocolException("EDIT_LEASE_CONFLICT", "An edit lease is already active for this scene.", LeaseDetails(existing, "active"));
-                var lease = new McpLeaseState { LeaseId = Guid.NewGuid().ToString("N"), SceneId = sceneId, Owner = request.Owner, AcquiredUnixMs = now, ExpiresUnixMs = now + request.TtlMs };
-                _sceneLeases[sceneId] = lease;
+                if (_sceneLeases.TryGetValue(scopeKey, out existing)) throw new McpProtocolException("EDIT_LEASE_CONFLICT", "An edit lease is already active for this " + scopeKind + ".", LeaseDetails(existing, "active"));
+                var lease = new McpLeaseState { LeaseId = Guid.NewGuid().ToString("N"), SceneId = scopeKey, Owner = request.Owner, AcquiredUnixMs = now, ExpiresUnixMs = now + request.TtlMs };
+                _sceneLeases[scopeKey] = lease;
                 return LeaseDetails(lease, "active");
             }
         }

@@ -410,3 +410,25 @@ test('v7 edit leases use explicit lease RPC methods and preserve lease semantics
     await f.cleanup();
   }
 });
+
+test('edit lease begin supports a scene-less graph asset scope', async () => {
+  assert.equal(EditLeaseBeginSchema.safeParse({ owner: 'graph-smoke' }).success, false);
+  assert.equal(EditLeaseBeginSchema.safeParse({ scene_id: 'b'.repeat(32), asset_id: 'a'.repeat(32), owner: 'graph-smoke' }).success, false);
+  assert.equal(EditLeaseBeginSchema.safeParse({ asset_id: 'a'.repeat(32), path: 'Content/Graphs/G.flax', owner: 'graph-smoke' }).success, false);
+  assert.equal(EditLeaseBeginSchema.safeParse({ asset_id: 'a'.repeat(32), owner: 'graph-smoke' }).success, true);
+  const f = await fixture(7);
+  try {
+    const pending = handleEditLeaseBegin(EditLeaseBeginSchema.parse({ asset_id: 'a'.repeat(32), owner: 'graph-smoke' }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ LeaseId: 'c'.repeat(32), SceneId: 'graph:' + 'a'.repeat(32), State: 'active' }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'edit.lease_begin');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), { AssetId: 'a'.repeat(32), Owner: 'graph-smoke', TtlMs: 30_000 });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.LeaseId, 'c'.repeat(32));
+  } finally {
+    await f.cleanup();
+  }
+});

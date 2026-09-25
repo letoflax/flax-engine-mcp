@@ -5,6 +5,16 @@ import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.
 import { ProjectMeta } from '../projectContext.js';
 
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
+const ContentPath = z.string().min(9).max(512).superRefine((value, ctx) => {
+  const normalized = value.replaceAll('\\', '/');
+  if (
+    normalized !== value ||
+    !normalized.startsWith('Content/') ||
+    normalized.split('/').some(part => part.length === 0 || part === '.' || part === '..' || part.includes('\0'))
+  ) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Expected a project-relative path under Content/ without traversal.' });
+  }
+});
 const Vector3 = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
@@ -112,9 +122,20 @@ export const ScriptInstanceUpdateSchema = z.object({
 export const EditUndoSchema = z.object({});
 export const EditRedoSchema = z.object({});
 export const EditLeaseBeginSchema = z.object({
-  scene_id: FlaxId,
+  scene_id: FlaxId.optional(),
+  asset_id: FlaxId.optional(),
+  path: ContentPath.optional(),
   owner: z.string().min(1).max(128),
   ttl_ms: z.number().int().min(1_000).max(300_000).optional().default(30_000),
+}).strict().superRefine((value, ctx) => {
+  const hasScene = value.scene_id !== undefined;
+  const hasAsset = value.asset_id !== undefined || value.path !== undefined;
+  if (hasScene === hasAsset) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one lease scope: scene_id or asset_id/path.' });
+  }
+  if (value.asset_id !== undefined && value.path !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one of asset_id or path.' });
+  }
 });
 export const EditLeaseGetSchema = z.object({
   scene_id: FlaxId.optional(),
@@ -379,7 +400,7 @@ export const handleEditRedo = (_: unknown, ctx: ProjectMeta) =>
   liveCall(ctx, 'edit.redo', {}, [{ kind: 'edit.redo' }]);
 
 export const handleEditLeaseBegin = (args: z.infer<typeof EditLeaseBeginSchema>, ctx: ProjectMeta) =>
-  liveCall(ctx, 'edit.lease_begin', { SceneId: args.scene_id, Owner: args.owner, TtlMs: args.ttl_ms }, [{ kind: 'edit.lease.begun', sceneId: args.scene_id }]);
+  liveCall(ctx, 'edit.lease_begin', { SceneId: args.scene_id, AssetId: args.asset_id, Path: args.path, Owner: args.owner, TtlMs: args.ttl_ms }, [{ kind: 'edit.lease.begun', sceneId: args.scene_id, assetId: args.asset_id, path: args.path }]);
 export const handleEditLeaseGet = (args: z.infer<typeof EditLeaseGetSchema>, ctx: ProjectMeta) => {
   if (args.scene_id === undefined && args.lease_id === undefined) {
     return Promise.resolve(toolError(new ToolDomainError('VALIDATION_FAILED', 'Provide scene_id or lease_id.')));

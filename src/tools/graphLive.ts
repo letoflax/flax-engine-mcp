@@ -58,6 +58,7 @@ export const GraphSetDefaultParameterSchema = z.object({
   dry_run: z.boolean().optional().default(true),
   confirm: z.literal(true).optional(),
   idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
 }).strict().superRefine((value, ctx) => {
   exactlyOneSelector(value, ctx);
   if ((value.parameter_id === undefined) === (value.parameter_name === undefined)) {
@@ -75,6 +76,7 @@ export const GraphAddParameterSchema = z.object({
   dry_run: z.boolean().optional().default(true),
   confirm: z.literal(true).optional(),
   idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
 }).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
 
 export const GraphUndoSchema = z.object({
@@ -100,6 +102,9 @@ function graphError(error: unknown): ToolDomainError {
     if (code === 'RESPONSE_TOO_LARGE' || code === 'REQUEST_TOO_LARGE') return new ToolDomainError('CONTENT_TOO_LARGE', error.message, remote?.details);
     if (code === 'UNSUPPORTED_FLAX_VERSION') return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, remote?.details);
     if (code === 'IDEMPOTENCY_KEY_REUSED') return new ToolDomainError('IDEMPOTENCY_KEY_REUSED', error.message, remote?.details);
+    if (code === 'EDIT_LEASE_CONFLICT') return new ToolDomainError('EDIT_LEASE_CONFLICT', error.message, remote?.details);
+    if (code === 'EDIT_LEASE_EXPIRED') return new ToolDomainError('EDIT_LEASE_EXPIRED', error.message, remote?.details);
+    if (code === 'EDIT_LEASE_ACTIVE') return new ToolDomainError('EDIT_LEASE_ACTIVE', error.message, remote?.details);
     if (code === 'INVALID_REQUEST' || code === 'VALIDATION_FAILED') return new ToolDomainError('VALIDATION_FAILED', error.message, remote?.details);
   }
   return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
@@ -166,6 +171,7 @@ export const handleGraphSetDefaultParameter = (args: z.infer<typeof GraphSetDefa
     DryRun: args.dry_run,
     Confirm: args.confirm === true,
     IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
   }, args.dry_run ? [] : [{ kind: 'graph-parameter', asset_id: args.asset_id, path: args.path }]);
 
 export const handleGraphAddParameter = (args: z.infer<typeof GraphAddParameterSchema>, ctx: ProjectMeta) =>
@@ -178,6 +184,7 @@ export const handleGraphAddParameter = (args: z.infer<typeof GraphAddParameterSc
     DryRun: args.dry_run,
     Confirm: args.confirm === true,
     IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
   }, args.dry_run ? [] : [{ kind: 'graph-parameter', asset_id: args.asset_id, path: args.path }]);
 
 export const handleGraphUndo = (args: z.infer<typeof GraphUndoSchema>, ctx: ProjectMeta) =>

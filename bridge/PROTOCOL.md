@@ -137,6 +137,16 @@ play start fails with `EDIT_LEASE_ACTIVE` while any unexpired bridge lease exist
 provides undo record/action methods but no safe arbitrary multi-operation
 transaction with commit/rollback semantics.
 
+Bridge v16 extends leases to scene-less graph writes: `edit.lease_begin`
+accepts exactly one scope — `SceneId` or a graph `AssetId`/`Path`
+(AnimationGraph/Material/ParticleEmitter only). Graph scopes are keyed
+`graph:<assetId>` in the same lease table, so `edit.lease_get` (by `LeaseId`),
+`edit.lease_commit`, and `edit.lease_release` work unchanged, and expiry sweeps
+apply equally. `graph.set_default_parameter` and `graph.add_parameter` accept
+optional `LeaseId` (enforced on dry-run previews too): an active foreign lease
+fails with `EDIT_LEASE_CONFLICT`, a supplied-but-unknown lease with
+`EDIT_LEASE_EXPIRED`. With no active lease, writes without `LeaseId` stay allowed.
+
 Those live write DTOs also accept optional `IdempotencyKey` (1--128 characters).
 For ten minutes, with a maximum of 512 retained entries, a repeated key with the
 same method and serialized request returns the original result without performing

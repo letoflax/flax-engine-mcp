@@ -221,3 +221,37 @@ test('graph calls do not retry INVALID_STATE without the not-ready marker', asyn
     await f.cleanup();
   }
 });
+
+test('graph writes marshal lease_id and surface lease conflicts', async () => {
+  const f = await fixture();
+  try {
+    const setDefault = handleGraphSetDefaultParameter(GraphSetDefaultParameterSchema.parse({
+      asset_id: GRAPH_ID,
+      parameter_name: 'Speed',
+      value: 1,
+      lease_id: 'd'.repeat(32),
+    }), f.ctx);
+    const first = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Saved: false }) });
+    assert.equal(first.body.method, 'graph.set_default_parameter');
+    assert.equal(first.params.LeaseId, 'd'.repeat(32));
+    assert.equal((await setDefault).isError, undefined);
+
+    const conflicted = handleGraphAddParameter(GraphAddParameterSchema.parse({
+      asset_id: GRAPH_ID,
+      name: 'P',
+      type: 'number',
+      lease_id: 'd'.repeat(32),
+    }), f.ctx);
+    await respondOnce(f, {
+      ok: false,
+      errorCode: 'EDIT_LEASE_CONFLICT',
+      error: 'A different edit lease is active for this graph asset.',
+      errorDetails: JSON.stringify({ LeaseId: 'e'.repeat(32) }),
+    });
+    const out = await conflicted;
+    assert.equal(out.isError, true);
+    assert.equal((out.structuredContent as any).error.code, 'EDIT_LEASE_CONFLICT');
+  } finally {
+    await f.cleanup();
+  }
+});
