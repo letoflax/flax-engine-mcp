@@ -464,12 +464,12 @@ opens the asset SHOWN (visible tab), reads `Surface.Nodes`,
 reported as `nodeID:boxID` pairs through the public `Box.ParentNode`), then
 closes the window only when the bridge opened it. Node identity is the
 `UInt16` groupID + typeID pair; values are a bounded safe projection.
-Opening shown is mandatory, not a preference: `AssetEditorWindow` links the
-(cloned) asset in `OnShow()`, so a hidden (`disableAutoShow`) window never
-loads and its surface stays blank forever (verified against engine source
-plus live reads: 7/7 hidden-open reads returned blank surfaces).
+Opening shown is mandatory, not a preference: a hidden (`disableAutoShow`) window never
+loads and its surface stays blank forever (behavior-grounded: 7/7 hidden-open
+reads returned blank surfaces; consistent with upstream source, unverified
+against this 1.12 binary build).
 
-Readiness contract (engine-grounded): `VisjectSurfaceWindow.LoadSurface()`
+Readiness contract (behavior-grounded): `VisjectSurfaceWindow.LoadSurface()`
 runs in a later `Update()` frame and enables the surface only in
 `OnSurfaceEditingStart()`, so a same-tick read after `Open()` always
 sees a blank surface. The bridge therefore gates every graph operation on

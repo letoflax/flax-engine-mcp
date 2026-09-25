@@ -1445,10 +1445,11 @@ namespace Game.MCP
         private const int MaxGraphNodes = 500;
         private const int MaxGraphBoxesPerNode = 64;
         // Asset IDs of graph windows the bridge opened. The window must be
-        // opened SHOWN (disableAutoShow:false): AssetEditorWindow links the
-        // (cloned) asset in OnShow(), so a hidden window never loads and its
-        // surface stays blank forever (engine source:
-        // Source/Editor/Windows/Assets/AssetEditorWindow.cs). A same-tick
+        // opened SHOWN (disableAutoShow:false): hidden windows never link
+        // their asset (no OnShow), so their surface stays blank forever.
+        // Behavior-grounded: 7/7 hidden-open reads returned blank surfaces;
+        // consistent with upstream source, unverified against this 1.12
+        // binary build. A same-tick
         // read after Open() still sees a blank surface because
         // VisjectSurfaceWindow.LoadSurface() runs in a later Update() frame,
         // so not-ready retries reuse (and finally close) these windows
@@ -1482,9 +1483,8 @@ namespace Game.MCP
 
         // Fail-closed readiness gate: the window's (cloned) asset must be
         // loaded AND the surface must be enabled before the surface is
-        // trustworthy. AssetEditorWindow links the asset in OnShow() (hidden
-        // windows never link: engine Source/Editor/Windows/Assets/
-        // AssetEditorWindow.cs), and VisjectSurfaceWindow runs LoadSurface()
+        // trustworthy (hidden windows never link: no OnShow, no asset —
+        // behavior-grounded, see _graphBridgeWindows comment), and VisjectSurfaceWindow runs LoadSurface()
         // in a later Update() frame, enabling the surface only in
         // OnSurfaceEditingStart(). All three in-scope windows construct
         // their surface disabled, so Enabled is a true loaded signal.
