@@ -96,7 +96,7 @@ test('graph reads marshal PascalCase requests against bridge v16', async () => {
     const inspect = handleGraphInspect(GraphInspectSchema.parse({ path: 'Content/Graphs/G.flax', limit: 10 }), f.ctx);
     const first = await respond(f, { ok: true, resultJson: JSON.stringify({ Nodes: [], Boxes: [], Parameters: [], HasMore: false }) });
     assert.equal(first.body.method, 'graph.inspect');
-    assert.deepEqual(first.params, { Path: 'Content/Graphs/G.flax', IncludeValues: false, IncludeBoxes: true, Limit: 10 });
+    assert.deepEqual(first.params, { Path: 'Content/Graphs/G.flax', IncludeValues: false, IncludeBoxes: true, Limit: 10, IncludeSubcontexts: false, MaxDepth: 3 });
     assert.equal((await inspect).isError, undefined);
 
     const undo = handleGraphUndo(GraphUndoSchema.parse({ asset_id: GRAPH_ID }), f.ctx);
@@ -328,6 +328,46 @@ test('animgraph macros fail closed on bridges older than v17', async () => {
     assert.deepEqual(await fs.readdir(f.requests), []);
   } finally {
     await f.cleanup();
+  }
+});
+
+test('graph sub-context inspect validates depth, marshals the flag on v19, and fails closed below v19', async () => {
+  assert.equal(GraphInspectSchema.safeParse({ path: 'Content/Graphs/G.flax', max_depth: 0 }).success, false);
+  assert.equal(GraphInspectSchema.safeParse({ path: 'Content/Graphs/G.flax', max_depth: 6 }).success, false);
+  assert.equal(GraphInspectSchema.safeParse({ path: 'Content/Graphs/G.flax', include_subcontexts: true }).success, true);
+  const f = await fixture(19);
+  try {
+    const inspect = handleGraphInspect(GraphInspectSchema.parse({
+      path: 'Content/Graphs/G.flax',
+      include_subcontexts: true,
+      max_depth: 2,
+    }), f.ctx);
+    const first = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ Nodes: [], Boxes: [], Parameters: [], Contexts: [], SubcontextsIncluded: true }) });
+    assert.equal(first.body.method, 'graph.inspect');
+    assert.deepEqual(first.params, {
+      Path: 'Content/Graphs/G.flax',
+      IncludeValues: false,
+      IncludeBoxes: true,
+      Limit: 200,
+      IncludeSubcontexts: true,
+      MaxDepth: 2,
+    });
+    assert.equal((await inspect).isError, undefined);
+  } finally {
+    await f.cleanup();
+  }
+  const old = await fixture(18);
+  try {
+    const result = await handleGraphInspect(GraphInspectSchema.parse({ path: 'Content/Graphs/G.flax', include_subcontexts: true }), old.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(old.requests), []);
+    const legacy = handleGraphInspect(GraphInspectSchema.parse({ path: 'Content/Graphs/G.flax' }), old.ctx);
+    const pending = await respondOnce(old, { ok: true, resultJson: JSON.stringify({ Nodes: [] }) });
+    assert.equal(pending.body.method, 'graph.inspect');
+    assert.equal((await legacy).isError, undefined);
+  } finally {
+    await old.cleanup();
   }
 });
 

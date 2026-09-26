@@ -5,10 +5,18 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v18 adds bounded graph removal without headless saves or hardcoded archetypes', async () => {
+test('bridge v19 extends graph inspection to read-only sub-contexts without navigating the view', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*18/);
-  assert.match(source, /BridgeVersion\s*=\s*18/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*19/);
+  assert.match(source, /BridgeVersion\s*=\s*19/);
+  assert.match(source, /IncludeSubcontexts/);
+  assert.match(source, /FindContext/);
+  assert.match(source, /McpGraphContextDto/);
+  assert.match(source, /OwnerNodeID/);
+});
+
+test('bridge v19 keeps the bounded P5ab removal pair without headless saves or hardcoded archetypes', async () => {
+  const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /case "graph\.remove_node"/);
   assert.match(source, /case "graph\.disconnect"/);
   assert.match(source, /NodeFlags\.NoRemove/);
@@ -18,10 +26,10 @@ test('bridge v18 adds bounded graph removal without headless saves or hardcoded 
   assert.match(source, /withUndo/);
 });
 
-test('bridge v18 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v19 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*18/);
-  assert.match(source, /BridgeVersion\s*=\s*18/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*19/);
+  assert.match(source, /BridgeVersion\s*=\s*19/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);

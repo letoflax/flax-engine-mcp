@@ -1,6 +1,6 @@
 {
   "name": "flax-engine-mcp",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "MCP server for Flax Engine game projects",
   "type": "module",
   "bin": {

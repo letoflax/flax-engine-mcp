@@ -448,6 +448,24 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v19: read-only sub-context inspection (Phase 6a)
+
+Bridge v19 keeps protocol v1 and the full v18 surface. It extends
+`graph.inspect` with `IncludeSubcontexts` (default false — legacy reads are
+byte-identical) plus `MaxDepth` (1–5). Each returned context carries
+`OwnerNodeID`, the root-relative node `Path`, `Depth`, and its own
+`Nodes[]`/`Boxes[]`/`Parameters[]` under the same bounds as the root read
+(`Limit` nodes per context, 32 values per node, 64 boxes per node, safe-typed
+value projection). Contexts resolve through the pure lookup
+`FindContext(path)` only: the bridge never calls
+`OpenContext`/`ChangeContext`/`CloseContext`, never marks anything edited,
+and never saves, so reused user windows are undisturbed and the op stays
+read-only. Child paths extend the parent path with the child's
+`OwnerNodeID`; traversal is depth-bounded and cycle-guarded, and the
+existing 512 KiB response cap still fails large graphs closed. Node clients
+request bridge v19 only when the flag is set; flag-off reads keep working on
+bridge v16+.
+
 ## Bridge v18: bounded graph removal (Phase 5ab)
 
 Bridge v18 keeps protocol v1 and the full v17 surface. It adds the removal

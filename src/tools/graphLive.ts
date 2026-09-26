@@ -48,6 +48,8 @@ export const GraphInspectSchema = z.object({
   include_values: z.boolean().optional().default(false),
   include_boxes: z.boolean().optional().default(true),
   limit: z.number().int().min(1).max(500).optional().default(200),
+  include_subcontexts: z.boolean().optional().default(false),
+  max_depth: z.number().int().min(1).max(5).optional().default(3),
 }).strict().superRefine(exactlyOneSelector);
 
 export const GraphSetDefaultParameterSchema = z.object({
@@ -211,7 +213,9 @@ export const handleGraphInspect = (args: z.infer<typeof GraphInspectSchema>, ctx
     IncludeValues: args.include_values,
     IncludeBoxes: args.include_boxes,
     Limit: args.limit,
-  });
+    IncludeSubcontexts: args.include_subcontexts,
+    MaxDepth: args.max_depth,
+  }, [], args.include_subcontexts ? 19 : 16);
 
 export const handleGraphSetDefaultParameter = (args: z.infer<typeof GraphSetDefaultParameterSchema>, ctx: ProjectMeta) =>
   graphCall(ctx, 'graph.set_default_parameter', {

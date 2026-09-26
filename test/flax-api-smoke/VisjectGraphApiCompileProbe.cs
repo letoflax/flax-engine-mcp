@@ -219,6 +219,29 @@ namespace FlaxMcpCompileSmoke
             GC.KeepAlive(type);
         }
 
+        internal static void Phase6a(
+            VisjectSurface surface,
+            VisjectSurfaceContext root,
+            SurfaceNode machine)
+        {
+            // Bridge v19 Phase 6a (compile-proof only): read-only sub-context
+            // walk through the pure lookup FindContext(path). Child paths
+            // extend the parent path with the child's OwnerNodeID. No
+            // OpenContext/ChangeContext, no edits, view undisturbed.
+            uint owner = machine == null ? 0u : machine.ID;
+            uint[] path = new uint[] { owner };
+            VisjectSurfaceContext child = surface.FindContext(new Span<uint>(path));
+            uint childOwner = child == null ? 0u : child.OwnerNodeID;
+            VisjectSurfaceContext parent = child == null ? null : child.Parent;
+            bool isRoot = parent == root;
+            System.Collections.Generic.List<VisjectSurfaceContext> kids = root.Children;
+            System.Collections.Generic.List<SurfaceParameter> ctxParams = child == null ? null : child.Parameters;
+            GC.KeepAlive(childOwner);
+            GC.KeepAlive(isRoot);
+            GC.KeepAlive(kids);
+            GC.KeepAlive(ctxParams);
+        }
+
         internal static void Modules(ContentItem item, Asset asset)
         {
             FlaxEditor.Windows.EditorWindow byAsset = FlaxEditor.Editor.Instance.ContentEditing.Open(asset, true);

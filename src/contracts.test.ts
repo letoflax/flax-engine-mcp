@@ -28,7 +28,7 @@ const tools = buildToolRegistry(ctx);
   const packageMetadata = JSON.parse(await readFile(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string };
   assert.equal(tools.length, 130);
   assert.equal(new Set(names).size, tools.length);
-  assert.equal(SERVER_VERSION, '1.7.0');
+  assert.equal(SERVER_VERSION, '1.8.0');
   assert.equal(packageMetadata.version, SERVER_VERSION);
 });
 

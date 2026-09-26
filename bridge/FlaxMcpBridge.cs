@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 18
+// MCP-BRIDGE-VERSION: 19
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -25,12 +25,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 18; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 19; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 18; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; }
+    public class McpStatus { public int BridgeVersion = 19; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -168,11 +168,12 @@ namespace Game.MCP
     // inherit VisjectSurfaceWindow`3 (verified by Cecil). All writes go via
     // Window.Surface + AssetEditorWindow.Save(); headless SaveSurface(byte[])
     // is never the write path and direct .flax byte edits are forbidden.
-    public class McpGraphInspectRequest { public string AssetId; public string Path; public bool IncludeValues; public bool IncludeBoxes = true; public int Limit = 200; }
+    public class McpGraphInspectRequest { public string AssetId; public string Path; public bool IncludeValues; public bool IncludeBoxes = true; public int Limit = 200; public bool IncludeSubcontexts; public int MaxDepth = 3; }
     public class McpGraphNodeDto { public uint Id; public ushort GroupID; public ushort TypeID; public string Title; public float X; public float Y; public int ValuesCount; public McpMaterialTypedValue[] Values; }
     public class McpGraphBoxDto { public uint NodeID; public int BoxID; public bool IsOutput; public string[] Connections; }
     public class McpGraphParameterDto { public string Id; public string Name; public string Type; public bool IsPublic; public McpMaterialTypedValue Value; }
-    public class McpGraphInspectResult { public McpAssetMetadata Asset; public bool OpenedByBridge; public McpGraphNodeDto[] Nodes; public McpGraphBoxDto[] Boxes; public McpGraphParameterDto[] Parameters; public bool HasMore; public bool BoxesIncluded; public bool ValuesIncluded; public string[] Warnings; }
+    public class McpGraphInspectResult { public McpAssetMetadata Asset; public bool OpenedByBridge; public McpGraphNodeDto[] Nodes; public McpGraphBoxDto[] Boxes; public McpGraphParameterDto[] Parameters; public bool HasMore; public bool BoxesIncluded; public bool ValuesIncluded; public McpGraphContextDto[] Contexts; public bool SubcontextsIncluded; public string[] Warnings; }
+    public class McpGraphContextDto { public uint OwnerNodeID; public uint[] Path; public int Depth; public McpGraphNodeDto[] Nodes; public McpGraphBoxDto[] Boxes; public McpGraphParameterDto[] Parameters; }
     public class McpGraphSetDefaultParameterRequest { public string AssetId; public string Path; public string ParameterId; public string ParameterName; public McpMaterialTypedValue Value; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public string LeaseId; }
     public class McpGraphSetDefaultParameterResult { public McpAssetMetadata Asset; public McpGraphParameterDto Parameter; public McpMaterialTypedValue PreviousValue; public bool DryRun; public bool Saved; public bool OpenedByBridge; public long ProjectRevision; public string[] Warnings; }
     public class McpGraphUndoRequest { public string AssetId; public string Path; }
@@ -197,7 +198,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 18;
+        private const int BridgeVersion = 19;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -1607,6 +1608,196 @@ namespace Game.MCP
             try { FEditor.Instance.Windows.CloseAllEditors(item); } catch { }
         }
 
+        // Bridge v19 Phase 6a: shared read-only projection used by the root
+        // context and every sub-context. Same bounds everywhere: Limit nodes
+        // per context, 32 values per node, 64 boxes per node, safe-typed
+        // values only. Pure reads — no MarkAsModified, no Save.
+        private static McpGraphNodeDto ProjectGraphNodeDto(SurfaceNode node, bool includeValues)
+        {
+            ushort groupId = 0;
+            ushort typeId = 0;
+            string title = "";
+            float x = 0.0f;
+            float y = 0.0f;
+            int valuesCount = 0;
+            McpMaterialTypedValue[] values = null;
+            try { title = TruncateGraphText(node.Title, 256); } catch { title = ""; }
+            try { groupId = node.GroupArchetype == null ? (ushort)0 : node.GroupArchetype.GroupID; } catch { groupId = 0; }
+            try { typeId = node.Archetype == null ? (ushort)0 : node.Archetype.TypeID; } catch { typeId = 0; }
+            try { x = node.Location.X; y = node.Location.Y; } catch { x = 0.0f; y = 0.0f; }
+            try
+            {
+                var raw = node.Values;
+                valuesCount = raw == null ? 0 : raw.Length;
+                if (includeValues && raw != null)
+                {
+                    var projected = new List<McpMaterialTypedValue>(Math.Min(raw.Length, 32));
+                    for (var vi = 0; vi < raw.Length && vi < 32; vi++)
+                    {
+                        try { projected.Add(SafeMaterialAnimationValue(raw[vi])); }
+                        catch { projected.Add(new McpMaterialTypedValue { Kind = "unavailable" }); }
+                    }
+                    values = projected.ToArray();
+                }
+            }
+            catch { valuesCount = 0; values = null; }
+            return new McpGraphNodeDto { Id = node.ID, GroupID = groupId, TypeID = typeId, Title = title, X = x, Y = y, ValuesCount = valuesCount, Values = values };
+        }
+
+        private static McpGraphBoxDto[] ProjectNodeBoxDtos(SurfaceNode node)
+        {
+            var boxDtos = new List<McpGraphBoxDto>();
+            for (var bi = 0; bi < MaxGraphBoxesPerNode; bi++)
+            {
+                FlaxEditor.Surface.Elements.Box box = null;
+                try
+                {
+                    FlaxEditor.Surface.Elements.Box found;
+                    // Box IDs may be sparse: skip misses instead of
+                    // stopping at the first gap, otherwise boxes
+                    // after a hole would be silently dropped.
+                    // MaxGraphBoxesPerNode still caps the scan.
+                    if (!node.TryGetBox(bi, out found)) continue;
+                    box = found;
+                }
+                catch { continue; }
+                if (box == null) continue;
+                var conns = new List<string>();
+                try
+                {
+                    var list = box.Connections;
+                    if (list != null)
+                    {
+                        foreach (var other in list)
+                        {
+                            if (other == null || other.ParentNode == null) continue;
+                            conns.Add(other.ParentNode.ID + ":" + other.ID);
+                            if (conns.Count >= MaxGraphBoxesPerNode) break;
+                        }
+                    }
+                }
+                catch { }
+                bool isOutput = false;
+                int boxId = 0;
+                try { isOutput = box.IsOutput; } catch { isOutput = false; }
+                try { boxId = box.ID; } catch { boxId = 0; }
+                boxDtos.Add(new McpGraphBoxDto { NodeID = node.ID, BoxID = boxId, IsOutput = isOutput, Connections = conns.ToArray() });
+            }
+            return boxDtos.ToArray();
+        }
+
+        private static McpGraphParameterDto[] ProjectGraphParameterDtos(System.Collections.Generic.List<SurfaceParameter> parameters, bool includeValues)
+        {
+            var paramDtos = new List<McpGraphParameterDto>(parameters == null ? 0 : parameters.Count);
+            if (parameters == null) return paramDtos.ToArray();
+            foreach (var param in parameters)
+            {
+                if (param == null) continue;
+                McpMaterialTypedValue projected;
+                try { projected = SafeMaterialAnimationValue(param.Value); }
+                catch { projected = new McpMaterialTypedValue { Kind = "unavailable" }; }
+                string typeText;
+                try { typeText = param.Type.ToString(); }
+                catch { typeText = "unknown"; }
+                string paramId;
+                try { paramId = param.ID.ToString("N"); } catch { paramId = ""; }
+                string paramName;
+                try { paramName = TruncateGraphText(param.Name, 256); } catch { paramName = ""; }
+                bool isPublic = false;
+                try { isPublic = param.IsPublic; } catch { isPublic = false; }
+                paramDtos.Add(new McpGraphParameterDto
+                {
+                    Id = paramId,
+                    Name = paramName,
+                    Type = TruncateGraphText(typeText, 256),
+                    IsPublic = isPublic,
+                    Value = includeValues ? projected : null,
+                });
+            }
+            paramDtos.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+            return paramDtos.ToArray();
+        }
+
+        // Bridge v19 Phase 6a: read-only sub-context walk. Uses only the pure
+        // lookup FindContext(path) — never OpenContext/ChangeContext, so the
+        // surface view (user windows included) is undisturbed. Child paths
+        // extend the parent path with the child's OwnerNodeID. Depth-bounded,
+        // cycle-guarded via visited path keys.
+        private static McpGraphContextDto[] InspectGraphSubcontexts(VisjectSurface surface, bool includeValues, bool includeBoxes, int limit, int maxDepth, List<string> warnings)
+        {
+            var result = new List<McpGraphContextDto>();
+            var visited = new HashSet<string>();
+            var queue = new Queue<object[]>();
+            var root = surface.RootContext;
+            if (root == null || root.Children == null) return result.ToArray();
+            foreach (var child in root.Children)
+            {
+                if (child == null) continue;
+                uint owner = 0;
+                try { owner = child.OwnerNodeID; } catch { continue; }
+                queue.Enqueue(new object[] { new uint[] { owner }, 1 });
+            }
+            while (queue.Count > 0)
+            {
+                var entry = queue.Dequeue();
+                var path = (uint[])entry[0];
+                var depth = (int)entry[1];
+                var key = string.Join("/", path);
+                if (!visited.Add(key)) continue;
+                VisjectSurfaceContext ctx = null;
+                try { ctx = surface.FindContext(new Span<uint>(path)); } catch { ctx = null; }
+                if (ctx == null)
+                {
+                    warnings.Add("A sub-context at path [" + key + "] did not resolve and was skipped.");
+                    continue;
+                }
+                var nodes = ctx.Nodes;
+                var nodeDtos = new List<McpGraphNodeDto>();
+                var boxDtos = new List<McpGraphBoxDto>();
+                if (nodes != null)
+                {
+                    for (var i = 0; i < nodes.Count && i < limit; i++)
+                    {
+                        var node = nodes[i];
+                        if (node == null) continue;
+                        nodeDtos.Add(ProjectGraphNodeDto(node, includeValues));
+                        if (includeBoxes)
+                        {
+                            foreach (var b in ProjectNodeBoxDtos(node)) boxDtos.Add(b);
+                        }
+                    }
+                }
+                uint ownerId = 0;
+                try { ownerId = ctx.OwnerNodeID; } catch { ownerId = 0; }
+                System.Collections.Generic.List<SurfaceParameter> ctxParams = null;
+                try { ctxParams = ctx.Parameters; } catch { ctxParams = null; }
+                result.Add(new McpGraphContextDto
+                {
+                    OwnerNodeID = ownerId,
+                    Path = (uint[])path.Clone(),
+                    Depth = depth,
+                    Nodes = nodeDtos.ToArray(),
+                    Boxes = includeBoxes ? boxDtos.ToArray() : new McpGraphBoxDto[0],
+                    Parameters = ProjectGraphParameterDtos(ctxParams, includeValues),
+                });
+                if (depth >= maxDepth) continue;
+                System.Collections.Generic.List<VisjectSurfaceContext> children = null;
+                try { children = ctx.Children; } catch { children = null; }
+                if (children == null) continue;
+                foreach (var child in children)
+                {
+                    if (child == null) continue;
+                    uint owner = 0;
+                    try { owner = child.OwnerNodeID; } catch { continue; }
+                    var childPath = new uint[path.Length + 1];
+                    Array.Copy(path, childPath, path.Length);
+                    childPath[path.Length] = owner;
+                    queue.Enqueue(new object[] { childPath, depth + 1 });
+                }
+            }
+            return result.ToArray();
+        }
+
         private McpGraphInspectResult GraphInspect(McpGraphInspectRequest request)
         {
             if (request == null) request = new McpGraphInspectRequest();
@@ -1614,6 +1805,8 @@ namespace Game.MCP
                 throw new McpProtocolException("INVALID_STATE", "Graph inspection is unavailable in headless editor mode because the surface is a GUI control.");
             if (request.Limit < 1 || request.Limit > MaxGraphNodes)
                 throw new McpProtocolException("VALIDATION_FAILED", "Limit must be between 1 and " + MaxGraphNodes + ".");
+            if (request.IncludeSubcontexts && (request.MaxDepth < 1 || request.MaxDepth > 5))
+                throw new McpProtocolException("VALIDATION_FAILED", "MaxDepth must be between 1 and 5 when IncludeSubcontexts is set.");
             var record = ResolveGraphRecord(request.AssetId, request.Path);
             ContentItem item;
             FlaxEditor.Windows.EditorWindow window;
@@ -1633,105 +1826,35 @@ namespace Game.MCP
                 {
                     var node = nodes[i];
                     if (node == null) continue;
-                    ushort groupId = 0;
-                    ushort typeId = 0;
-                    string title = "";
-                    float x = 0.0f;
-                    float y = 0.0f;
-                    int valuesCount = 0;
-                    McpMaterialTypedValue[] values = null;
-                    try { title = TruncateGraphText(node.Title, 256); } catch { title = ""; }
-                    try { groupId = node.GroupArchetype == null ? (ushort)0 : node.GroupArchetype.GroupID; } catch { groupId = 0; }
-                    try { typeId = node.Archetype == null ? (ushort)0 : node.Archetype.TypeID; } catch { typeId = 0; }
-                    try { x = node.Location.X; y = node.Location.Y; } catch { x = 0.0f; y = 0.0f; }
-                    try
-                    {
-                        var raw = node.Values;
-                        valuesCount = raw == null ? 0 : raw.Length;
-                        if (request.IncludeValues && raw != null)
-                        {
-                            var projected = new List<McpMaterialTypedValue>(Math.Min(raw.Length, 32));
-                            for (var vi = 0; vi < raw.Length && vi < 32; vi++)
-                            {
-                                try { projected.Add(SafeMaterialAnimationValue(raw[vi])); }
-                                catch { projected.Add(new McpMaterialTypedValue { Kind = "unavailable" }); }
-                            }
-                            values = projected.ToArray();
-                        }
-                    }
-                    catch { valuesCount = 0; values = null; }
-                    nodeDtos.Add(new McpGraphNodeDto { Id = node.ID, GroupID = groupId, TypeID = typeId, Title = title, X = x, Y = y, ValuesCount = valuesCount, Values = values });
+                    nodeDtos.Add(ProjectGraphNodeDto(node, request.IncludeValues));
                     if (request.IncludeBoxes)
                     {
-                        for (var bi = 0; bi < MaxGraphBoxesPerNode; bi++)
-                        {
-                            FlaxEditor.Surface.Elements.Box box = null;
-                            try
-                            {
-                                FlaxEditor.Surface.Elements.Box found;
-                                // Box IDs may be sparse: skip misses instead of
-                                // stopping at the first gap, otherwise boxes
-                                // after a hole would be silently dropped.
-                                // MaxGraphBoxesPerNode still caps the scan.
-                                if (!node.TryGetBox(bi, out found)) continue;
-                                box = found;
-                            }
-                            catch { continue; }
-                            if (box == null) continue;
-                            var conns = new List<string>();
-                            try
-                            {
-                                var list = box.Connections;
-                                if (list != null)
-                                {
-                                    foreach (var other in list)
-                                    {
-                                        if (other == null || other.ParentNode == null) continue;
-                                        conns.Add(other.ParentNode.ID + ":" + other.ID);
-                                        if (conns.Count >= MaxGraphBoxesPerNode) break;
-                                    }
-                                }
-                            }
-                            catch { }
-                            boxDtos.Add(new McpGraphBoxDto { NodeID = node.ID, BoxID = box.ID, IsOutput = box.IsOutput, Connections = conns.ToArray() });
-                        }
+                        foreach (var b in ProjectNodeBoxDtos(node)) boxDtos.Add(b);
                     }
                 }
-                var paramDtos = new List<McpGraphParameterDto>(parameters.Count);
-                foreach (var param in parameters)
-                {
-                    if (param == null) continue;
-                    McpMaterialTypedValue projected;
-                    try { projected = SafeMaterialAnimationValue(param.Value); }
-                    catch { projected = new McpMaterialTypedValue { Kind = "unavailable" }; }
-                    string typeText;
-                    try { typeText = param.Type.ToString(); }
-                    catch { typeText = "unknown"; }
-                    paramDtos.Add(new McpGraphParameterDto
-                    {
-                        Id = param.ID.ToString("N"),
-                        Name = TruncateGraphText(param.Name, 256),
-                        Type = TruncateGraphText(typeText, 256),
-                        IsPublic = param.IsPublic,
-                        Value = request.IncludeValues ? projected : null,
-                    });
-                }
-                paramDtos.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+                var paramDtos = ProjectGraphParameterDtos(parameters, request.IncludeValues);
+                var inspectWarnings = new List<string>();
+                McpGraphContextDto[] contexts = new McpGraphContextDto[0];
+                if (request.IncludeSubcontexts)
+                    contexts = InspectGraphSubcontexts(surface, request.IncludeValues, request.IncludeBoxes, limit, request.MaxDepth, inspectWarnings);
+                var allWarnings = new List<string>(inspectWarnings);
+                allWarnings.Add("Graph inspection is read-only through the window-backed Visject surface (shown on demand, closed after the read). Node identity is UInt16 groupID + typeID; values are a bounded safe projection capped at 32 entries per node.");
+                allWarnings.Add(openedByBridge ? "The editor window was opened (shown) by the bridge and closed after the read." : "A window already open for this asset was reused and left open.");
+                if (request.IncludeSubcontexts)
+                    allWarnings.Add("Sub-contexts were resolved with the pure lookup FindContext(path) only: the surface view was not navigated, nothing was marked edited, and nothing was saved.");
                 return new McpGraphInspectResult
                 {
                     Asset = AssetMetadata(record),
                     OpenedByBridge = openedByBridge,
                     Nodes = nodeDtos.ToArray(),
                     Boxes = request.IncludeBoxes ? boxDtos.ToArray() : new McpGraphBoxDto[0],
-                    Parameters = paramDtos.ToArray(),
+                    Parameters = paramDtos,
                     HasMore = hasMore,
                     BoxesIncluded = request.IncludeBoxes,
                     ValuesIncluded = request.IncludeValues,
-                    Warnings = new[]
-                    {
-                        "Graph inspection is read-only through the window-backed Visject surface (shown on demand, closed after the read). Node identity is UInt16 groupID + typeID; values are a bounded safe projection capped at 32 entries per node.",
-                        openedByBridge ? "The editor window was opened (shown) by the bridge and closed after the read." : "A window already open for this asset was reused and left open.",
-                    },
+                    Contexts = contexts,
+                    SubcontextsIncluded = request.IncludeSubcontexts,
+                    Warnings = allWarnings.ToArray(),
                 };
             }
             finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
