@@ -4669,9 +4669,9 @@ namespace Game.MCP
                     if (removedKeys.Count >= 12) break;
                 }
                 var delta = beforeLines.Length - afterLines.Length;
-                if (removedKeys.Count == 0 && delta >= 0) return null;
+                if (removedKeys.Count == 0) return null;
                 var msg = "Post-save disk check: " + delta + " fewer lines on disk than before the save.";
-                if (removedKeys.Count > 0) msg += " Removed keys sample: " + string.Join(", ", removedKeys.ToArray()) + ". Values equal to C# defaults are omitted by the scene serializer and dangling asset refs flush as empty: verify tuned fields if any listed key was intentional.";
+                msg += " Removed keys sample: " + string.Join(", ", removedKeys.ToArray()) + ". Values equal to C# defaults are omitted by the scene serializer and dangling asset refs flush as empty: verify tuned fields if any listed key was intentional.";
                 return msg;
             }
             catch { return null; }
