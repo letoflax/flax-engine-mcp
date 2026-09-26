@@ -2317,11 +2317,11 @@ namespace Game.MCP
             return null;
         }
 
-        private static Box FindNodeBoxById(SurfaceNode node, int boxId)
+        private static FlaxEditor.Surface.Elements.Box FindNodeBoxById(SurfaceNode node, int boxId)
         {
             for (var bi = 0; bi < MaxGraphBoxesPerNode; bi++)
             {
-                Box found;
+                FlaxEditor.Surface.Elements.Box found;
                 bool has = false;
                 try { has = node.TryGetBox(bi, out found); } catch { has = false; found = null; }
                 if (!has || found == null) continue;
@@ -2332,7 +2332,7 @@ namespace Game.MCP
             return null;
         }
 
-        private static bool GraphBoxesConnected(Box a, Box b)
+        private static bool GraphBoxesConnected(FlaxEditor.Surface.Elements.Box a, FlaxEditor.Surface.Elements.Box b)
         {
             if (a == null || b == null) return false;
             try { if (a.Connections != null && a.Connections.Contains(b)) return true; } catch { }
