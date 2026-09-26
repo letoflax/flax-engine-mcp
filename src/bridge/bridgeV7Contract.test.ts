@@ -38,6 +38,16 @@ test('bridge v20 keeps the bounded P5ab removal pair without headless saves or h
   assert.match(source, /withUndo/);
 });
 
+test('bridge refuses scene saves while scripts compile and keeps asset swaps inside undo', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /Scene saves are unavailable while game scripts are compiling or reloading/);
+  assert.match(source, /ScriptsBuilder\.IsCompiling \|\| !ScriptsBuilder\.IsReady/);
+  const recordIdx = source.indexOf('FEditor.Instance.Undo.RecordAction(actor, "Update actor"');
+  const assignIdx = source.indexOf('ApplyActorComponentAssignments(actor, p);', recordIdx);
+  const endIdx = source.indexOf('AdvanceSceneRevision(actor.Scene);', recordIdx);
+  assert.ok(recordIdx >= 0 && assignIdx > recordIdx && endIdx > assignIdx, 'component assignments must run inside the undo action');
+});
+
 test('bridge v20 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /MCP-BRIDGE-VERSION:\s*20/);

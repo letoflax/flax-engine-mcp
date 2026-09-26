@@ -4598,6 +4598,16 @@ namespace Game.MCP
         private McpSceneRef SaveScene(McpSceneSave p)
         {
             var scene = RequireScene(p == null ? null : p.SceneId);
+            // Saving while game scripts are still compiling (or the scripting
+            // domain is reloading after a compile) flushes unresolved script
+            // values and dangling asset references as defaults/empty GUIDs,
+            // silently corrupting the file. Refuse instead of flushing: the
+            // caller retries once scripts are ready. Behavior-grounded:
+            // a scene loaded during startup compilation held default script
+            // values in memory, and the first save in that window dropped
+            // tuned nested-struct fields and zeroed material slots on disk.
+            if (ScriptsBuilder.IsCompiling || !ScriptsBuilder.IsReady)
+                throw new McpProtocolException("EDITOR_BUSY", "Scene saves are unavailable while game scripts are compiling or reloading. Retry once compilation finishes; saving now could flush unresolved script values.");
             FEditor.Instance.Scene.SaveScene(scene);
             return SceneRef(scene);
         }
@@ -4692,13 +4702,14 @@ namespace Game.MCP
                 if (p.LocalScale != null) actor.LocalScale = ToFloat3(p.LocalScale);
                 if (p.LocalEulerAngles != null) actor.LocalEulerAngles = ToFloat3(p.LocalEulerAngles);
                 if (p.Layer.HasValue) actor.Layer = p.Layer.Value;
+                // Component asset assignments run INSIDE the undo action so a
+                // model/graph swap is revertible with a single edit.undo.
+                // (Previously they ran after RecordAction, so undo could not
+                // restore the previous asset and multi-step recovery was needed.)
+                if (HasActorComponentAssignments(p))
+                    ApplyActorComponentAssignments(actor, p);
                 MarkEdited(actor);
             });
-            if (HasActorComponentAssignments(p))
-            {
-                ApplyActorComponentAssignments(actor, p);
-                MarkEdited(actor);
-            }
             AdvanceSceneRevision(actor.Scene);
             return ActorDto(actor, false);
         }
