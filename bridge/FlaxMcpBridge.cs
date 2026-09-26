@@ -31,7 +31,7 @@ namespace Game.MCP
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
     public class McpStatus { public int BridgeVersion = 20; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; }
-    public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
+    public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
     {
@@ -4608,8 +4608,73 @@ namespace Game.MCP
             // tuned nested-struct fields and zeroed material slots on disk.
             if (ScriptsBuilder.IsCompiling || !ScriptsBuilder.IsReady)
                 throw new McpProtocolException("EDITOR_BUSY", "Scene saves are unavailable while game scripts are compiling or reloading. Retry once compilation finishes; saving now could flush unresolved script values.");
+            var beforeLines = ReadSceneDiskLines(scene);
             FEditor.Instance.Scene.SaveScene(scene);
-            return SceneRef(scene);
+            var result = SceneRef(scene);
+            var report = DiffSceneDiskLines(scene, beforeLines);
+            if (!string.IsNullOrEmpty(report))
+                result.SaveReport = report;
+            return result;
+        }
+
+        // Best-effort post-save change report: compares the scene file on
+        // disk before/after the save and summarizes removed lines, so a
+        // caller can spot serializer-dropped fields (values equal to C#
+        // defaults are omitted on write; dangling asset refs flush as empty)
+        // instead of discovering the loss in a later diff. Never fails the
+        // save: reporting errors are swallowed.
+        private static string[] ReadSceneDiskLines(Scene scene)
+        {
+            try
+            {
+                var path = SceneAssetDiskPath(scene);
+                if (path == null) return null;
+                return File.ReadAllLines(path);
+            }
+            catch { return null; }
+        }
+
+        private static string SceneAssetDiskPath(Scene scene)
+        {
+            try
+            {
+                if (scene == null || string.IsNullOrEmpty(scene.Path)) return null;
+                var full = Path.IsPathRooted(scene.Path) ? Path.GetFullPath(scene.Path) : Path.GetFullPath(Path.Combine(Globals.ProjectFolder, scene.Path));
+                if (!File.Exists(full)) return null;
+                return full;
+            }
+            catch { return null; }
+        }
+
+        private static string DiffSceneDiskLines(Scene scene, string[] beforeLines)
+        {
+            try
+            {
+                if (beforeLines == null) return null;
+                var afterLines = ReadSceneDiskLines(scene);
+                if (afterLines == null) return null;
+                var after = new HashSet<string>();
+                foreach (var line in afterLines) after.Add(line.Trim());
+                var removedKeys = new List<string>();
+                foreach (var line in beforeLines)
+                {
+                    var t = line.Trim().TrimEnd(',');
+                    if (after.Contains(t)) continue;
+                    if (!t.StartsWith("\"")) continue;
+                    var end = t.IndexOf('"', 1);
+                    if (end <= 1) continue;
+                    var key = t.Substring(1, end - 1);
+                    if (key == "ID" || key == "ParentID" || key == "TypeName" || key == "Name") continue;
+                    if (!removedKeys.Contains(key)) removedKeys.Add(key);
+                    if (removedKeys.Count >= 12) break;
+                }
+                var delta = beforeLines.Length - afterLines.Length;
+                if (removedKeys.Count == 0 && delta >= 0) return null;
+                var msg = "Post-save disk check: " + delta + " fewer lines on disk than before the save.";
+                if (removedKeys.Count > 0) msg += " Removed keys sample: " + string.Join(", ", removedKeys.ToArray()) + ". Values equal to C# defaults are omitted by the scene serializer and dangling asset refs flush as empty: verify tuned fields if any listed key was intentional.";
+                return msg;
+            }
+            catch { return null; }
         }
 
         private string SaveAll() { FEditor.Instance.SaveAll(); return "save requested"; }

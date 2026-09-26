@@ -42,6 +42,8 @@ test('bridge refuses scene saves while scripts compile and keeps asset swaps ins
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /Scene saves are unavailable while game scripts are compiling or reloading/);
   assert.match(source, /ScriptsBuilder\.IsCompiling \|\| !ScriptsBuilder\.IsReady/);
+  assert.match(source, /Post-save disk check/);
+  assert.match(source, /SaveReport/);
   const recordIdx = source.indexOf('FEditor.Instance.Undo.RecordAction(actor, "Update actor"');
   const assignIdx = source.indexOf('ApplyActorComponentAssignments(actor, p);', recordIdx);
   const endIdx = source.indexOf('AdvanceSceneRevision(actor.Scene);', recordIdx);
