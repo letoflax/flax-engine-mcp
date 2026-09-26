@@ -4654,7 +4654,7 @@ namespace Game.MCP
                 var afterLines = ReadSceneDiskLines(scene);
                 if (afterLines == null) return null;
                 var after = new HashSet<string>();
-                foreach (var line in afterLines) after.Add(line.Trim());
+                foreach (var line in afterLines) after.Add(line.Trim().TrimEnd(','));
                 var removedKeys = new List<string>();
                 foreach (var line in beforeLines)
                 {
@@ -4670,7 +4670,7 @@ namespace Game.MCP
                 }
                 var delta = beforeLines.Length - afterLines.Length;
                 if (removedKeys.Count == 0) return null;
-                var msg = "Post-save disk check: " + delta + " fewer lines on disk than before the save.";
+                var msg = "Post-save disk check: " + removedKeys.Count + " keyed lines present before the save are gone after it (" + delta + " net fewer lines).";
                 msg += " Removed keys sample: " + string.Join(", ", removedKeys.ToArray()) + ". Values equal to C# defaults are omitted by the scene serializer and dangling asset refs flush as empty: verify tuned fields if any listed key was intentional.";
                 return msg;
             }
