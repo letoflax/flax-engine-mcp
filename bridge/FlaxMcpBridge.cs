@@ -3030,7 +3030,7 @@ namespace Game.MCP
             EnsureGraphEditorReady(true);
             var record = ResolveGraphRecord(request.AssetId, request.Path);
             EnsureAnimgraphAsset(record);
-            var clipRecord = ResolveGraphRecord(request.ClipAssetId, request.ClipPath);
+            var clipRecord = ResolveAssetRecord(new McpAssetGet { AssetId = request.ClipAssetId, Path = request.ClipPath }, BuildAssetRegistry());
             if (!string.Equals(clipRecord.Info.TypeName, "FlaxEngine.Animation", StringComparison.Ordinal))
                 throw new McpProtocolException("VALIDATION_FAILED", "State clips must be FlaxEngine.Animation assets.", new { TypeName = clipRecord.Info.TypeName });
             Guid clipGuid;
