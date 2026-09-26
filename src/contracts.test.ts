@@ -23,12 +23,12 @@ await writeFile(path.join(projectPath, 'Source', 'Game', 'Fixture.cs'), 'public 
 const ctx = await createProjectContext(projectPath);
 const tools = buildToolRegistry(ctx);
 
-test('release registry has a unique, version-aligned 128-tool contract', async () => {
+  test('release registry has a unique, version-aligned 130-tool contract', async () => {
   const names = tools.map(tool => tool.name);
   const packageMetadata = JSON.parse(await readFile(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string };
-  assert.equal(tools.length, 128);
+  assert.equal(tools.length, 130);
   assert.equal(new Set(names).size, tools.length);
-  assert.equal(SERVER_VERSION, '1.6.0');
+  assert.equal(SERVER_VERSION, '1.7.0');
   assert.equal(packageMetadata.version, SERVER_VERSION);
 });
 
@@ -73,7 +73,7 @@ test('permission policy parses profiles and repeated overrides', () => {
 
 test('permission profiles cover the registry and fail closed by default', () => {
   const names = tools.map(tool => tool.name);
-  assert.equal(allowedToolNames(names, { profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false }).length, 128);
+  assert.equal(allowedToolNames(names, { profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false }).length, 130);
   assert.equal(isToolAllowed('read_script', { profile: 'read-only', allowTools: [], denyTools: [], emergencyReadOnly: false }), true);
   assert.equal(isToolAllowed('write_script', { profile: 'read-only', allowTools: [], denyTools: [], emergencyReadOnly: false }), false);
   assert.equal(isToolAllowed('code_compile', { profile: 'code-edit', allowTools: [], denyTools: [], emergencyReadOnly: false }), true);

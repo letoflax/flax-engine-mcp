@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 17
+// MCP-BRIDGE-VERSION: 18
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -25,12 +25,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 17; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 18; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 17; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; }
+    public class McpStatus { public int BridgeVersion = 18; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -197,7 +197,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 17;
+        private const int BridgeVersion = 18;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -534,6 +534,8 @@ namespace Game.MCP
                 case "graph.add_parameter": { var q = JsonSerializer.Deserialize<McpGraphAddParameterRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.add_parameter", q == null ? null : q.IdempotencyKey, q, () => AddGraphParameter(q)), request.deadlineUnixMs); break; }
                 case "animgraph.add_state": { var q = JsonSerializer.Deserialize<McpGraphAddStateRequest>(p); result = OnMain(() => ExecuteIdempotent("animgraph.add_state", q == null ? null : q.IdempotencyKey, q, () => AddAnimgraphState(q)), request.deadlineUnixMs); break; }
                 case "animgraph.add_transition": { var q = JsonSerializer.Deserialize<McpGraphAddTransitionRequest>(p); result = OnMain(() => ExecuteIdempotent("animgraph.add_transition", q == null ? null : q.IdempotencyKey, q, () => AddAnimgraphTransition(q)), request.deadlineUnixMs); break; }
+                case "graph.remove_node": { var q = JsonSerializer.Deserialize<McpGraphRemoveNodeRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.remove_node", q == null ? null : q.IdempotencyKey, q, () => RemoveGraphNode(q)), request.deadlineUnixMs); break; }
+                case "graph.disconnect": { var q = JsonSerializer.Deserialize<McpGraphDisconnectRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.disconnect", q == null ? null : q.IdempotencyKey, q, () => DisconnectGraphBoxes(q)), request.deadlineUnixMs); break; }
                 default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method is not in the bridge allowlist.");
             }
             var resultJson = JsonSerializer.Serialize(result, true);
@@ -2265,6 +2267,243 @@ namespace Game.MCP
                     FromId = src.ID,
                     ToState = request.ToState,
                     ToId = dst.ID,
+                    DryRun = false,
+                    Saved = true,
+                    OpenedByBridge = openedByBridge,
+                    ProjectRevision = revision,
+                    Warnings = warnings.ToArray(),
+                };
+            }
+            finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
+        }
+
+        // Bridge v18 Phase 5ab: bounded graph removal (remove_node + disconnect).
+        // Cecil-verified on FlaxEngine.CSharp.dll 1.12 local, no new hardcoded
+        // archetype IDs or layouts:
+        // - VisjectSurface.Delete(IEnumerable<SurfaceControl>, bool withUndo) is
+        //   public and undo-aware (reads NodeArchetype.Flags, pushes
+        //   AddRemoveNodeAction + EditNodeConnections via AddBatchedUndoAction
+        //   when withUndo:true), so remove_node IS undoable via graph.undo.
+        //   The engine itself skips NoRemove nodes (e.g. the (9,1) Animation
+        //   Output, Flags=613); the bridge still fails closed when the node
+        //   survives Delete and pre-refuses runtime-read NoRemove flags, so no
+        //   output node of any in-scope asset type can be deleted by ID guess.
+        // - Box.BreakConnection(Box) / Box.RemoveConnections(int) are public
+        //   but push NO undo action and do NOT mark edited (IL: List.Remove +
+        //   OnNodesDisconnected only), so disconnect is NOT undoable — same
+        //   warning class as SaveToOriginal. The bridge marks modified/edited
+        //   itself before Window.Save().
+        // - SurfaceNode.Type is a packed (GroupID << 16) | TypeID UInt32;
+        //   decoded at runtime for DTOs only. Boxes resolve by scanning
+        //   TryGetBox(0..64) matching Box.ID, mirroring graph.inspect.
+        // Scope: root context only (sub-contexts are Phase 6a, untouched).
+        public class McpGraphRemoveNodeRequest { public string AssetId; public string Path; public uint NodeId; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public string LeaseId; }
+        public class McpGraphRemoveNodeResult { public McpAssetMetadata Asset; public McpGraphNodeDto Node; public bool Protected; public bool DryRun; public bool Saved; public bool OpenedByBridge; public long ProjectRevision; public string[] Warnings; }
+        public class McpGraphDisconnectRequest { public string AssetId; public string Path; public uint FromNode; public int FromBox; public uint ToNode; public int ToBox; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public string LeaseId; }
+        public class McpGraphDisconnectResult { public McpAssetMetadata Asset; public uint FromNode; public int FromBox; public uint ToNode; public int ToBox; public bool DryRun; public bool Saved; public bool OpenedByBridge; public long ProjectRevision; public string[] Warnings; }
+
+        private static SurfaceNode FindRootGraphNodeById(VisjectSurface surface, uint id)
+        {
+            var root = surface.RootContext;
+            if (root == null || root.Nodes == null)
+                throw new McpProtocolException("INVALID_STATE", "The graph root context is not ready. Retry shortly.", null);
+            foreach (var node in root.Nodes)
+            {
+                if (node == null) continue;
+                uint nid = 0;
+                try { nid = node.ID; } catch { continue; }
+                if (nid == id) return node;
+            }
+            return null;
+        }
+
+        private static Box FindNodeBoxById(SurfaceNode node, int boxId)
+        {
+            for (var bi = 0; bi < MaxGraphBoxesPerNode; bi++)
+            {
+                Box found;
+                bool has = false;
+                try { has = node.TryGetBox(bi, out found); } catch { has = false; found = null; }
+                if (!has || found == null) continue;
+                int bid = -1;
+                try { bid = found.ID; } catch { bid = -1; }
+                if (bid == boxId) return found;
+            }
+            return null;
+        }
+
+        private static bool GraphBoxesConnected(Box a, Box b)
+        {
+            if (a == null || b == null) return false;
+            try { if (a.Connections != null && a.Connections.Contains(b)) return true; } catch { }
+            try { if (b.Connections != null && b.Connections.Contains(a)) return true; } catch { }
+            return false;
+        }
+
+        private McpGraphRemoveNodeResult RemoveGraphNode(McpGraphRemoveNodeRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph remove-node parameters are required.");
+            EnsureGraphEditorReady(true);
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            CheckGraphWrite(record, request.LeaseId);
+            ContentItem item;
+            FlaxEditor.Windows.EditorWindow window;
+            bool openedByBridge;
+            var surface = AcquireGraphSurface(record, out item, out window, out openedByBridge);
+            var warnings = new List<string>();
+            try
+            {
+                var root = surface.RootContext;
+                if (root == null || root.Nodes == null)
+                    throw new McpProtocolException("INVALID_STATE", "The graph root context is not ready. Retry shortly.", GraphNotReadyDetails(record));
+                var node = FindRootGraphNodeById(surface, request.NodeId);
+                if (node == null)
+                    throw new McpProtocolException("NOT_FOUND", "No node with this ID exists in the graph root context.");
+                bool noRemove = false;
+                try { noRemove = node.Archetype != null && (node.Archetype.Flags & NodeFlags.NoRemove) != 0; } catch { noRemove = false; }
+                var dto = AnimgraphNodeDto(node);
+                if (noRemove)
+                    throw new McpProtocolException("VALIDATION_FAILED", "The node is engine-protected (NoRemove), e.g. a graph output node, and cannot be deleted.");
+                var rootCount = 0;
+                foreach (var n in root.Nodes) if (n != null) rootCount++;
+                if (rootCount <= 1)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Refusing to delete the only node of the graph root context (the asset would be left without an output).");
+                if (request.DryRun)
+                {
+                    return new McpGraphRemoveNodeResult
+                    {
+                        Asset = AssetMetadata(record),
+                        Node = dto,
+                        Protected = false,
+                        DryRun = true,
+                        Saved = false,
+                        OpenedByBridge = openedByBridge,
+                        ProjectRevision = _projectRevision,
+                        Warnings = new[] { "Dry-run preview only: the node was not deleted and nothing was saved. Reissue with dryRun:false + confirm:true to persist via Window.Save()." },
+                    };
+                }
+                if (!request.Confirm)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Graph node removals require confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
+                try { surface.Delete(new SurfaceControl[] { node }, true); }
+                catch (McpProtocolException) { throw; }
+                catch (Exception ex) { throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not delete the node: " + ex.Message); }
+                if (FindRootGraphNodeById(surface, request.NodeId) != null)
+                    throw new McpProtocolException("VALIDATION_FAILED", "The editor refused to delete the node (engine-protected). Nothing was saved.");
+                try { surface.RootContext.MarkAsModified(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph root MarkAsModified notification failed: " + ex.Message); }
+                try { surface.MarkAsEdited(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface MarkAsEdited notification failed: " + ex.Message); }
+                if (!openedByBridge)
+                {
+                    try { surface.OpenContext(new Span<uint>(new uint[0])); }
+                    catch (Exception ex) { warnings.Add("Could not navigate the reused window back to the graph root: " + ex.Message); }
+                }
+                var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
+                if (saver == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
+                saver.Save();
+                var revision = AdvanceProjectRevision();
+                warnings.Add("Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone.");
+                warnings.Add("The removal pushed a window undo action: graph.undo restores the node while the window undo stack retains it (reused windows only; bridge-opened windows are closed after saving).");
+                warnings.Add(openedByBridge ? "The editor window was opened (shown) by the bridge and closed after saving." : "A window already open for this asset was reused and left open.");
+                return new McpGraphRemoveNodeResult
+                {
+                    Asset = AssetMetadata(record),
+                    Node = dto,
+                    Protected = false,
+                    DryRun = false,
+                    Saved = true,
+                    OpenedByBridge = openedByBridge,
+                    ProjectRevision = revision,
+                    Warnings = warnings.ToArray(),
+                };
+            }
+            finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
+        }
+
+        private McpGraphDisconnectResult DisconnectGraphBoxes(McpGraphDisconnectRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph disconnect parameters are required.");
+            if (request.FromBox < 0 || request.ToBox < 0)
+                throw new McpProtocolException("INVALID_REQUEST", "Box IDs must be non-negative (use graph.inspect include_boxes to list them).");
+            EnsureGraphEditorReady(true);
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            CheckGraphWrite(record, request.LeaseId);
+            ContentItem item;
+            FlaxEditor.Windows.EditorWindow window;
+            bool openedByBridge;
+            var surface = AcquireGraphSurface(record, out item, out window, out openedByBridge);
+            var warnings = new List<string>();
+            try
+            {
+                var fromNode = FindRootGraphNodeById(surface, request.FromNode);
+                if (fromNode == null)
+                    throw new McpProtocolException("NOT_FOUND", "The source node was not found in the graph root context.");
+                var toNode = FindRootGraphNodeById(surface, request.ToNode);
+                if (toNode == null)
+                    throw new McpProtocolException("NOT_FOUND", "The destination node was not found in the graph root context.");
+                var fromBox = FindNodeBoxById(fromNode, request.FromBox);
+                if (fromBox == null)
+                    throw new McpProtocolException("NOT_FOUND", "The source box was not found on the source node.");
+                var toBox = FindNodeBoxById(toNode, request.ToBox);
+                if (toBox == null)
+                    throw new McpProtocolException("NOT_FOUND", "The destination box was not found on the destination node.");
+                bool fromOut = false;
+                bool toOut = false;
+                try { fromOut = fromBox.IsOutput; } catch { fromOut = false; }
+                try { toOut = toBox.IsOutput; } catch { toOut = false; }
+                if (fromOut == toOut)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Wires run output-to-input: one endpoint must be an output box and the other an input box.");
+                if (!GraphBoxesConnected(fromBox, toBox))
+                    throw new McpProtocolException("VALIDATION_FAILED", "The boxes are not connected (idempotent no-op refused).");
+                if (request.DryRun)
+                {
+                    return new McpGraphDisconnectResult
+                    {
+                        Asset = AssetMetadata(record),
+                        FromNode = request.FromNode,
+                        FromBox = request.FromBox,
+                        ToNode = request.ToNode,
+                        ToBox = request.ToBox,
+                        DryRun = true,
+                        Saved = false,
+                        OpenedByBridge = openedByBridge,
+                        ProjectRevision = _projectRevision,
+                        Warnings = new[] { "Dry-run preview only: the wire was not broken and nothing was saved. Reissue with dryRun:false + confirm:true to persist via Window.Save()." },
+                    };
+                }
+                if (!request.Confirm)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Graph disconnects require confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
+                Exception breakError = null;
+                try { fromBox.BreakConnection(toBox); }
+                catch (Exception ex) { breakError = ex; }
+                if (GraphBoxesConnected(fromBox, toBox))
+                {
+                    try { toBox.BreakConnection(fromBox); }
+                    catch (Exception ex) { if (breakError == null) breakError = ex; }
+                }
+                if (GraphBoxesConnected(fromBox, toBox))
+                    throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not break the wire." + (breakError == null ? "" : " Detail: " + breakError.Message));
+                try { surface.RootContext.MarkAsModified(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph root MarkAsModified notification failed: " + ex.Message); }
+                try { surface.MarkAsEdited(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface MarkAsEdited notification failed: " + ex.Message); }
+                if (!openedByBridge)
+                {
+                    try { surface.OpenContext(new Span<uint>(new uint[0])); }
+                    catch (Exception ex) { warnings.Add("Could not navigate the reused window back to the graph root: " + ex.Message); }
+                }
+                var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
+                if (saver == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
+                saver.Save();
+                var revision = AdvanceProjectRevision();
+                warnings.Add("Saved via the public window path (Window.Surface edit + AssetEditorWindow.Save()). SaveToOriginal cannot be undone.");
+                warnings.Add("Box.BreakConnection pushes no undo action (Cecil-verified): graph.undo cannot restore this wire. Re-wire it in the editor or re-run the matching add path.");
+                warnings.Add(openedByBridge ? "The editor window was opened (shown) by the bridge and closed after saving." : "A window already open for this asset was reused and left open.");
+                return new McpGraphDisconnectResult
+                {
+                    Asset = AssetMetadata(record),
+                    FromNode = request.FromNode,
+                    FromBox = request.FromBox,
+                    ToNode = request.ToNode,
+                    ToBox = request.ToBox,
                     DryRun = false,
                     Saved = true,
                     OpenedByBridge = openedByBridge,

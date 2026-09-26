@@ -43,7 +43,7 @@ const TOOL_FAMILIES = {
     'script_instance_update', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'create_actor', 'modify_actor',
     'prefab_instantiate', 'prefab_revert_overrides', 'prefab_break_link', 'material_assign_to_actor', 'animation_set_graph_parameter', 'graph_undo', 'mm_apply_preset',
   ],
-  asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete', 'prefab_create_from_actor', 'prefab_apply_overrides', 'material_set_parameters', 'material_create_instance', 'graph_set_default_parameter', 'graph_add_parameter', 'animgraph_add_state', 'animgraph_add_transition'],
+  asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete', 'prefab_create_from_actor', 'prefab_apply_overrides', 'material_set_parameters', 'material_create_instance', 'graph_set_default_parameter', 'graph_add_parameter', 'animgraph_add_state', 'animgraph_add_transition', 'graph_remove_node', 'graph_disconnect'],
   runtime: [
     'play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume',
     'play_step_frame', 'play_run_for', 'viewport_capture', 'runtime_inspect_actor', 'build_cook', 'build_cancel', 'navigation_build', 'lighting_bake', 'environment_probe_bake',

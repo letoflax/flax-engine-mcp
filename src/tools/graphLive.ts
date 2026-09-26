@@ -83,6 +83,27 @@ export const GraphUndoSchema = z.object({
   ...AssetSelector,
 }).strict().superRefine(exactlyOneSelector);
 
+export const GraphRemoveNodeSchema = z.object({
+  ...AssetSelector,
+  node_id: z.number().int().min(0),
+  dry_run: z.boolean().optional().default(true),
+  confirm: z.literal(true).optional(),
+  idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
+}).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
+
+export const GraphDisconnectSchema = z.object({
+  ...AssetSelector,
+  from_node: z.number().int().min(0),
+  from_box: z.number().int().min(0),
+  to_node: z.number().int().min(0),
+  to_box: z.number().int().min(0),
+  dry_run: z.boolean().optional().default(true),
+  confirm: z.literal(true).optional(),
+  idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
+}).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
+
 const FiniteCoordinate = z.number().finite().min(-10000).max(10000).optional();
 
 export const AnimgraphAddStateSchema = z.object({
@@ -219,6 +240,29 @@ export const handleGraphAddParameter = (args: z.infer<typeof GraphAddParameterSc
 
 export const handleGraphUndo = (args: z.infer<typeof GraphUndoSchema>, ctx: ProjectMeta) =>
   graphCall(ctx, 'graph.undo', { ...selector(args) });
+
+export const handleGraphRemoveNode = (args: z.infer<typeof GraphRemoveNodeSchema>, ctx: ProjectMeta) =>
+  graphCall(ctx, 'graph.remove_node', {
+    ...selector(args),
+    NodeId: args.node_id,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
+  }, args.dry_run ? [] : [{ kind: 'graph-node', asset_id: args.asset_id, path: args.path }], 18);
+
+export const handleGraphDisconnect = (args: z.infer<typeof GraphDisconnectSchema>, ctx: ProjectMeta) =>
+  graphCall(ctx, 'graph.disconnect', {
+    ...selector(args),
+    FromNode: args.from_node,
+    FromBox: args.from_box,
+    ToNode: args.to_node,
+    ToBox: args.to_box,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
+  }, args.dry_run ? [] : [{ kind: 'graph-wire', asset_id: args.asset_id, path: args.path }], 18);
 
 export const handleAnimgraphAddState = (args: z.infer<typeof AnimgraphAddStateSchema>, ctx: ProjectMeta) =>
   graphCall(ctx, 'animgraph.add_state', {

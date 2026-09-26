@@ -8,13 +8,17 @@ import {
   AnimgraphAddStateSchema,
   AnimgraphAddTransitionSchema,
   GraphAddParameterSchema,
+  GraphDisconnectSchema,
   GraphInspectSchema,
+  GraphRemoveNodeSchema,
   GraphSetDefaultParameterSchema,
   GraphUndoSchema,
   handleAnimgraphAddState,
   handleAnimgraphAddTransition,
   handleGraphAddParameter,
+  handleGraphDisconnect,
   handleGraphInspect,
+  handleGraphRemoveNode,
   handleGraphSetDefaultParameter,
   handleGraphUndo,
 } from './graphLive.js';
@@ -319,6 +323,76 @@ test('animgraph macros fail closed on bridges older than v17', async () => {
   const f = await fixture(16);
   try {
     const result = await handleAnimgraphAddState(AnimgraphAddStateSchema.parse({ asset_id: GRAPH_ID, name: 'Idle' }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('graph removal schemas validate selectors, ids, and confirmation', () => {
+  assert.equal(GraphRemoveNodeSchema.safeParse({ asset_id: GRAPH_ID, path: 'Content/Graphs/G.flax', node_id: 3 }).success, false);
+  assert.equal(GraphRemoveNodeSchema.safeParse({ path: 'Content/Graphs/G.flax' }).success, false);
+  assert.equal(GraphRemoveNodeSchema.safeParse({ asset_id: GRAPH_ID, node_id: -1 }).success, false);
+  assert.equal(GraphRemoveNodeSchema.safeParse({ asset_id: GRAPH_ID, node_id: 3 }).success, true);
+  assert.equal(GraphRemoveNodeSchema.safeParse({ asset_id: GRAPH_ID, node_id: 3, dry_run: false }).success, false);
+  assert.equal(GraphDisconnectSchema.safeParse({ asset_id: GRAPH_ID, from_node: 1, from_box: 0, to_node: 2, to_box: 1 }).success, true);
+  assert.equal(GraphDisconnectSchema.safeParse({ asset_id: GRAPH_ID, from_node: 1, from_box: 0, to_node: 2 }).success, false);
+  assert.equal(GraphDisconnectSchema.safeParse({ asset_id: GRAPH_ID, from_node: 1, from_box: 0, to_node: 2, to_box: 1, dry_run: false }).success, false);
+});
+
+test('graph removal tools marshal PascalCase requests against bridge v18', async () => {
+  const f = await fixture(18);
+  try {
+    const remove = handleGraphRemoveNode(GraphRemoveNodeSchema.parse({
+      asset_id: GRAPH_ID,
+      node_id: 3,
+      lease_id: 'e'.repeat(32),
+    }), f.ctx);
+    const first = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Saved: false }) });
+    assert.equal(first.body.method, 'graph.remove_node');
+    assert.deepEqual(first.params, {
+      AssetId: GRAPH_ID,
+      NodeId: 3,
+      DryRun: true,
+      Confirm: false,
+      LeaseId: 'e'.repeat(32),
+    });
+    assert.equal((await remove).isError, undefined);
+
+    const disconnect = handleGraphDisconnect(GraphDisconnectSchema.parse({
+      path: 'Content/Graphs/G.flax',
+      from_node: 1,
+      from_box: 0,
+      to_node: 2,
+      to_box: 1,
+      dry_run: false,
+      confirm: true,
+      idempotency_key: 'key-3',
+    }), f.ctx);
+    const second = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: false, Saved: true }) });
+    assert.equal(second.body.method, 'graph.disconnect');
+    assert.deepEqual(second.params, {
+      Path: 'Content/Graphs/G.flax',
+      FromNode: 1,
+      FromBox: 0,
+      ToNode: 2,
+      ToBox: 1,
+      DryRun: false,
+      Confirm: true,
+      IdempotencyKey: 'key-3',
+    });
+    assert.equal((await disconnect).isError, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('graph removal tools fail closed on bridges older than v18', async () => {
+  const f = await fixture(17);
+  try {
+    const result = await handleGraphRemoveNode(GraphRemoveNodeSchema.parse({ asset_id: GRAPH_ID, node_id: 3 }), f.ctx);
     assert.equal(result.isError, true);
     assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
     assert.deepEqual(await fs.readdir(f.requests), []);

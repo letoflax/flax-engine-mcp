@@ -178,6 +178,47 @@ namespace FlaxMcpCompileSmoke
             GC.KeepAlive(canConnect);
         }
 
+        internal static void Phase5(
+            VisjectSurface surface,
+            VisjectSurfaceContext root,
+            SurfaceNode node,
+            Box fromBox,
+            Box toBox)
+        {
+            // Bridge v18 Phase 5ab (compile-proof only): Delete(batch) is the
+            // undo-aware removal path (withUndo:true pushes AddRemoveNodeAction
+            // + EditNodeConnections); the engine skips NoRemove-flagged nodes.
+            // BreakConnection/RemoveConnections push no undo action and do not
+            // mark edited (Cecil-verified on the local 1.12 binary).
+            SurfaceNode byId = root.FindNode(node.ID);
+            Box target = null;
+            for (int bi = 0; bi < 64; bi++)
+            {
+                Box found;
+                if (!node.TryGetBox(bi, out found) || found == null) continue;
+                if (found.ID == toBox.ID) { target = found; break; }
+            }
+            bool noRemove = node.Archetype != null && (node.Archetype.Flags & FlaxEditor.Surface.NodeFlags.NoRemove) != 0;
+            uint packed = node.Type;
+            ushort group = (ushort)(packed >> 16);
+            ushort type = (ushort)(packed & 0xFFFF);
+            bool knownWire = (fromBox.Connections != null && fromBox.Connections.Contains(toBox))
+                || (toBox.Connections != null && toBox.Connections.Contains(fromBox));
+            bool directionOk = fromBox.IsOutput != toBox.IsOutput;
+            if (directionOk && knownWire && !noRemove)
+            {
+                surface.Delete(new SurfaceControl[] { node }, true);
+                fromBox.BreakConnection(toBox);
+                toBox.RemoveConnections(0);
+            }
+            root.MarkAsModified(true);
+            surface.MarkAsEdited(true);
+            GC.KeepAlive(byId);
+            GC.KeepAlive(target);
+            GC.KeepAlive(group);
+            GC.KeepAlive(type);
+        }
+
         internal static void Modules(ContentItem item, Asset asset)
         {
             FlaxEditor.Windows.EditorWindow byAsset = FlaxEditor.Editor.Instance.ContentEditing.Open(asset, true);

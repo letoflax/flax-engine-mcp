@@ -448,6 +448,33 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v18: bounded graph removal (Phase 5ab)
+
+Bridge v18 keeps protocol v1 and the full v17 surface. It adds the removal
+pair `graph.remove_node` + `graph.disconnect`, scoped to the graph root
+context only (sub-contexts stay Phase 6a). No new hardcoded archetype IDs or
+layouts: every check is read at runtime from the live objects.
+
+`graph.remove_node` deletes one root node through the public
+`VisjectSurface.Delete(IEnumerable<SurfaceControl>, withUndo:true)` path,
+which is Cecil-verified undo-aware (pushes `AddRemoveNodeAction` +
+`EditNodeConnections`), so the removal IS restorable via `graph.undo` while
+the window undo stack retains it. Fail-closed guards: `NoRemove`-flagged
+nodes (read at runtime from `NodeArchetype.Flags`, e.g. graph outputs) and
+the sole remaining root node are refused with `VALIDATION_FAILED`; if the
+node survives `Delete`, nothing is saved.
+
+`graph.disconnect` breaks one output-to-input wire through the public
+`Box.BreakConnection(Box)` path (verified both directions, then re-checked).
+`BreakConnection`/`RemoveConnections` push NO undo action and do not mark
+edited (Cecil-verified IL): the bridge marks modified/edited itself, persists
+via `AssetEditorWindow.Save()`, and every response carries a no-undo warning
+in the `SaveToOriginal` class — `graph.undo` cannot restore a broken wire.
+Missing endpoints, same-direction endpoints, and already-disconnected boxes
+fail closed (`NOT_FOUND` / `VALIDATION_FAILED`, idempotent no-op refused).
+Boxes resolve by scanning `TryGetBox` matching `Box.ID`, mirroring
+`graph.inspect`. Node clients require bridge v18 for these two tools.
+
 ## Bridge v17: bounded AnimGraph state-machine macros
 
 Bridge v17 keeps protocol v1 and the full v16 surface. It adds two additive-only
