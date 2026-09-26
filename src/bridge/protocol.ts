@@ -121,19 +121,22 @@ export type AnimationBridgeMethod =
 export type MMTuningBridgeMethod =
   | 'mm.tuning';
 
-/** Bridge v16 window-backed Visject node-graph surface (AnimGraph/Material/ParticleEmitter). Bridge v18 adds the bounded removal pair. */
+/** Bridge v16 window-backed Visject node-graph surface (AnimGraph/Material/ParticleEmitter). Bridge v18 adds the bounded removal pair, v20 the value/move pair. */
 export type GraphBridgeMethod =
   | 'graph.inspect'
   | 'graph.set_default_parameter'
   | 'graph.add_parameter'
   | 'graph.undo'
   | 'graph.remove_node'
-  | 'graph.disconnect';
+  | 'graph.disconnect'
+  | 'graph.set_node_values'
+  | 'graph.move_node';
 
-/** Bridge v17 bounded AnimGraph state-machine macros (additive only). */
+/** Bridge v17 bounded AnimGraph state-machine macros (additive only). Bridge v20 adds clip wiring. */
 export type AnimgraphBridgeMethod =
   | 'animgraph.add_state'
-  | 'animgraph.add_transition';
+  | 'animgraph.add_transition'
+  | 'animgraph.set_state_clip';
 
 /** Bridge v14 bounded physics/navigation/lighting/terrain domain queries. */
 export type DomainBridgeMethod =

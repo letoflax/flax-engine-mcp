@@ -106,6 +106,59 @@ export const GraphDisconnectSchema = z.object({
   lease_id: FlaxId.optional(),
 }).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
 
+const GraphNodeValue = z.union([
+  GraphValue,
+  z.object({ asset_id: FlaxId }).strict(),
+]);
+
+export const GraphSetNodeValuesSchema = z.object({
+  ...AssetSelector,
+  node_id: z.number().int().min(0),
+  values: z.array(z.object({
+    index: z.number().int().min(0).max(64),
+    value: GraphNodeValue,
+  }).strict()).min(1).max(32),
+  dry_run: z.boolean().optional().default(true),
+  confirm: z.literal(true).optional(),
+  idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
+}).strict().superRefine((value, ctx) => {
+  exactlyOneSelector(value, ctx);
+  requiresConfirmation(value, ctx);
+  const indexes = value.values.map(entry => entry.index);
+  if (new Set(indexes).size !== indexes.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Value indexes must be unique.' });
+  }
+});
+
+export const GraphMoveNodeSchema = z.object({
+  ...AssetSelector,
+  node_id: z.number().int().min(0),
+  x: z.number().finite().min(-10000).max(10000),
+  y: z.number().finite().min(-10000).max(10000),
+  dry_run: z.boolean().optional().default(true),
+  confirm: z.literal(true).optional(),
+  idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
+}).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
+
+export const AnimgraphSetStateClipSchema = z.object({
+  ...AssetSelector,
+  state: z.string().min(1).max(256),
+  clip_asset_id: FlaxId.optional(),
+  clip_path: ContentPath.optional(),
+  dry_run: z.boolean().optional().default(true),
+  confirm: z.literal(true).optional(),
+  idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
+}).strict().superRefine((value, ctx) => {
+  exactlyOneSelector(value, ctx);
+  requiresConfirmation(value, ctx);
+  if ((value.clip_asset_id === undefined) === (value.clip_path === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one of clip_asset_id or clip_path.' });
+  }
+});
+
 const FiniteCoordinate = z.number().finite().min(-10000).max(10000).optional();
 
 export const AnimgraphAddStateSchema = z.object({
@@ -268,6 +321,41 @@ export const handleGraphDisconnect = (args: z.infer<typeof GraphDisconnectSchema
     LeaseId: args.lease_id,
   }, args.dry_run ? [] : [{ kind: 'graph-wire', asset_id: args.asset_id, path: args.path }], 18);
 
+export const handleGraphSetNodeValues = (args: z.infer<typeof GraphSetNodeValuesSchema>, ctx: ProjectMeta) =>
+  graphCall(ctx, 'graph.set_node_values', {
+    ...selector(args),
+    NodeId: args.node_id,
+    Values: args.values.map(entry => ({ Index: entry.index, Value: toBridgeValue(entry.value) })),
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
+  }, args.dry_run ? [] : [{ kind: 'graph-node-values', asset_id: args.asset_id, path: args.path }], 20);
+
+export const handleGraphMoveNode = (args: z.infer<typeof GraphMoveNodeSchema>, ctx: ProjectMeta) =>
+  graphCall(ctx, 'graph.move_node', {
+    ...selector(args),
+    NodeId: args.node_id,
+    X: args.x,
+    Y: args.y,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
+  }, args.dry_run ? [] : [{ kind: 'graph-node-move', asset_id: args.asset_id, path: args.path }], 20);
+
+export const handleAnimgraphSetStateClip = (args: z.infer<typeof AnimgraphSetStateClipSchema>, ctx: ProjectMeta) =>
+  graphCall(ctx, 'animgraph.set_state_clip', {
+    ...selector(args),
+    State: args.state,
+    ClipAssetId: args.clip_asset_id,
+    ClipPath: args.clip_path,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
+  }, args.dry_run ? [] : [{ kind: 'animgraph-clip', asset_id: args.asset_id, path: args.path }], 20);
+
 export const handleAnimgraphAddState = (args: z.infer<typeof AnimgraphAddStateSchema>, ctx: ProjectMeta) =>
   graphCall(ctx, 'animgraph.add_state', {
     ...selector(args),
@@ -296,10 +384,12 @@ function toBridgeValue(value: unknown): unknown {
   if (typeof value === 'number') return { Kind: 'number', Number: value };
   if (typeof value === 'string') return { Kind: 'string', Text: value };
   if (value !== null && typeof value === 'object') {
-    const record = value as Record<string, number>;
-    if (typeof record.w === 'number') return { Kind: 'vector4', Vector4: { X: record.x, Y: record.y, Z: record.z, W: record.w } };
-    if (typeof record.z === 'number') return { Kind: 'vector3', Vector3: { X: record.x, Y: record.y, Z: record.z } };
-    return { Kind: 'vector2', Vector2: { X: record.x, Y: record.y } };
+    const record = value as Record<string, unknown>;
+    if (typeof record.asset_id === 'string') return { Kind: 'asset_id', AssetId: record.asset_id };
+    const numeric = record as Record<string, number>;
+    if (typeof numeric.w === 'number') return { Kind: 'vector4', Vector4: { X: numeric.x, Y: numeric.y, Z: numeric.z, W: numeric.w } };
+    if (typeof numeric.z === 'number') return { Kind: 'vector3', Vector3: { X: numeric.x, Y: numeric.y, Z: numeric.z } };
+    return { Kind: 'vector2', Vector2: { X: numeric.x, Y: numeric.y } };
   }
   return value;
 }

@@ -448,6 +448,32 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v20: clip wiring, node values, node move (Phase 6)
+
+Bridge v20 keeps protocol v1 and the full v19 surface. It adds
+`graph.set_node_values`, `graph.move_node` (root context only), and
+`animgraph.set_state_clip`, all dry-run by default with `confirm:true`,
+idempotency keys, per-asset leases, and `AssetEditorWindow.Save()` persist.
+
+`graph.set_node_values` writes 1–32 slots through the public
+`SurfaceNode.SetValue(index, value, graphEdited:true)` path, which pushes
+`EditNodeValuesAction` — value writes ARE window-undoable. Inputs coerce per
+slot: the live slot type first, the archetype default slot type second,
+float for typeless numbers last; `asset_id` inputs must be 32-hex IDs of
+assets present in the project registry (dangling references fail closed).
+
+`graph.move_node` sets the public `Control.Location`. The setter pushes no
+undo action, so moves warn like disconnects.
+
+`animgraph.set_state_clip` resolves the machine and the named state, opens
+the state sub-context, spawns the `(9,2)` sampler from archetype defaults
+when missing, assigns slot 0 (the clip; shape-inferred from
+`DefaultValues=[null, 1, 1, 0]` and runtime-verified by re-read), and wires
+the sampler Pose output to the `(9,21)` State Output input through the
+public `Box.CreateConnection` path (verified both directions; pushes no undo
+action, warned). All archetype IDs and box choices resolve at runtime — no
+hardcoded layouts. Node clients require bridge v20 for these three tools.
+
 ## Bridge v19: read-only sub-context inspection (Phase 6a)
 
 Bridge v19 keeps protocol v1 and the full v18 surface. It extends

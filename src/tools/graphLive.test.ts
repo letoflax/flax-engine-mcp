@@ -7,19 +7,25 @@ import { createProjectContext, ProjectMeta } from '../projectContext.js';
 import {
   AnimgraphAddStateSchema,
   AnimgraphAddTransitionSchema,
+  AnimgraphSetStateClipSchema,
   GraphAddParameterSchema,
   GraphDisconnectSchema,
   GraphInspectSchema,
+  GraphMoveNodeSchema,
   GraphRemoveNodeSchema,
   GraphSetDefaultParameterSchema,
+  GraphSetNodeValuesSchema,
   GraphUndoSchema,
   handleAnimgraphAddState,
   handleAnimgraphAddTransition,
+  handleAnimgraphSetStateClip,
   handleGraphAddParameter,
   handleGraphDisconnect,
   handleGraphInspect,
+  handleGraphMoveNode,
   handleGraphRemoveNode,
   handleGraphSetDefaultParameter,
+  handleGraphSetNodeValues,
   handleGraphUndo,
 } from './graphLive.js';
 
@@ -433,6 +439,97 @@ test('graph removal tools fail closed on bridges older than v18', async () => {
   const f = await fixture(17);
   try {
     const result = await handleGraphRemoveNode(GraphRemoveNodeSchema.parse({ asset_id: GRAPH_ID, node_id: 3 }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('phase 6 schemas validate values, moves, and clip selectors', () => {
+  assert.equal(GraphSetNodeValuesSchema.safeParse({ asset_id: GRAPH_ID, node_id: 2, values: [] }).success, false);
+  assert.equal(GraphSetNodeValuesSchema.safeParse({ asset_id: GRAPH_ID, node_id: 2, values: [{ index: 0, value: 1 }, { index: 0, value: 2 }] }).success, false);
+  assert.equal(GraphSetNodeValuesSchema.safeParse({ asset_id: GRAPH_ID, node_id: 2, values: [{ index: 0, value: 1 }] }).success, true);
+  assert.equal(GraphSetNodeValuesSchema.safeParse({ asset_id: GRAPH_ID, node_id: 2, values: [{ index: 0, value: { asset_id: GRAPH_ID } }] }).success, true);
+  assert.equal(GraphSetNodeValuesSchema.safeParse({ asset_id: GRAPH_ID, node_id: 2, values: [{ index: 0, value: 1 }], dry_run: false }).success, false);
+  assert.equal(GraphMoveNodeSchema.safeParse({ asset_id: GRAPH_ID, node_id: 2, x: 1, y: 2 }).success, true);
+  assert.equal(GraphMoveNodeSchema.safeParse({ asset_id: GRAPH_ID, node_id: 2, x: 1 }).success, false);
+  assert.equal(GraphMoveNodeSchema.safeParse({ asset_id: GRAPH_ID, node_id: 2, x: 1, y: 2, dry_run: false }).success, false);
+  assert.equal(AnimgraphSetStateClipSchema.safeParse({ asset_id: GRAPH_ID, state: 'Idle', clip_asset_id: GRAPH_ID }).success, true);
+  assert.equal(AnimgraphSetStateClipSchema.safeParse({ asset_id: GRAPH_ID, state: 'Idle' }).success, false);
+  assert.equal(AnimgraphSetStateClipSchema.safeParse({ asset_id: GRAPH_ID, path: 'Content/G.flax', state: 'Idle', clip_asset_id: GRAPH_ID }).success, false);
+  assert.equal(AnimgraphSetStateClipSchema.safeParse({ asset_id: GRAPH_ID, state: 'Idle', clip_path: 'Content/Clips/C.flax' }).success, true);
+});
+
+test('phase 6 tools marshal PascalCase requests against bridge v20', async () => {
+  const f = await fixture(20);
+  try {
+    const setValues = handleGraphSetNodeValues(GraphSetNodeValuesSchema.parse({
+      asset_id: GRAPH_ID,
+      node_id: 2,
+      values: [{ index: 0, value: { asset_id: GRAPH_ID } }, { index: 1, value: 1.5 }],
+    }), f.ctx);
+    const first = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Saved: false }) });
+    assert.equal(first.body.method, 'graph.set_node_values');
+    assert.deepEqual(first.params, {
+      AssetId: GRAPH_ID,
+      NodeId: 2,
+      Values: [
+        { Index: 0, Value: { Kind: 'asset_id', AssetId: GRAPH_ID } },
+        { Index: 1, Value: { Kind: 'number', Number: 1.5 } },
+      ],
+      DryRun: true,
+      Confirm: false,
+    });
+    assert.equal((await setValues).isError, undefined);
+
+    const move = handleGraphMoveNode(GraphMoveNodeSchema.parse({
+      path: 'Content/Graphs/G.flax',
+      node_id: 2,
+      x: 100,
+      y: 200,
+      dry_run: false,
+      confirm: true,
+    }), f.ctx);
+    const second = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: false, Saved: true }) });
+    assert.equal(second.body.method, 'graph.move_node');
+    assert.deepEqual(second.params, {
+      Path: 'Content/Graphs/G.flax',
+      NodeId: 2,
+      X: 100,
+      Y: 200,
+      DryRun: false,
+      Confirm: true,
+    });
+    assert.equal((await move).isError, undefined);
+
+    const clip = handleAnimgraphSetStateClip(AnimgraphSetStateClipSchema.parse({
+      asset_id: GRAPH_ID,
+      state: 'Idle',
+      clip_asset_id: PARAMETER_ID,
+      idempotency_key: 'key-4',
+    }), f.ctx);
+    const third = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Saved: false }) });
+    assert.equal(third.body.method, 'animgraph.set_state_clip');
+    assert.deepEqual(third.params, {
+      AssetId: GRAPH_ID,
+      State: 'Idle',
+      ClipAssetId: PARAMETER_ID,
+      DryRun: true,
+      Confirm: false,
+      IdempotencyKey: 'key-4',
+    });
+    assert.equal((await clip).isError, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('phase 6 tools fail closed on bridges older than v20', async () => {
+  const f = await fixture(19);
+  try {
+    const result = await handleGraphMoveNode(GraphMoveNodeSchema.parse({ asset_id: GRAPH_ID, node_id: 2, x: 1, y: 2 }), f.ctx);
     assert.equal(result.isError, true);
     assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
     assert.deepEqual(await fs.readdir(f.requests), []);

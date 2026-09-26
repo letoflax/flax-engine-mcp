@@ -251,6 +251,23 @@ namespace FlaxMcpCompileSmoke
             GC.KeepAlive(ctxParams);
         }
 
+        internal static void Phase6(
+            SurfaceNode node,
+            Box fromBox,
+            Box toBox)
+        {
+            // Bridge v20 Phase 6 (compile-proof only): CreateConnection pushes
+            // no undo action (Cecil-verified); SetValue/SetValues push
+            // EditNodeValuesAction (undo-aware); Control.Location set pushes
+            // no undo. Asset refs in Values are Guid (asset_id projection).
+            fromBox.CreateConnection(toBox);
+            node.SetValue(0, Guid.Empty, true);
+            node.SetValues(new object[] { Guid.Empty }, true);
+            node.Location = new Float2(100.0f, 100.0f);
+            GC.KeepAlive(fromBox);
+            GC.KeepAlive(toBox);
+        }
+
         internal static void Modules(ContentItem item, Asset asset)
         {
             FlaxEditor.Windows.EditorWindow byAsset = FlaxEditor.Editor.Instance.ContentEditing.Open(asset, true);

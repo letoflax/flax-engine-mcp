@@ -5,10 +5,8 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
-test('bridge v19 extends graph inspection to read-only sub-contexts without navigating the view', async () => {
+test('bridge v20 keeps read-only sub-context inspection with navigate-and-restore traversal', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*19/);
-  assert.match(source, /BridgeVersion\s*=\s*19/);
   assert.match(source, /IncludeSubcontexts/);
   assert.match(source, /OpenContext\(new Span/);
   assert.match(source, /CloseContext\(\)/);
@@ -17,7 +15,19 @@ test('bridge v19 extends graph inspection to read-only sub-contexts without navi
   assert.match(source, /OwnerNodeID/);
 });
 
-test('bridge v19 keeps the bounded P5ab removal pair without headless saves or hardcoded archetypes', async () => {
+test('bridge v20 wires state clips, node values, and moves without hardcoded layouts', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*20/);
+  assert.match(source, /BridgeVersion\s*=\s*20/);
+  assert.match(source, /case "graph\.set_node_values"/);
+  assert.match(source, /case "graph\.move_node"/);
+  assert.match(source, /case "animgraph\.set_state_clip"/);
+  assert.match(source, /EditNodeValuesAction/);
+  assert.match(source, /CreateConnection/);
+  assert.match(source, /AnimGraphSamplerNode = 2/);
+});
+
+test('bridge v20 keeps the bounded P5ab removal pair without headless saves or hardcoded archetypes', async () => {
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /case "graph\.remove_node"/);
   assert.match(source, /case "graph\.disconnect"/);
@@ -28,10 +38,10 @@ test('bridge v19 keeps the bounded P5ab removal pair without headless saves or h
   assert.match(source, /withUndo/);
 });
 
-test('bridge v19 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v20 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*19/);
-  assert.match(source, /BridgeVersion\s*=\s*19/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*20/);
+  assert.match(source, /BridgeVersion\s*=\s*20/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
