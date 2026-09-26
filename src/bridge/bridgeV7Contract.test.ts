@@ -98,6 +98,7 @@ test('bridge v9 keeps actor/script editing allowlisted, validated before undo, a
   assert.match(source, /if \(p == null \|\| !p\.Enabled\.HasValue\) throw new McpProtocolException\("INVALID_REQUEST"/);
   assert.match(source, /McpScriptEnabledUndo/);
   assert.doesNotMatch(source, /PropertyInfo\.SetValue/);
+  assert.match(source, /METHOD_NOT_ALLOWED", "Method '" \+ \(request == null \|\| request\.method == null/);
 });
 
 test('bridge v9 exposes only verified, bounded public Content APIs for asset registry and graphs', async () => {

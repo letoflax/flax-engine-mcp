@@ -540,7 +540,7 @@ namespace Game.MCP
                 case "graph.set_node_values": { var q = JsonSerializer.Deserialize<McpGraphSetNodeValuesRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.set_node_values", q == null ? null : q.IdempotencyKey, q, () => SetGraphNodeValues(q)), request.deadlineUnixMs); break; }
                 case "graph.move_node": { var q = JsonSerializer.Deserialize<McpGraphMoveNodeRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.move_node", q == null ? null : q.IdempotencyKey, q, () => MoveGraphNode(q)), request.deadlineUnixMs); break; }
                 case "animgraph.set_state_clip": { var q = JsonSerializer.Deserialize<McpGraphSetStateClipRequest>(p); result = OnMain(() => ExecuteIdempotent("animgraph.set_state_clip", q == null ? null : q.IdempotencyKey, q, () => SetAnimgraphStateClip(q)), request.deadlineUnixMs); break; }
-                default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method is not in the bridge allowlist.");
+                default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method '" + (request == null || request.method == null ? "unknown" : request.method) + "' is not in the bridge allowlist.");
             }
             var resultJson = JsonSerializer.Serialize(result, true);
             if (Encoding.UTF8.GetByteCount(resultJson) > MaxResultBytes)
@@ -4834,6 +4834,9 @@ namespace Game.MCP
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Skinned model asset could not be loaded: " + record.Path);
             if (skinned.WaitForLoaded(30000) || skinned.LastLoadFailed)
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Skinned model asset failed to load: " + record.Path);
+            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (case ...4133...); reject the mismatch.
+            if (skinned.ID != record.Id)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "registry/file ID mismatch: expected " + record.Id.ToString("N") + " got " + skinned.ID.ToString("N") + " (" + record.Path + ")");
             return skinned;
         }
 
@@ -4851,6 +4854,9 @@ namespace Game.MCP
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Model asset could not be loaded: " + record.Path);
             if (model.WaitForLoaded(30000) || model.LastLoadFailed)
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Model asset failed to load: " + record.Path);
+            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (case ...4133...); reject the mismatch.
+            if (model.ID != record.Id)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "registry/file ID mismatch: expected " + record.Id.ToString("N") + " got " + model.ID.ToString("N") + " (" + record.Path + ")");
             return model;
         }
 
@@ -4858,12 +4864,19 @@ namespace Game.MCP
         {
             ValidateAssetSelector(assetId, assetPath);
             var record = ResolveAssetRecord(new McpAssetGet { AssetId = assetId, Path = assetPath }, BuildAssetRegistry());
-            var absolute = Path.Combine(Globals.ProjectFolder, record.Path.Replace('/', Path.DirectorySeparatorChar));
-            var asset = Content.LoadAsync<T>(absolute);
+            var asset = Content.LoadAsync<T>(record.Id);
+            if (asset == null)
+            {
+                var absolute = Path.Combine(Globals.ProjectFolder, record.Path.Replace('/', Path.DirectorySeparatorChar));
+                asset = Content.LoadAsync<T>(absolute);
+            }
             if (asset == null)
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Content asset could not be loaded: " + record.Path);
             if (asset.WaitForLoaded(30000) || asset.LastLoadFailed)
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Content asset failed to load: " + record.Path);
+            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (case ...4133...); reject the mismatch.
+            if (asset.ID != record.Id)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "registry/file ID mismatch: expected " + record.Id.ToString("N") + " got " + asset.ID.ToString("N") + " (" + record.Path + ")");
             return asset;
         }
 
