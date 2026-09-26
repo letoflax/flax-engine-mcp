@@ -591,3 +591,13 @@ connect/remove, and state/transition macros remain unavailable. Every save
 goes through `SaveToOriginal` internally and cannot be undone afterwards;
 `graph.undo` only reverts unsaved steps on the window-local undo stack and is
 separate from the global `edit.undo`.
+
+## MM surface (local-only, vắng mặt ở canonical installer)
+
+`mm.tuning` and `mm_apply_preset` exist only on the local development bridge.
+The canonical installer does not ship them, so a stock editor answers those
+methods with `METHOD_NOT_ALLOWED`. The Node server keeps calling them through
+the shared bridge mapper, which reports the missing method as
+`UNSUPPORTED_FLAX_VERSION` (with a capability hint pointing at bridge
+status/PROTOCOL) instead of `INTERNAL_ERROR`. Nothing in this section claims
+canonical-installer support for the MM surface.
