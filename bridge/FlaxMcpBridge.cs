@@ -1718,42 +1718,58 @@ namespace Game.MCP
             return paramDtos.ToArray();
         }
 
-        // Bridge v19 Phase 6a: read-only sub-context walk. Uses only the pure
-        // lookup FindContext(path) — never OpenContext/ChangeContext, so the
-        // surface view (user windows included) is undisturbed. Child paths
-        // extend the parent path with the child's OwnerNodeID. Depth-bounded,
-        // cycle-guarded via visited path keys.
-        private static McpGraphContextDto[] InspectGraphSubcontexts(VisjectSurface surface, bool includeValues, bool includeBoxes, int limit, int maxDepth, List<string> warnings)
+        // Bridge v19 Phase 6a (corrected): read-only sub-context walk.
+        // IL-verified: FindContext(Span) only reads the surface context cache
+        // and cannot see never-opened contexts, so discovery navigates with
+        // OpenContext(path) which materializes (CreateContext + Load) without
+        // touching asset data. Stack discipline is kept with before/after
+        // reference checks (close only what this walk pushed), candidate paths
+        // are every node ID (a failed open or OwnerNodeID mismatch means "not
+        // a sub-context"), and the entry view is restored at the end. Never
+        // MarkAsModified, never Save.
+        private static uint[] GraphCurrentContextPath(VisjectSurface surface)
         {
-            var result = new List<McpGraphContextDto>();
-            var visited = new HashSet<string>();
-            var queue = new Queue<object[]>();
-            var root = surface.RootContext;
-            if (root == null || root.Children == null) return result.ToArray();
-            foreach (var child in root.Children)
+            VisjectSurfaceContext ctx = null;
+            try { ctx = surface.Context; } catch { ctx = null; }
+            VisjectSurfaceContext root = null;
+            try { root = surface.RootContext; } catch { root = null; }
+            if (ctx == null || root == null || object.ReferenceEquals(ctx, root)) return new uint[0];
+            var rev = new List<uint>();
+            var guard = 0;
+            while (ctx != null && !object.ReferenceEquals(ctx, root) && guard < 64)
             {
-                if (child == null) continue;
+                guard++;
                 uint owner = 0;
-                try { owner = child.OwnerNodeID; } catch { continue; }
-                queue.Enqueue(new object[] { new uint[] { owner }, 1 });
+                try { owner = ctx.OwnerNodeID; } catch { break; }
+                rev.Add(owner);
+                try { ctx = ctx.Parent; } catch { break; }
             }
-            while (queue.Count > 0)
+            rev.Reverse();
+            return rev.ToArray();
+        }
+
+        private static void InspectGraphContextRecursive(VisjectSurface surface, uint[] path, int depth, int limit, bool includeValues, bool includeBoxes, int maxDepth, HashSet<string> visited, List<McpGraphContextDto> result, List<string> warnings)
+        {
+            var key = string.Join("/", path);
+            if (!visited.Add(key)) return;
+            VisjectSurfaceContext before = null;
+            try { before = surface.Context; } catch { before = null; }
+            VisjectSurfaceContext opened = null;
+            try { opened = surface.OpenContext(new Span<uint>(path)); } catch { opened = null; }
+            VisjectSurfaceContext after = null;
+            try { after = surface.Context; } catch { after = null; }
+            bool pushed = !object.ReferenceEquals(after, before);
+            try
             {
-                var entry = queue.Dequeue();
-                var path = (uint[])entry[0];
-                var depth = (int)entry[1];
-                var key = string.Join("/", path);
-                if (!visited.Add(key)) continue;
-                VisjectSurfaceContext ctx = null;
-                try { ctx = surface.FindContext(new Span<uint>(path)); } catch { ctx = null; }
-                if (ctx == null)
-                {
-                    warnings.Add("A sub-context at path [" + key + "] did not resolve and was skipped.");
-                    continue;
-                }
+                var ctx = opened != null ? opened : after;
+                uint last = path[path.Length - 1];
+                uint ownerId = 0xFFFFFFFF;
+                try { ownerId = ctx == null ? 0xFFFFFFFF : ctx.OwnerNodeID; } catch { ownerId = 0xFFFFFFFF; }
+                if (ctx == null || ownerId != last) return;
                 var nodes = ctx.Nodes;
                 var nodeDtos = new List<McpGraphNodeDto>();
                 var boxDtos = new List<McpGraphBoxDto>();
+                var childIds = new List<uint>();
                 if (nodes != null)
                 {
                     for (var i = 0; i < nodes.Count && i < limit; i++)
@@ -1765,10 +1781,11 @@ namespace Game.MCP
                         {
                             foreach (var b in ProjectNodeBoxDtos(node)) boxDtos.Add(b);
                         }
+                        uint nid = 0;
+                        try { nid = node.ID; } catch { continue; }
+                        childIds.Add(nid);
                     }
                 }
-                uint ownerId = 0;
-                try { ownerId = ctx.OwnerNodeID; } catch { ownerId = 0; }
                 System.Collections.Generic.List<SurfaceParameter> ctxParams = null;
                 try { ctxParams = ctx.Parameters; } catch { ctxParams = null; }
                 result.Add(new McpGraphContextDto
@@ -1780,21 +1797,44 @@ namespace Game.MCP
                     Boxes = includeBoxes ? boxDtos.ToArray() : new McpGraphBoxDto[0],
                     Parameters = ProjectGraphParameterDtos(ctxParams, includeValues),
                 });
-                if (depth >= maxDepth) continue;
-                System.Collections.Generic.List<VisjectSurfaceContext> children = null;
-                try { children = ctx.Children; } catch { children = null; }
-                if (children == null) continue;
-                foreach (var child in children)
+                if (depth >= maxDepth) return;
+                foreach (var nid in childIds)
                 {
-                    if (child == null) continue;
-                    uint owner = 0;
-                    try { owner = child.OwnerNodeID; } catch { continue; }
                     var childPath = new uint[path.Length + 1];
                     Array.Copy(path, childPath, path.Length);
-                    childPath[path.Length] = owner;
-                    queue.Enqueue(new object[] { childPath, depth + 1 });
+                    childPath[path.Length] = nid;
+                    InspectGraphContextRecursive(surface, childPath, depth + 1, limit, includeValues, includeBoxes, maxDepth, visited, result, warnings);
                 }
             }
+            finally
+            {
+                if (pushed)
+                {
+                    try { surface.CloseContext(); } catch { warnings.Add("Could not pop the sub-context navigation stack; the entry view restore below will correct it."); }
+                }
+            }
+        }
+
+        private static McpGraphContextDto[] InspectGraphSubcontexts(VisjectSurface surface, bool includeValues, bool includeBoxes, int limit, int maxDepth, List<string> warnings, out uint[] entryPath)
+        {
+            entryPath = GraphCurrentContextPath(surface);
+            var result = new List<McpGraphContextDto>();
+            var visited = new HashSet<string>();
+            var root = surface.RootContext;
+            if (root == null || root.Nodes == null) return result.ToArray();
+            var seedIds = new List<uint>();
+            for (var i = 0; i < root.Nodes.Count && i < limit; i++)
+            {
+                var node = root.Nodes[i];
+                if (node == null) continue;
+                uint nid = 0;
+                try { nid = node.ID; } catch { continue; }
+                seedIds.Add(nid);
+            }
+            foreach (var nid in seedIds)
+                InspectGraphContextRecursive(surface, new uint[] { nid }, 1, limit, includeValues, includeBoxes, maxDepth, visited, result, warnings);
+            try { surface.OpenContext(new Span<uint>(entryPath)); }
+            catch (Exception ex) { warnings.Add("Could not restore the entry graph view after sub-context inspection: " + ex.Message); }
             return result.ToArray();
         }
 
@@ -1836,12 +1876,15 @@ namespace Game.MCP
                 var inspectWarnings = new List<string>();
                 McpGraphContextDto[] contexts = new McpGraphContextDto[0];
                 if (request.IncludeSubcontexts)
-                    contexts = InspectGraphSubcontexts(surface, request.IncludeValues, request.IncludeBoxes, limit, request.MaxDepth, inspectWarnings);
+                {
+                    uint[] entryPath;
+                    contexts = InspectGraphSubcontexts(surface, request.IncludeValues, request.IncludeBoxes, limit, request.MaxDepth, inspectWarnings, out entryPath);
+                }
                 var allWarnings = new List<string>(inspectWarnings);
                 allWarnings.Add("Graph inspection is read-only through the window-backed Visject surface (shown on demand, closed after the read). Node identity is UInt16 groupID + typeID; values are a bounded safe projection capped at 32 entries per node.");
                 allWarnings.Add(openedByBridge ? "The editor window was opened (shown) by the bridge and closed after the read." : "A window already open for this asset was reused and left open.");
                 if (request.IncludeSubcontexts)
-                    allWarnings.Add("Sub-contexts were resolved with the pure lookup FindContext(path) only: the surface view was not navigated, nothing was marked edited, and nothing was saved.");
+                    allWarnings.Add("Sub-contexts were materialized by navigating OpenContext(path) and restored afterwards with stack balancing: the entry view is preserved, but reused windows may briefly flicker and fire ContextChanged. Nothing was marked edited and nothing was saved.");
                 return new McpGraphInspectResult
                 {
                     Asset = AssetMetadata(record),

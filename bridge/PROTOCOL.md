@@ -456,11 +456,13 @@ byte-identical) plus `MaxDepth` (1–5). Each returned context carries
 `OwnerNodeID`, the root-relative node `Path`, `Depth`, and its own
 `Nodes[]`/`Boxes[]`/`Parameters[]` under the same bounds as the root read
 (`Limit` nodes per context, 32 values per node, 64 boxes per node, safe-typed
-value projection). Contexts resolve through the pure lookup
-`FindContext(path)` only: the bridge never calls
-`OpenContext`/`ChangeContext`/`CloseContext`, never marks anything edited,
-and never saves, so reused user windows are undisturbed and the op stays
-read-only. Child paths extend the parent path with the child's
+value projection). IL-verified correction: `FindContext(path)` only reads the
+surface context cache and cannot see never-opened contexts, so discovery
+navigates with `OpenContext(path)` (which materializes via `CreateContext` +
+`Load` without touching asset data) under before/after stack balancing, then
+restores the entry view. Reused user windows may briefly flicker and fire
+`ContextChanged`, but nothing is marked edited and nothing is ever saved —
+the op stays read-only. Child paths extend the parent path with the child's
 `OwnerNodeID`; traversal is depth-bounded and cycle-guarded, and the
 existing 512 KiB response cap still fails large graphs closed. Node clients
 request bridge v19 only when the flag is set; flag-off reads keep working on

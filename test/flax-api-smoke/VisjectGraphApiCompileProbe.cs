@@ -236,6 +236,15 @@ namespace FlaxMcpCompileSmoke
             bool isRoot = parent == root;
             System.Collections.Generic.List<VisjectSurfaceContext> kids = root.Children;
             System.Collections.Generic.List<SurfaceParameter> ctxParams = child == null ? null : child.Parameters;
+            // Navigate + restore (bridge v19 corrected design): OpenContext
+            // materializes, CloseContext pops; entry view restored by path.
+            VisjectSurfaceContext before = surface.Context;
+            VisjectSurfaceContext opened = null;
+            try { opened = surface.OpenContext(new Span<uint>(path)); } catch { opened = null; }
+            bool pushed = !object.ReferenceEquals(surface.Context, before);
+            if (pushed) { try { surface.CloseContext(); } catch { } }
+            try { surface.OpenContext(new Span<uint>(new uint[0])); } catch { }
+            GC.KeepAlive(opened);
             GC.KeepAlive(childOwner);
             GC.KeepAlive(isRoot);
             GC.KeepAlive(kids);

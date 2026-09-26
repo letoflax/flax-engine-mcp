@@ -10,7 +10,9 @@ test('bridge v19 extends graph inspection to read-only sub-contexts without navi
   assert.match(source, /MCP-BRIDGE-VERSION:\s*19/);
   assert.match(source, /BridgeVersion\s*=\s*19/);
   assert.match(source, /IncludeSubcontexts/);
-  assert.match(source, /FindContext/);
+  assert.match(source, /OpenContext\(new Span/);
+  assert.match(source, /CloseContext\(\)/);
+  assert.match(source, /GraphCurrentContextPath/);
   assert.match(source, /McpGraphContextDto/);
   assert.match(source, /OwnerNodeID/);
 });
