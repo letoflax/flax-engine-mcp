@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
+import { mapBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
@@ -120,26 +121,22 @@ export const AnimationSetGraphParameterSchema = z.object({
 export const AnimationValidateBindingsSchema = z.object({ actor_id: FlaxId }).strict();
 
 function materialAnimationError(error: unknown): ToolDomainError {
-  if (!(error instanceof BridgeRpcError)) {
-    return new ToolDomainError('INTERNAL_ERROR', error instanceof Error ? error.message : String(error));
+  // Shared mapper owns the full BridgeRpcError contract (graph/mm pattern).
+  // Two material/animation-surface specifics stay here so domain codes keep
+  // flowing to callers: actor-scoped NOT_FOUND reports ACTOR_NOT_FOUND (see
+  // prefabLive) and paginated list_clips reports CURSOR_INVALID.
+  const mapped = mapBridgeError(error);
+  if (mapped.code === 'NOT_FOUND') {
+    return new ToolDomainError('ACTOR_NOT_FOUND', mapped.message, mapped.details);
   }
-  if (error.code === 'BRIDGE_UNAVAILABLE' || error.code === 'BRIDGE_AUTH_FAILED') return new ToolDomainError('EDITOR_NOT_CONNECTED', error.message, error.details);
-  if (error.code === 'BRIDGE_CONCURRENT_CALL') return new ToolDomainError('EDITOR_BUSY', error.message, error.details);
-  if (error.code === 'BRIDGE_TIMEOUT') return new ToolDomainError('TIMEOUT', error.message, error.details);
-  if (error.code === 'BRIDGE_UNSUPPORTED') return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, error.details);
-  if (error.code === 'BRIDGE_REMOTE_ERROR') {
+  if (mapped.code !== 'INTERNAL_ERROR') return mapped;
+  if (error instanceof BridgeRpcError && error.code === 'BRIDGE_REMOTE_ERROR') {
     const remote = error.details as { code?: unknown; details?: unknown } | undefined;
-    const code = remote?.code;
-    if (code === 'ASSET_NOT_FOUND') return new ToolDomainError('ASSET_NOT_FOUND', error.message, remote?.details);
-    if (code === 'NOT_FOUND') return new ToolDomainError('ACTOR_NOT_FOUND', error.message, remote?.details);
-    if (code === 'EDITOR_BUSY') return new ToolDomainError('EDITOR_BUSY', error.message, remote?.details);
-    if (code === 'CURSOR_INVALID') return new ToolDomainError('CURSOR_INVALID', error.message, remote?.details);
-    if (code === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, remote?.details);
-    if (code === 'RESPONSE_TOO_LARGE' || code === 'REQUEST_TOO_LARGE') return new ToolDomainError('CONTENT_TOO_LARGE', error.message, remote?.details);
-    if (code === 'UNSUPPORTED_FLAX_VERSION') return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, remote?.details);
-    if (code === 'INVALID_REQUEST' || code === 'VALIDATION_FAILED') return new ToolDomainError('VALIDATION_FAILED', error.message, remote?.details);
+    if (remote?.code === 'CURSOR_INVALID') {
+      return new ToolDomainError('CURSOR_INVALID', error.message, remote.details);
+    }
   }
-  return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
+  return mapped;
 }
 
 async function materialAnimationCall(

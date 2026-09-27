@@ -14,6 +14,7 @@ import {
   GraphMoveNodeSchema,
   GraphRemoveNodeSchema,
   GraphSetDefaultParameterSchema,
+  GraphSetModelSchema,
   GraphSetNodeValuesSchema,
   GraphUndoSchema,
   handleAnimgraphAddState,
@@ -25,6 +26,7 @@ import {
   handleGraphMoveNode,
   handleGraphRemoveNode,
   handleGraphSetDefaultParameter,
+  handleGraphSetModel,
   handleGraphSetNodeValues,
   handleGraphUndo,
 } from './graphLive.js';
@@ -533,6 +535,92 @@ test('phase 6 tools fail closed on bridges older than v20', async () => {
     assert.equal(result.isError, true);
     assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
     assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('graph set_model schema validates both selectors and confirmation', () => {
+  assert.equal(GraphSetModelSchema.safeParse({ asset_id: GRAPH_ID, path: 'Content/Graphs/G.flax', model_asset_id: GRAPH_ID }).success, false);
+  assert.equal(GraphSetModelSchema.safeParse({ model_asset_id: GRAPH_ID }).success, false);
+  assert.equal(GraphSetModelSchema.safeParse({ asset_id: GRAPH_ID }).success, false);
+  assert.equal(GraphSetModelSchema.safeParse({ asset_id: GRAPH_ID, model_asset_id: GRAPH_ID, model_path: 'Content/Models/M.flax' }).success, false);
+  assert.equal(GraphSetModelSchema.safeParse({ path: 'Content/Graphs/G.flax', model_path: 'Content/Models/M.flax' }).success, true);
+  assert.equal(GraphSetModelSchema.safeParse({ asset_id: GRAPH_ID, model_asset_id: GRAPH_ID }).success, true);
+  assert.equal(GraphSetModelSchema.safeParse({ asset_id: GRAPH_ID, model_asset_id: GRAPH_ID, dry_run: false }).success, false);
+  assert.equal(GraphSetModelSchema.safeParse({ asset_id: GRAPH_ID, model_asset_id: GRAPH_ID, dry_run: false, confirm: true }).success, true);
+});
+
+test('graph set_model stays dry-run by default and marshals PascalCase requests against bridge v21', async () => {
+  const f = await fixture(21);
+  try {
+    const preview = handleGraphSetModel(GraphSetModelSchema.parse({
+      path: 'Content/Animations/Graphs/G.flax',
+      model_path: 'Content/Models/Mannequin.flax',
+    }), f.ctx);
+    const first = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Saved: false, AlreadyBound: false }) });
+    assert.equal(first.body.method, 'graph.set_model');
+    assert.deepEqual(first.params, {
+      Path: 'Content/Animations/Graphs/G.flax',
+      ModelPath: 'Content/Models/Mannequin.flax',
+      DryRun: true,
+      Confirm: false,
+    });
+    assert.equal((await preview).isError, undefined);
+
+    const write = handleGraphSetModel(GraphSetModelSchema.parse({
+      asset_id: GRAPH_ID,
+      model_asset_id: 'b'.repeat(32),
+      dry_run: false,
+      confirm: true,
+      idempotency_key: 'key-5',
+      lease_id: 'd'.repeat(32),
+    }), f.ctx);
+    const second = await respondOnce(f, { ok: true, resultJson: JSON.stringify({ DryRun: false, Saved: true, AlreadyBound: false }) });
+    assert.equal(second.body.method, 'graph.set_model');
+    assert.deepEqual(second.params, {
+      AssetId: GRAPH_ID,
+      ModelAssetId: 'b'.repeat(32),
+      DryRun: false,
+      Confirm: true,
+      IdempotencyKey: 'key-5',
+      LeaseId: 'd'.repeat(32),
+    });
+    assert.equal((await write).isError, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('graph set_model fails closed on bridges older than v21', async () => {
+  const f = await fixture(20);
+  try {
+    const result = await handleGraphSetModel(GraphSetModelSchema.parse({ asset_id: GRAPH_ID, model_asset_id: 'b'.repeat(32) }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('graph set_model delegates bridge errors through the shared mapper', async () => {
+  const f = await fixture(21);
+  try {
+    const alreadyBound = handleGraphSetModel(GraphSetModelSchema.parse({
+      asset_id: GRAPH_ID,
+      model_asset_id: 'b'.repeat(32),
+      dry_run: false,
+      confirm: true,
+    }), f.ctx);
+    await respondOnce(f, {
+      ok: false,
+      errorCode: 'VALIDATION_FAILED',
+      error: 'The graph already binds this model (idempotent no-op refused).',
+    });
+    const out = await alreadyBound;
+    assert.equal(out.isError, true);
+    assert.equal((out.structuredContent as any).error.code, 'VALIDATION_FAILED');
   } finally {
     await f.cleanup();
   }

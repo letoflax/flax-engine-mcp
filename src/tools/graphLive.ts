@@ -143,6 +143,22 @@ export const GraphMoveNodeSchema = z.object({
   lease_id: FlaxId.optional(),
 }).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
 
+export const GraphSetModelSchema = z.object({
+  ...AssetSelector,
+  model_asset_id: FlaxId.optional(),
+  model_path: ContentPath.optional(),
+  dry_run: z.boolean().optional().default(true),
+  confirm: z.literal(true).optional(),
+  idempotency_key: z.string().min(1).max(128).optional(),
+  lease_id: FlaxId.optional(),
+}).strict().superRefine((value, ctx) => {
+  exactlyOneSelector(value, ctx);
+  requiresConfirmation(value, ctx);
+  if ((value.model_asset_id === undefined) === (value.model_path === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one of model_asset_id or model_path.' });
+  }
+});
+
 export const AnimgraphSetStateClipSchema = z.object({
   ...AssetSelector,
   state: z.string().min(1).max(256),
@@ -321,6 +337,17 @@ export const handleGraphMoveNode = (args: z.infer<typeof GraphMoveNodeSchema>, c
     IdempotencyKey: args.idempotency_key,
     LeaseId: args.lease_id,
   }, args.dry_run ? [] : [{ kind: 'graph-node-move', asset_id: args.asset_id, path: args.path }], 20);
+
+export const handleGraphSetModel = (args: z.infer<typeof GraphSetModelSchema>, ctx: ProjectMeta) =>
+  graphCall(ctx, 'graph.set_model', {
+    ...selector(args),
+    ModelAssetId: args.model_asset_id,
+    ModelPath: args.model_path,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    IdempotencyKey: args.idempotency_key,
+    LeaseId: args.lease_id,
+  }, args.dry_run ? [] : [{ kind: 'graph-base-model', asset_id: args.asset_id, path: args.path }], 21);
 
 export const handleAnimgraphSetStateClip = (args: z.infer<typeof AnimgraphSetStateClipSchema>, ctx: ProjectMeta) =>
   graphCall(ctx, 'animgraph.set_state_clip', {

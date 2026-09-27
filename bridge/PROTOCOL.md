@@ -155,6 +155,27 @@ fails with `IDEMPOTENCY_KEY_REUSED`. The cache is bridge-session-local and is no
 durable request journal; clients should use it for retry recovery, especially for
 create, duplicate, and script attach.
 
+## Script field value reads (P7 read surface, no version bump)
+
+`script.instance_get` accepts an opt-in PascalCase `IncludeValues` flag (default
+false, so default reads stay wire-identical to older bridges). With
+`IncludeValues:true` the result adds a bounded read-only projection of the
+script's public instance fields: `Values` (alphabetical, at most 64 entries),
+`ValuesIncluded:true`, `ValuesTruncated` (true when fields were dropped), and a
+`Warnings` note that values are a bounded projection and script writes remain
+limited to `Enabled`. With the flag absent or false, `Values` is null and
+`ValuesIncluded` is false.
+
+Each entry carries `Name`, `Type` (full type name), `Value` (a v13
+`McpMaterialTypedValue` shape plus an `enum` kind carrying the numeric value,
+display text, and enum type name), and `Reason`. The whitelist is
+bool/int/float/string/enum/Guid/Vector2-4/Color plus null; live `Asset`
+references, unsupported runtime types, and unreadable fields are a null `Value`
+with a `Reason`. Strings truncate at 512 characters. Field reads never mutate
+the script, and the global 512 KiB `MaxResultBytes` cap still bounds the total
+response (`RESPONSE_TOO_LARGE` on overflow). `script.instance_update` still
+accepts only `Enabled`; arbitrary serialized script writes remain unexposed.
+
 ## Bridge v8: public asset registry and reference graph
 
 ## MCP resource delivery (Node server)
@@ -448,6 +469,28 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v21: AnimationGraph BaseModel binding (Phase 7)
+
+Bridge v21 keeps protocol v1 and the full v20 surface. It adds
+`graph.set_model`, dry-run by default with `confirm:true`,
+idempotency keys, per-asset leases, and `AssetEditorWindow.Save()` persist.
+
+`graph.set_model` binds one registry `FlaxEngine.SkinnedModel` (exactly one
+`ModelAssetId`/`ModelPath`, validated through the generic asset registry —
+not the graph scope) as the `FlaxEngine.AnimationGraph` BaseModel (exactly
+one graph `AssetId`/`Path`; AnimationGraph assets only). The write path is
+the public `AnimationGraphWindow.SetBaseModel`, the read path the public
+`AnimationGraph.BaseModel`. The model asset is loaded with the same
+`WaitForLoaded` + registry/file ID-guard path as actor model binds, and the
+post-write BaseModel is re-read before saving; a mismatch refuses to save.
+
+`AnimationGraphWindow.SetBaseModel` pushes NO undo action (Cecil-verified,
+like disconnect/move), so the bind is non-undoable: every response carries
+a no-undo warning in the `SaveToOriginal` class — `graph.undo` cannot
+restore the previous BaseModel (re-run set_model with the prior model to
+revert). Rebinding the already-bound model is refused with
+`VALIDATION_FAILED` (idempotent no-op refused), reported on dry-run
+previews via `AlreadyBound`. Node clients require bridge v21 for this tool.
 ## Bridge v20: clip wiring, node values, node move (Phase 6)
 
 Bridge v20 keeps protocol v1 and the full v19 surface. It adds
@@ -592,12 +635,17 @@ goes through `SaveToOriginal` internally and cannot be undone afterwards;
 `graph.undo` only reverts unsaved steps on the window-local undo stack and is
 separate from the global `edit.undo`.
 
-## MM surface (local-only, vắng mặt ở canonical installer)
+## Local-only surfaces (vắng mặt ở canonical installer)
 
-`mm.tuning` and `mm_apply_preset` exist only on the local development bridge.
-The canonical installer does not ship them, so a stock editor answers those
-methods with `METHOD_NOT_ALLOWED`. The Node server keeps calling them through
-the shared bridge mapper, which reports the missing method as
-`UNSUPPORTED_FLAX_VERSION` (with a capability hint pointing at bridge
-status/PROTOCOL) instead of `INTERNAL_ERROR`. Nothing in this section claims
-canonical-installer support for the MM surface.
+| Method | Lives on | Node tool | Notes |
+|---|---|---|---|
+| `mm.tuning` / `mm_apply_preset` | local dev bridge | `mm_tuning`, `mm_apply_preset` | Missing method answers `METHOD_NOT_ALLOWED` → shared mapper reports `UNSUPPORTED_FLAX_VERSION` with capability hint. |
+| `scene.open` | flax-test local bridge (`4bf59f3`, `SceneOpenSupported`) | none | Loads a Content scene asset (`FlaxEngine.SceneAsset` only) via `OpenScene(record.Id, additive)`; async — caller polls `scene.list_loaded`. Refuses play mode, compiling scripts, active edit leases; already-loaded returns the live ref. |
+
+Capability checks must use the `*Supported` status flags (e.g.
+`GraphSetModelSupported`, `ScriptFieldValuesReadSupported`,
+`SceneOpenSupported`), never the bare version number: the flax-test local
+`McpStatus` advertises `BridgeVersion = 21` for `scene.open` while canonical
+v21 means `graph.set_model` — the same number names two different
+capability sets. The canonical installer does not ship the rows above, so a
+stock editor answers those methods with `METHOD_NOT_ALLOWED`.

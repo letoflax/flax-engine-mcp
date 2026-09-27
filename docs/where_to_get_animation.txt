@@ -1,0 +1,113 @@
+Create an ALS animation-source acquisition and import work package.
+
+Agent policy:
+
+* Use `gpt-5.6-sol` with `high` effort for discovery, licensing review, planning, documentation, and acceptance review.
+* Use `terra` with `high` effort for downloading public files, checksums, extraction, clip inventory, conversion tooling, and initial Flax import automation.
+* Use `terra` with `xhigh` effort if the task modifies public asset-pipeline contracts or implements reusable retarget/import tooling.
+* Do not use any other agent.
+* Child agents may not spawn other agents.
+
+Primary approved sources:
+
+1. Quaternius Universal Animation Library 1 Standard.
+2. Quaternius Universal Animation Library 2 Standard.
+3. OpenGameArt mirrors uploaded by Quaternius.
+4. CMU Motion Capture Database bulk archives only as a secondary experimental source.
+
+Do not use:
+
+* Mixamo assets in the redistributable SampleProject.
+* Assets requiring account login or license acceptance without owner intervention.
+* Unreal Engine Game Animation Sample/GASP animation assets in Flax.
+* Scraped animation websites.
+* Assets without a clearly documented license.
+* AI-generated animation datasets unless separately approved.
+* Any file whose license cannot be preserved in the source registry.
+
+Objectives:
+
+1. Verify the current official source page and license.
+2. Prefer CC0 sources.
+3. Download UAL 1 Standard and UAL 2 Standard using public direct downloads.
+4. If the official itch.io flow blocks automation, use the verified OpenGameArt mirror or mark the exact owner action required.
+5. Do not bypass authentication, CAPTCHA, payment, access controls, or license-acceptance UI.
+6. Record:
+
+   * asset name;
+   * version;
+   * publisher;
+   * source page;
+   * download page;
+   * license;
+   * download date;
+   * archive filename;
+   * file size;
+   * SHA-256;
+   * whether redistribution is allowed;
+   * whether modification is allowed;
+   * whether attribution is required.
+7. Store downloads and extracted files only in a gitignored staging directory.
+8. Do not commit original archives unless explicitly approved.
+9. Inventory every animation clip:
+
+   * source file;
+   * clip name;
+   * duration;
+   * frame rate;
+   * skeleton;
+   * root bone;
+   * root-motion state;
+   * loopability;
+   * direction;
+   * gait;
+   * stance;
+   * action category;
+   * expected left/right starting foot;
+   * import result;
+   * validation warnings.
+10. Produce a recommended initial locomotion subset covering:
+
+    * idle;
+    * walk forward/back/left/right;
+    * diagonal walk;
+    * jog/run eight directions;
+    * sprint;
+    * acceleration/start;
+    * deceleration/stop;
+    * jump start;
+    * airborne loop;
+    * landing;
+    * turn-in-place;
+    * pivot candidates.
+11. Identify missing coverage explicitly.
+12. Import the selected non-root-motion clips into the Flax SampleProject.
+13. Import a source skeleton container for retargeting.
+14. Create and validate retarget mappings to the current test character.
+15. Keep root-motion variants in a separate experimental set.
+16. Do not modify ALS runtime architecture during acquisition/import work.
+17. Do not implement Motion Matching selection in this task.
+18. Do not modify LetoCore runtime code.
+
+Required documentation:
+
+* `ANIMATION_SOURCE_REGISTRY.md`
+* `UAL_LICENSE.md`
+* `UAL_CLIP_INVENTORY.csv`
+* `UAL_IMPORT_REPORT.md`
+* `UAL_MISSING_COVERAGE.md`
+* `UAL_RETARGET_REPORT.md`
+
+Required acceptance criteria:
+
+* All downloaded files have verified SHA-256 values.
+* Every included asset has a documented redistributable license.
+* No login-gated or restricted raw animation is committed.
+* At least one idle, eight-direction locomotion set, sprint, jump, fall, and landing candidate imports successfully.
+* Source and target skeleton mappings are recorded.
+* Scale, orientation, frame rate, root node, and loop settings are verified.
+* Non-root-motion and root-motion clips cannot be mixed accidentally.
+* SampleProject builds after import.
+* Imported animations can play on the test character.
+* Missing starts, stops, pivots, turn-in-place, and foot-contact coverage is reported honestly.
+* Completion handoff lists exact files, tests, checksums, licenses, and unresolved issues.

@@ -183,3 +183,33 @@ test('material and animation methods fail closed before writing a request to bri
     await f.cleanup();
   }
 });
+
+test('materialAnimation errors delegate through the shared mapper without behavior change', async () => {
+  const f = await fixture();
+  try {
+    // Actor-scoped NOT_FOUND keeps the legacy ACTOR_NOT_FOUND domain code.
+    const missing = handleAnimationGetGraphParameters(AnimationGetGraphParametersSchema.parse({ actor_id: ACTOR_ID }), f.ctx);
+    await respond(f, { ok: false, errorCode: 'NOT_FOUND', error: 'Actor was not found.', resultJson: null });
+    const missingResult = await missing;
+    assert.equal(missingResult.isError, true);
+    assert.equal((missingResult.structuredContent as any).error.code, 'ACTOR_NOT_FOUND');
+
+    // Paginated list_clips keeps the legacy CURSOR_INVALID domain code.
+    const cursor = handleAnimationListClips(AnimationListClipsSchema.parse({ limit: 2, cursor: 'd'.repeat(32) }), f.ctx);
+    await respond(f, { ok: false, errorCode: 'CURSOR_INVALID', error: 'Cursor is stale.', resultJson: null });
+    const cursorResult = await cursor;
+    assert.equal(cursorResult.isError, true);
+    assert.equal((cursorResult.structuredContent as any).error.code, 'CURSOR_INVALID');
+
+    // Shared contract: asset miss, validation, and allowlist denials map identically.
+    const asset = handleMaterialGetParameters(MaterialGetParametersSchema.parse({ asset_id: MATERIAL_ID }), f.ctx);
+    await respond(f, { ok: false, errorCode: 'ASSET_NOT_FOUND', error: 'No asset.', resultJson: null });
+    assert.equal(((await asset).structuredContent as any).error.code, 'ASSET_NOT_FOUND');
+
+    const gated = handleMaterialGetParameters(MaterialGetParametersSchema.parse({ asset_id: MATERIAL_ID }), f.ctx);
+    await respond(f, { ok: false, errorCode: 'METHOD_NOT_ALLOWED', error: 'Method is not in the bridge allowlist.', resultJson: null });
+    assert.equal(((await gated).structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+  } finally {
+    await f.cleanup();
+  }
+});

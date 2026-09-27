@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
+import { mapBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
@@ -111,7 +112,11 @@ export const ScriptDetachSchema = z.object({
   dry_run: z.boolean().optional().default(false),
   ...RevisionedLiveWrite,
 });
-export const ScriptInstanceGetSchema = z.object({ script_id: FlaxId });
+export const ScriptInstanceGetSchema = z.object({
+  script_id: FlaxId,
+  include_values: z.boolean().optional().default(false)
+    .describe('Opt-in bounded read of whitelisted public script field values (bool/int/float/string/enum/Guid/Vector2-4/Color; max 64 fields, strings capped at 512 chars, unsupported types are null with a reason). Default false returns only identity and enabled state.'),
+});
 export const ScriptInstanceUpdateSchema = z.object({
   script_id: FlaxId,
   enabled: z.boolean().optional()
@@ -153,53 +158,18 @@ function toBridgeVector(value: z.infer<typeof Vector3> | undefined): AnyRecord |
 }
 
 function bridgeError(error: unknown): ToolDomainError {
-  if (!(error instanceof BridgeRpcError)) {
-    return new ToolDomainError('INTERNAL_ERROR', error instanceof Error ? error.message : String(error));
-  }
-  if (error.code === 'BRIDGE_UNAVAILABLE' || error.code === 'BRIDGE_AUTH_FAILED') {
-    return new ToolDomainError('EDITOR_NOT_CONNECTED', error.message, error.details);
-  }
-  if (error.code === 'BRIDGE_CONCURRENT_CALL') {
-    return new ToolDomainError('EDITOR_BUSY', error.message, error.details);
-  }
-  if (error.code === 'BRIDGE_TIMEOUT') {
-    return new ToolDomainError('TIMEOUT', error.message, error.details);
-  }
-  if (error.code === 'BRIDGE_UNSUPPORTED') {
-    return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, error.details);
-  }
-  if (error.code === 'BRIDGE_REMOTE_ERROR') {
+  // Shared mapper owns the full BridgeRpcError contract (graph/mm pattern).
+  // SCENE_REVISION_CONFLICT is editor-surface-specific and stays here so
+  // revision-guard details keep flowing to callers.
+  const mapped = mapBridgeError(error);
+  if (mapped.code !== 'INTERNAL_ERROR') return mapped;
+  if (error instanceof BridgeRpcError && error.code === 'BRIDGE_REMOTE_ERROR') {
     const remote = error.details as { code?: unknown; details?: unknown } | undefined;
-    const remoteCode = remote?.code;
-    const remoteDetails = remote?.details;
-    if (remoteCode === 'NOT_FOUND') return new ToolDomainError('NOT_FOUND', error.message, error.details);
-    if (remoteCode === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, error.details);
-    if (remoteCode === 'RESPONSE_TOO_LARGE' || remoteCode === 'REQUEST_TOO_LARGE') {
-      return new ToolDomainError('CONTENT_TOO_LARGE', error.message, error.details);
-    }
-    if (remoteCode === 'UNSUPPORTED_FLAX_VERSION') {
-      return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, error.details);
-    }
-    if (remoteCode === 'VALIDATION_FAILED' || remoteCode === 'INVALID_REQUEST') {
-      return new ToolDomainError('VALIDATION_FAILED', error.message, error.details);
-    }
-    if (remoteCode === 'SCENE_REVISION_CONFLICT') {
-      return new ToolDomainError('SCENE_REVISION_CONFLICT', error.message, remoteDetails);
-    }
-    if (remoteCode === 'EDIT_LEASE_CONFLICT') {
-      return new ToolDomainError('EDIT_LEASE_CONFLICT', error.message, remoteDetails);
-    }
-    if (remoteCode === 'EDIT_LEASE_EXPIRED') {
-      return new ToolDomainError('EDIT_LEASE_EXPIRED', error.message, remoteDetails);
-    }
-    if (remoteCode === 'EDIT_LEASE_ACTIVE') {
-      return new ToolDomainError('EDIT_LEASE_ACTIVE', error.message, remoteDetails);
-    }
-    if (remoteCode === 'IDEMPOTENCY_KEY_REUSED') {
-      return new ToolDomainError('IDEMPOTENCY_KEY_REUSED', error.message, remoteDetails);
+    if (remote?.code === 'SCENE_REVISION_CONFLICT') {
+      return new ToolDomainError('SCENE_REVISION_CONFLICT', error.message, remote.details);
     }
   }
-  return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
+  return mapped;
 }
 
 async function liveCall(
@@ -380,7 +350,10 @@ export async function handleScriptDetach(args: z.infer<typeof ScriptDetachSchema
 }
 
 export const handleScriptInstanceGet = (args: z.infer<typeof ScriptInstanceGetSchema>, ctx: ProjectMeta) =>
-  liveCall(ctx, 'script.instance_get', { ScriptId: args.script_id });
+  // IncludeValues is sent only when opted in so default reads stay wire-identical
+  // to previous bridge versions. Bridges without the P7 read surface return the
+  // legacy DTO without Values; callers must check ValuesIncluded.
+  liveCall(ctx, 'script.instance_get', args.include_values ? { ScriptId: args.script_id, IncludeValues: true } : { ScriptId: args.script_id });
 
 export async function handleScriptInstanceUpdate(
   args: z.infer<typeof ScriptInstanceUpdateSchema>,

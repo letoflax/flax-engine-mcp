@@ -100,6 +100,7 @@ import {
   GraphMoveNodeSchema,
   GraphRemoveNodeSchema,
   GraphSetDefaultParameterSchema,
+  GraphSetModelSchema,
   GraphSetNodeValuesSchema,
   GraphUndoSchema,
   handleAnimgraphAddState,
@@ -111,6 +112,7 @@ import {
   handleGraphMoveNode,
   handleGraphRemoveNode,
   handleGraphSetDefaultParameter,
+  handleGraphSetModel,
   handleGraphSetNodeValues,
   handleGraphUndo,
 } from './graphLive.js';
@@ -371,6 +373,7 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   graph_disconnect: GraphDisconnectSchema,
   graph_set_node_values: GraphSetNodeValuesSchema,
   graph_move_node: GraphMoveNodeSchema,
+  graph_set_model: GraphSetModelSchema,
   animgraph_add_state: AnimgraphAddStateSchema,
   animgraph_add_transition: AnimgraphAddTransitionSchema,
   animgraph_set_state_clip: AnimgraphSetStateClipSchema,
@@ -430,6 +433,7 @@ const WRITE_TOOL_NAMES = new Set([
   'graph_disconnect',
   'graph_set_node_values',
   'graph_move_node',
+  'graph_set_model',
   'animgraph_add_state',
   'animgraph_add_transition',
   'mm_apply_preset',
@@ -610,7 +614,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'script_instance_get',
-      description: 'Reads a live script instance and its enabled state. Arbitrary serialized script properties are not exposed.',
+      description: 'Reads a live script instance and its enabled state. Opt-in include_values returns a bounded read-only projection of whitelisted public field values (max 64, unsupported types are null with a reason). Arbitrary serialized script writes are not exposed.',
       inputSchema: zodToJsonSchema(ScriptInstanceGetSchema),
       handler: (a, c) => handleScriptInstanceGet(a as Parameters<typeof handleScriptInstanceGet>[0], c),
     },
@@ -1156,6 +1160,12 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Moves one Visject graph root node to canvas coordinates via the window save path. Bounded Phase 6 tool; dry-run by default; the move pushes no undo action and saving cannot be undone. Requires bridge v20.',
       inputSchema: zodToJsonSchema(GraphMoveNodeSchema),
       handler: (a, c) => handleGraphMoveNode(a as Parameters<typeof handleGraphMoveNode>[0], c),
+    },
+    {
+      name: 'graph_set_model',
+      description: 'Binds a SkinnedModel as an AnimationGraph BaseModel via AnimationGraphWindow.SetBaseModel and the window save path. Bounded P7 tool; dry-run by default; the bind pushes no undo action (graph.undo cannot restore it) and saving cannot be undone. Requires bridge v21.',
+      inputSchema: zodToJsonSchema(GraphSetModelSchema),
+      handler: (a, c) => handleGraphSetModel(a as Parameters<typeof handleGraphSetModel>[0], c),
     },
     {
       name: 'animgraph_set_state_clip',

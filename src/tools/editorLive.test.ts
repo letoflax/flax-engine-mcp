@@ -11,6 +11,7 @@ import {
   ActorUpdateSchema,
   EditLeaseBeginSchema,
   EditLeaseGetSchema,
+  ScriptInstanceGetSchema,
   ScriptInstanceUpdateSchema,
   handleActorCreate,
   handleActorFind,
@@ -18,6 +19,7 @@ import {
   handleActorUpdate,
   handleEditLeaseBegin,
   handleEditLeaseGet,
+  handleScriptInstanceGet,
   handleScriptInstanceUpdate,
 } from './editorLive.js';
 
@@ -347,6 +349,73 @@ test('script_instance_update accepts an enabled patch and rejects an empty patch
       ScriptId: ACTOR_ID, Enabled: false, ExpectedSceneRevision: 3, LeaseId: 'b'.repeat(32), IdempotencyKey: 'disable-1',
     });
     assert.equal(((await pending).structuredContent as any).data.result.Enabled, false);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('script_instance_get defaults to identity-only and passes include_values through as IncludeValues', async () => {
+  const f = await fixture();
+  try {
+    const defaultPending = handleScriptInstanceGet(ScriptInstanceGetSchema.parse({ script_id: ACTOR_ID }), f.ctx);
+    const defaultRequest = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ Id: ACTOR_ID, Enabled: true }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(defaultRequest.method, 'script.instance_get');
+    assert.deepEqual(JSON.parse(String(defaultRequest.paramsJson)), { ScriptId: ACTOR_ID });
+    const defaultEnvelope = (await defaultPending).structuredContent as Record<string, any>;
+    assert.equal(defaultEnvelope.data.result.Enabled, true);
+
+    const valuesPending = handleScriptInstanceGet(ScriptInstanceGetSchema.parse({ script_id: ACTOR_ID, include_values: true }), f.ctx);
+    const valuesRequest = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({
+        Id: ACTOR_ID, Enabled: true, ValuesIncluded: true, ValuesTruncated: false,
+        Values: [
+          { Name: 'Speed', Type: 'System.Single', Value: { Kind: 'number', Number: 5.5 }, Reason: null },
+          { Name: 'Target', Type: 'FlaxEngine.Actor', Value: null, Reason: 'Unsupported type FlaxEngine.Actor.' },
+        ],
+        Warnings: ['Script values are a bounded read-only projection of public script fields. Unsupported types are null with a reason. Script writes remain limited to Enabled.'],
+      }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(valuesRequest.method, 'script.instance_get');
+    assert.deepEqual(JSON.parse(String(valuesRequest.paramsJson)), { ScriptId: ACTOR_ID, IncludeValues: true });
+    const valuesEnvelope = (await valuesPending).structuredContent as Record<string, any>;
+    assert.equal(valuesEnvelope.data.result.ValuesIncluded, true);
+    assert.equal(valuesEnvelope.data.result.Values.length, 2);
+    assert.equal(valuesEnvelope.data.result.Values[0].Value.Number, 5.5);
+    assert.equal(valuesEnvelope.data.result.Values[1].Value, null);
+    assert.match(valuesEnvelope.data.result.Values[1].Reason, /Unsupported type/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('script_instance_get delegates bridge errors through the shared mapper', async () => {
+  const f = await fixture();
+  try {
+    const missing = handleScriptInstanceGet(ScriptInstanceGetSchema.parse({ script_id: ACTOR_ID, include_values: true }), f.ctx);
+    const missingRequest = await respond(f, body => ({
+      id: body.id, ok: false, errorCode: 'NOT_FOUND',
+      error: 'Script was not found.', resultJson: null, timestamp: Date.now(),
+    }));
+    assert.equal(missingRequest.method, 'script.instance_get');
+    const missingResult = await missing;
+    assert.equal(missingResult.isError, true);
+    assert.equal((missingResult.structuredContent as any).error.code, 'NOT_FOUND');
+
+    const gated = handleScriptInstanceGet(ScriptInstanceGetSchema.parse({ script_id: ACTOR_ID }), f.ctx);
+    await respond(f, body => ({
+      id: body.id, ok: false, errorCode: 'METHOD_NOT_ALLOWED',
+      error: "Method 'script.instance_get' is not in the bridge allowlist.",
+      resultJson: null, timestamp: Date.now(),
+    }));
+    const gatedResult = await gated;
+    assert.equal(gatedResult.isError, true);
+    assert.equal((gatedResult.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
   } finally {
     await f.cleanup();
   }

@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 20
+// MCP-BRIDGE-VERSION: 21
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -25,12 +25,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 20; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 21; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 20; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; }
+    public class McpStatus { public int BridgeVersion = 21; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -44,7 +44,11 @@ namespace Game.MCP
         public int ChildrenCount; public bool ActiveInHierarchy; public int StaticFlags; public int OrderInParent;
         public string[] ScriptIds; public McpActorDto[] Children; public long ProjectRevision; public long SceneRevision;
     }
-    public class McpScriptDto { public string Id; public string TypeName; public string ActorId; public bool Enabled; public long ProjectRevision; public long SceneRevision; }
+    public class McpScriptDto { public string Id; public string TypeName; public string ActorId; public bool Enabled; public long ProjectRevision; public long SceneRevision; public McpScriptFieldDto[] Values; public bool ValuesIncluded; public bool ValuesTruncated; public string[] Warnings; }
+    // P7 read surface: one bounded, read-only script field projection.
+    // Value is null with Reason set when the runtime type is outside the
+    // whitelist (bool/int/float/string/enum/Guid/Vector2-4/Color) or unreadable.
+    public class McpScriptFieldDto { public string Name; public string Type; public McpMaterialTypedValue Value; public string Reason; }
     public class McpDeletedDto { public string DeletedId; public long ProjectRevision; public string SceneId; public long SceneRevision; }
     public class McpDetachedDto { public string DetachedId; public long ProjectRevision; public string SceneId; public long SceneRevision; }
     public class McpDuplicatedDto { public string SourceId; public string NewActorId; public bool Verified; public long ProjectRevision; public string SceneId; public long SceneRevision; }
@@ -63,7 +67,7 @@ namespace Game.MCP
     public class McpActorUpdate { public string ActorId; public string Name; public bool? Active; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public McpVector3 LocalPosition; public McpVector3 LocalScale; public McpVector3 LocalEulerAngles; public int? Layer; public string SkinnedModelId; public string SkinnedModelPath; public string AnimationGraphId; public string AnimationGraphPath; public string StaticModelId; public string StaticModelPath; public bool? UpdateWhenOffscreen; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpActorReparent { public string ActorId; public string ParentId; public bool KeepWorldTransform = true; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptAttach { public string ActorId; public string ScriptType; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
-    public class McpScriptId { public string ScriptId; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpScriptId { public string ScriptId; public bool IncludeValues; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptUpdate { public string ScriptId; public bool? Enabled; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpSceneSave { public string SceneId; }
     public class McpCompileStart { public string OperationId; public bool GenerateProjectFirst; }
@@ -198,7 +202,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 20;
+        private const int BridgeVersion = 21;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -212,6 +216,13 @@ namespace Game.MCP
         private const int MaxLayerNameChars = 128;
         private const int MaxActorLayer = 31;
         private const int MaxResultBytes = 512 * 1024;
+        // P7 read surface: bounded script value projection. Field values reuse
+        // the v13 McpMaterialTypedValue shapes plus an "enum" kind; asset
+        // references are reported as null with a reason so the whitelist stays
+        // bool/int/float/string/enum/Guid/Vector2-4/Color (+null). The global
+        // MaxResultBytes cap still bounds the total response.
+        private const int MaxScriptValueFields = 64;
+        private const int MaxScriptValueStringChars = 512;
         private const int MaxLogEntries = 2000;
         private const int MaxLogMessageChars = 8192;
         private const int MaxDiagnostics = 200;
@@ -453,7 +464,7 @@ namespace Game.MCP
                 case "actor.reparent": { var q = JsonSerializer.Deserialize<McpActorReparent>(p); result = OnMain(() => ExecuteIdempotent("actor.reparent", q == null ? null : q.IdempotencyKey, q, () => ReparentActor(q)), request.deadlineUnixMs); break; }
                 case "script.attach": { var q = JsonSerializer.Deserialize<McpScriptAttach>(p); result = OnMain(() => ExecuteIdempotent("script.attach", q == null ? null : q.IdempotencyKey, q, () => AttachScript(q)), request.deadlineUnixMs); break; }
                 case "script.detach": { var q = JsonSerializer.Deserialize<McpScriptId>(p); result = OnMain(() => ExecuteIdempotent("script.detach", q == null ? null : q.IdempotencyKey, q, () => DetachScript(q)), request.deadlineUnixMs); break; }
-                case "script.instance_get": result = OnMain(() => ScriptInfo(RequireScript(JsonSerializer.Deserialize<McpScriptId>(p).ScriptId)), request.deadlineUnixMs); break;
+                case "script.instance_get": { var q = JsonSerializer.Deserialize<McpScriptId>(p); result = OnMain(() => ScriptInfoWithValues(RequireScript(q == null ? null : q.ScriptId), q != null && q.IncludeValues), request.deadlineUnixMs); break; }
                 case "script.instance_update": { var q = JsonSerializer.Deserialize<McpScriptUpdate>(p); result = OnMain(() => ExecuteIdempotent("script.instance_update", q == null ? null : q.IdempotencyKey, q, () => UpdateScript(q)), request.deadlineUnixMs); break; }
                 case "edit.undo": result = OnMain(Undo, request.deadlineUnixMs); break;
                 case "edit.redo": result = OnMain(Redo, request.deadlineUnixMs); break;
@@ -539,6 +550,7 @@ namespace Game.MCP
                 case "graph.disconnect": { var q = JsonSerializer.Deserialize<McpGraphDisconnectRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.disconnect", q == null ? null : q.IdempotencyKey, q, () => DisconnectGraphBoxes(q)), request.deadlineUnixMs); break; }
                 case "graph.set_node_values": { var q = JsonSerializer.Deserialize<McpGraphSetNodeValuesRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.set_node_values", q == null ? null : q.IdempotencyKey, q, () => SetGraphNodeValues(q)), request.deadlineUnixMs); break; }
                 case "graph.move_node": { var q = JsonSerializer.Deserialize<McpGraphMoveNodeRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.move_node", q == null ? null : q.IdempotencyKey, q, () => MoveGraphNode(q)), request.deadlineUnixMs); break; }
+                case "graph.set_model": { var q = JsonSerializer.Deserialize<McpGraphSetModelRequest>(p); result = OnMain(() => ExecuteIdempotent("graph.set_model", q == null ? null : q.IdempotencyKey, q, () => SetGraphBaseModel(q)), request.deadlineUnixMs); break; }
                 case "animgraph.set_state_clip": { var q = JsonSerializer.Deserialize<McpGraphSetStateClipRequest>(p); result = OnMain(() => ExecuteIdempotent("animgraph.set_state_clip", q == null ? null : q.IdempotencyKey, q, () => SetAnimgraphStateClip(q)), request.deadlineUnixMs); break; }
                 default: throw new McpProtocolException("METHOD_NOT_ALLOWED", "Method '" + (request == null || request.method == null ? "unknown" : request.method) + "' is not in the bridge allowlist.");
             }
@@ -3022,6 +3034,131 @@ namespace Game.MCP
             finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
         }
 
+        public class McpGraphSetModelRequest { public string AssetId; public string Path; public string ModelAssetId; public string ModelPath; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public string LeaseId; }
+        public class McpGraphSetModelResult { public McpAssetMetadata Asset; public McpAssetMetadata Model; public McpAssetMetadata PreviousModel; public bool AlreadyBound; public bool DryRun; public bool Saved; public bool OpenedByBridge; public long ProjectRevision; public string[] Warnings; }
+
+        // Bridge v21 P7: AnimationGraph BaseModel binding.
+        // Cecil-verified on FlaxEngine.CSharp.dll 1.12 (see
+        // test/flax-api-smoke/GraphSetModelApiCompileProbe.cs):
+        // AnimationGraphWindow.SetBaseModel stores _baseModel + assigns
+        // PreviewActor.SkinnedModel and pushes NO undo action — non-undoable
+        // like disconnect/move. The read path is the public
+        // AnimationGraph.BaseModel. The model selector is validated through
+        // the generic asset registry (NOT the graph scope): exactly one
+        // ModelAssetId/ModelPath, FlaxEngine.SkinnedModel only, loaded with
+        // the same WaitForLoaded + registry/file ID-guard path as actor
+        // model binds. Verification is two-phase (behavior-grounded):
+        // SetBaseModel stages the model on the window and flushes it to the
+        // asset on Save, so the live preview actor (PreviewActor.SkinnedModel)
+        // is checked BEFORE saving (refuse to save on mismatch) and
+        // AnimationGraph.BaseModel AFTER saving (persistence proof).
+        private McpGraphSetModelResult SetGraphBaseModel(McpGraphSetModelRequest request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph set-model parameters are required.");
+            EnsureGraphEditorReady(true);
+            var record = ResolveGraphRecord(request.AssetId, request.Path);
+            EnsureAnimgraphAsset(record);
+            var modelRecord = ResolveAssetRecord(new McpAssetGet { AssetId = request.ModelAssetId, Path = request.ModelPath }, BuildAssetRegistry());
+            if (!string.Equals(modelRecord.Info.TypeName, "FlaxEngine.SkinnedModel", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "Set-model targets must be FlaxEngine.SkinnedModel assets.", new { TypeName = modelRecord.Info.TypeName });
+            var model = LoadSkinnedModelFromRecord(modelRecord);
+            CheckGraphWrite(record, request.LeaseId);
+            ContentItem item;
+            FlaxEditor.Windows.EditorWindow window;
+            bool openedByBridge;
+            var surface = AcquireGraphSurface(record, out item, out window, out openedByBridge);
+            var warnings = new List<string>();
+            try
+            {
+                var animWindow = window as FlaxEditor.Windows.Assets.AnimationGraphWindow;
+                if (animWindow == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected graph window is not an AnimationGraph editor in this version.", new { Window = window.GetType().FullName });
+                var visject = window as IVisjectSurfaceWindow;
+                var graph = visject == null ? null : visject.VisjectAsset as AnimationGraph;
+                if (graph == null)
+                    throw new McpProtocolException("INVALID_STATE", "The AnimationGraph asset is not ready in the editor window. Retry shortly.", GraphNotReadyDetails(record));
+                SkinnedModel current = null;
+                try { current = graph.BaseModel; } catch { current = null; }
+                var alreadyBound = current != null && current.ID == model.ID;
+                if (request.DryRun)
+                {
+                    return new McpGraphSetModelResult
+                    {
+                        Asset = AssetMetadata(record),
+                        Model = AssetMetadata(modelRecord),
+                        PreviousModel = AssetMetadataForLoadedAsset(current),
+                        AlreadyBound = alreadyBound,
+                        DryRun = true,
+                        Saved = false,
+                        OpenedByBridge = openedByBridge,
+                        ProjectRevision = _projectRevision,
+                        Warnings = new[] { alreadyBound ? "Dry-run preview only: the graph already binds this model; a write would be refused as an idempotent no-op. Nothing was written or saved." : "Dry-run preview only: the BaseModel was not changed and nothing was saved. Reissue with dryRun:false + confirm:true to persist via Window.Save()." },
+                    };
+                }
+                if (!request.Confirm)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Graph set-model requires confirm:true alongside dryRun:false. Saving cannot be undone after Window.Save().");
+                if (alreadyBound)
+                    throw new McpProtocolException("VALIDATION_FAILED", "The graph already binds this model (idempotent no-op refused).");
+                try { animWindow.SetBaseModel(model); }
+                catch (McpProtocolException) { throw; }
+                catch (Exception ex) { throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not set the graph BaseModel: " + ex.Message); }
+                try
+                {
+                    AnimatedModel preview = null;
+                    try { preview = animWindow.PreviewActor; } catch { preview = null; }
+                    // P7 review: distinguish "preview not initialized" (inconclusive —
+                    // fail closed WITHOUT claiming the bind is wrong) from a genuine
+                    // staged-model mismatch, so callers never read a false negative
+                    // as proof the model is incompatible.
+                    if (preview == null)
+                        throw new McpProtocolException("ASSET_OPERATION_FAILED", "The graph preview actor is not initialized, so the BaseModel assignment cannot be verified before save; refusing to save. Open the graph in the editor and retry.", new { Stage = "preview-unavailable" });
+                    SkinnedModel staged = null;
+                    try { staged = preview.SkinnedModel; } catch { staged = null; }
+                    if (staged == null || staged.ID != model.ID)
+                        throw new McpProtocolException("ASSET_OPERATION_FAILED", "The BaseModel assignment did not apply to the graph preview actor; refusing to save.", new { Stage = "preview-mismatch" });
+                }
+                catch (McpProtocolException) { throw; }
+                catch (Exception ex) { throw new McpProtocolException("ASSET_OPERATION_FAILED", "Could not verify the BaseModel assignment: " + ex.Message); }
+                try { surface.RootContext.MarkAsModified(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph root MarkAsModified notification failed: " + ex.Message); }
+                try { surface.MarkAsEdited(true); } catch (Exception ex) { Debug.LogWarning("[Flax MCP] Graph surface MarkAsEdited notification failed: " + ex.Message); }
+                if (!openedByBridge)
+                {
+                    try { surface.OpenContext(new Span<uint>(new uint[0])); }
+                    catch (Exception ex) { warnings.Add("Could not navigate the reused window back to the graph root: " + ex.Message); }
+                }
+                var saver = window as FlaxEditor.Windows.Assets.AssetEditorWindow;
+                if (saver == null)
+                    throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "The selected editor window does not expose the public save path.");
+                saver.Save();
+                try
+                {
+                    SkinnedModel saved = null;
+                    try { saved = graph.BaseModel; } catch { saved = null; }
+                    if (saved == null || saved.ID != model.ID)
+                        throw new McpProtocolException("ASSET_OPERATION_FAILED", "The BaseModel assignment did not persist to the graph asset on save.");
+                }
+                catch (McpProtocolException) { throw; }
+                catch (Exception ex) { throw new McpProtocolException("ASSET_OPERATION_FAILED", "Could not verify the saved BaseModel: " + ex.Message); }
+                var revision = AdvanceProjectRevision();
+                warnings.Add("Saved via the public window path (AnimationGraphWindow.SetBaseModel + AssetEditorWindow.Save()). SaveToOriginal cannot be undone.");
+                warnings.Add("AnimationGraphWindow.SetBaseModel pushes no undo action (Cecil-verified): graph.undo cannot restore the previous BaseModel. Re-run set_model with the prior model to revert.");
+                warnings.Add(openedByBridge ? "The editor window was opened (shown) by the bridge and closed after saving." : "A window already open for this asset was reused and left open.");
+                return new McpGraphSetModelResult
+                {
+                    Asset = AssetMetadata(record),
+                    Model = AssetMetadata(modelRecord),
+                    PreviousModel = AssetMetadataForLoadedAsset(current),
+                    AlreadyBound = false,
+                    DryRun = false,
+                    Saved = true,
+                    OpenedByBridge = openedByBridge,
+                    ProjectRevision = revision,
+                    Warnings = warnings.ToArray(),
+                };
+            }
+            finally { ReleaseGraphWindow(item, openedByBridge, record.Id); }
+        }
+
         private McpGraphSetStateClipResult SetAnimgraphStateClip(McpGraphSetStateClipRequest request)
         {
             if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Graph set-state-clip parameters are required.");
@@ -4819,6 +4956,14 @@ namespace Game.MCP
         {
             ValidateAssetSelector(assetId, assetPath);
             var record = ResolveAssetRecord(new McpAssetGet { AssetId = assetId, Path = assetPath }, BuildAssetRegistry());
+            return LoadSkinnedModelFromRecord(record);
+        }
+
+        // Record-first overload: SetGraphBaseModel already resolved + type-checked
+        // the model record, so reuse it instead of rebuilding the asset registry
+        // and resolving a second time (P7 review: one BuildAssetRegistry per call).
+        private static SkinnedModel LoadSkinnedModelFromRecord(McpAssetRecord record)
+        {
             var absolute = Path.Combine(Globals.ProjectFolder, record.Path.Replace('/', Path.DirectorySeparatorChar));
 
             SkinnedModel skinned = Content.LoadAsync<SkinnedModel>(record.Id);
@@ -4834,7 +4979,7 @@ namespace Game.MCP
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Skinned model asset could not be loaded: " + record.Path);
             if (skinned.WaitForLoaded(30000) || skinned.LastLoadFailed)
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Skinned model asset failed to load: " + record.Path);
-            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (case ...4133...); reject the mismatch.
+            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (see docs/GUID_AUDIT_P7.md: native-vs-.NET Guid convention); reject the mismatch.
             if (skinned.ID != record.Id)
                 throw new McpProtocolException("ASSET_OPERATION_FAILED", "registry/file ID mismatch: expected " + record.Id.ToString("N") + " got " + skinned.ID.ToString("N") + " (" + record.Path + ")");
             return skinned;
@@ -4854,7 +4999,7 @@ namespace Game.MCP
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Model asset could not be loaded: " + record.Path);
             if (model.WaitForLoaded(30000) || model.LastLoadFailed)
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Model asset failed to load: " + record.Path);
-            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (case ...4133...); reject the mismatch.
+            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (see docs/GUID_AUDIT_P7.md: native-vs-.NET Guid convention); reject the mismatch.
             if (model.ID != record.Id)
                 throw new McpProtocolException("ASSET_OPERATION_FAILED", "registry/file ID mismatch: expected " + record.Id.ToString("N") + " got " + model.ID.ToString("N") + " (" + record.Path + ")");
             return model;
@@ -4874,7 +5019,7 @@ namespace Game.MCP
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Content asset could not be loaded: " + record.Path);
             if (asset.WaitForLoaded(30000) || asset.LastLoadFailed)
                 throw new McpProtocolException("ASSET_NOT_FOUND", "Content asset failed to load: " + record.Path);
-            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (case ...4133...); reject the mismatch.
+            // P1a audit: path-based load can resolve an inner asset whose file ID differs from the registry record (see docs/GUID_AUDIT_P7.md: native-vs-.NET Guid convention); reject the mismatch.
             if (asset.ID != record.Id)
                 throw new McpProtocolException("ASSET_OPERATION_FAILED", "registry/file ID mismatch: expected " + record.Id.ToString("N") + " got " + asset.ID.ToString("N") + " (" + record.Path + ")");
             return asset;
@@ -4986,9 +5131,14 @@ namespace Game.MCP
 
         private McpScriptDto ScriptInfo(Script script)
         {
+            return ScriptInfoWithValues(script, false);
+        }
+
+        private McpScriptDto ScriptInfoWithValues(Script script, bool includeValues)
+        {
             var scene = script.Actor == null ? null : script.Actor.Scene;
             var revision = CurrentRevision(scene);
-            return new McpScriptDto
+            var dto = new McpScriptDto
             {
                 Id = script.ID.ToString("N"),
                 TypeName = script.TypeName,
@@ -4997,6 +5147,136 @@ namespace Game.MCP
                 ProjectRevision = revision.ProjectRevision,
                 SceneRevision = revision.SceneRevision,
             };
+            if (includeValues)
+            {
+                dto.Values = GetScriptFieldValues(script, out var truncated);
+                dto.ValuesIncluded = true;
+                dto.ValuesTruncated = truncated;
+                dto.Warnings = truncated
+                    ? new[] { "Script values are a bounded read-only projection of public script fields (max 64, alphabetical). Unsupported types are null with a reason; strings truncate at 512 characters. Script writes remain limited to Enabled." }
+                    : new[] { "Script values are a bounded read-only projection of public script fields. Unsupported types are null with a reason. Script writes remain limited to Enabled." };
+            }
+            return dto;
+        }
+
+        // P7 read surface: bounded, read-only projection of a script's public
+        // instance fields. This method never mutates the script; writes stay
+        // limited to Enabled (see UpdateScript). Only whitelisted primitive
+        // shapes are projected (bool/int/float/string/enum/Guid/Vector2-4/Color
+        // plus the v13 material null shape; live Asset references are null with
+        // a Reason); everything else is a null
+        // Value with a Reason. At most MaxScriptValueFields entries
+        // (alphabetical, remainder reported via ValuesTruncated) and the global
+        // MaxResultBytes cap still bounds the total response.
+        private McpScriptFieldDto[] GetScriptFieldValues(Script script, out bool truncated)
+        {
+            truncated = false;
+            var collected = new List<McpScriptFieldDto>();
+            try
+            {
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                for (var type = script.GetType(); type != null && type != typeof(Script); type = type.BaseType)
+                {
+                    if (type.FullName != null && type.FullName.StartsWith("FlaxEngine.", StringComparison.Ordinal)) break;
+                    FieldInfo[] fields;
+                    try { fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly); }
+                    catch { continue; }
+                    foreach (var field in fields)
+                    {
+                        if (field == null || string.IsNullOrEmpty(field.Name) || !seen.Add(field.Name)) continue;
+                        collected.Add(ProjectScriptField(script, field));
+                    }
+                }
+            }
+            catch { }
+            collected.Sort((left, right) => string.Compare(left.Name, right.Name, StringComparison.Ordinal));
+            if (collected.Count > MaxScriptValueFields)
+            {
+                truncated = true;
+                collected.RemoveRange(MaxScriptValueFields, collected.Count - MaxScriptValueFields);
+            }
+            return collected.ToArray();
+        }
+
+        private static McpScriptFieldDto ProjectScriptField(Script script, FieldInfo field)
+        {
+            var entry = new McpScriptFieldDto
+            {
+                Name = LimitForLog(field.Name, 256),
+                Type = LimitForLog(field.FieldType.FullName, 256),
+            };
+            object raw;
+            try { raw = field.GetValue(script); }
+            catch (Exception ex)
+            {
+                entry.Reason = LimitForLog("Field read failed: " + ex.GetType().FullName, 256);
+                return entry;
+            }
+            if (raw == null)
+            {
+                var fieldType = field.FieldType;
+                if (fieldType == typeof(string) || Nullable.GetUnderlyingType(fieldType) != null)
+                {
+                    entry.Value = new McpMaterialTypedValue { Kind = "null" };
+                    return entry;
+                }
+                entry.Reason = "Unsupported type " + (fieldType.FullName ?? "unknown") + " (null value).";
+                return entry;
+            }
+            if (raw is string text)
+            {
+                entry.Value = new McpMaterialTypedValue
+                {
+                    Kind = "string",
+                    Text = text.Length <= MaxScriptValueStringChars ? text : text.Substring(0, MaxScriptValueStringChars) + " [truncated]",
+                };
+                return entry;
+            }
+            if (raw is Vector2)
+            {
+                var v = (Vector2)raw;
+                entry.Value = new McpMaterialTypedValue { Kind = "vector2", Vector2 = new McpVector2 { X = v.X, Y = v.Y } };
+                return entry;
+            }
+            if (raw is Vector3)
+            {
+                var v = (Vector3)raw;
+                entry.Value = new McpMaterialTypedValue { Kind = "vector3", Vector3 = new McpVector3 { X = v.X, Y = v.Y, Z = v.Z } };
+                return entry;
+            }
+            if (raw is Vector4)
+            {
+                var v = (Vector4)raw;
+                entry.Value = new McpMaterialTypedValue { Kind = "vector4", Vector4 = new McpVector4 { X = v.X, Y = v.Y, Z = v.Z, W = v.W } };
+                return entry;
+            }
+            if (raw.GetType().IsEnum)
+            {
+                var enumType = raw.GetType();
+                long numeric;
+                try { numeric = Convert.ToInt64(raw); }
+                catch
+                {
+                    entry.Reason = "Unsupported enum " + (enumType.FullName ?? "unknown") + ".";
+                    return entry;
+                }
+                entry.Value = new McpMaterialTypedValue
+                {
+                    Kind = "enum",
+                    Integer = numeric,
+                    Text = LimitForLog(raw.ToString(), MaxScriptValueStringChars),
+                    TypeName = LimitForLog(enumType.FullName, 256),
+                };
+                return entry;
+            }
+            var projected = SafeMaterialAnimationValue(raw);
+            if (projected != null && (string.Equals(projected.Kind, "unavailable", StringComparison.Ordinal) || string.Equals(projected.Kind, "asset", StringComparison.Ordinal)))
+            {
+                entry.Reason = "Unsupported type " + (projected.TypeName ?? raw.GetType().FullName ?? "unknown") + ".";
+                return entry;
+            }
+            entry.Value = projected;
+            return entry;
         }
 
         private object UpdateScript(McpScriptUpdate p)

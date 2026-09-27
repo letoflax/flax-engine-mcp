@@ -15,10 +15,15 @@ test('bridge v20 keeps read-only sub-context inspection with navigate-and-restor
   assert.match(source, /OwnerNodeID/);
 });
 
-test('bridge v20 wires state clips, node values, and moves without hardcoded layouts', async () => {
+test('bridge v21 binds AnimationGraph BaseModel plus the v20 clip/value/move surface', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*20/);
-  assert.match(source, /BridgeVersion\s*=\s*20/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*21/);
+  assert.match(source, /BridgeVersion\s*=\s*21/);
+  assert.match(source, /case "graph\.set_model"/);
+  assert.match(source, /McpGraphSetModelRequest/);
+  assert.match(source, /SetGraphBaseModel/);
+  assert.match(source, /SetBaseModel\(/);
+  assert.match(source, /graph\.BaseModel/);
   assert.match(source, /case "graph\.set_node_values"/);
   assert.match(source, /case "graph\.move_node"/);
   assert.match(source, /case "animgraph\.set_state_clip"/);
@@ -50,10 +55,10 @@ test('bridge refuses scene saves while scripts compile and keeps asset swaps ins
   assert.ok(recordIdx >= 0 && assignIdx > recordIdx && endIdx > assignIdx, 'component assignments must run inside the undo action');
 });
 
-test('bridge v20 preserves revisioned edit leases without claiming atomic transactions', async () => {
+test('bridge v21 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*20/);
-  assert.match(source, /BridgeVersion\s*=\s*20/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*21/);
+  assert.match(source, /BridgeVersion\s*=\s*21/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);

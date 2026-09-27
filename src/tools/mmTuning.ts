@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
 import { mapBridgeError } from '../bridge/mapBridgeError.js';
-import { toolError, toolResult, ToolResponse } from '../errors.js';
+import { BridgeRpcError } from '../bridge/protocol.js';
+import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
 
 type RecordValue = Record<string, unknown>;
@@ -12,6 +13,26 @@ async function callMM(ctx: ProjectMeta, params: RecordValue, deadlineMs = 30_000
 }
 
 function mmError(error: unknown) {
+  // P2: MM ops (status/clip_motion/preset) fail with INVALID_STATE when no
+  // play session exists. The pre-P2 mapper reported those as
+  // INVALID_PLAY_STATE; the shared mapper folds every non-headless
+  // INVALID_STATE into EDITOR_BUSY, which would mislead callers testing
+  // play-state. Keep the MM-specific code for the non-headless case and
+  // delegate everything else (including headless evidence → HEADLESS_MODE).
+  if (error instanceof BridgeRpcError && error.code === 'BRIDGE_REMOTE_ERROR') {
+    const remote = error.details as { code?: unknown; details?: unknown } | undefined;
+    if (remote?.code === 'INVALID_STATE') {
+      let serialized = '';
+      try {
+        serialized = JSON.stringify(error.details) ?? '';
+      } catch {
+        serialized = String(error.details);
+      }
+      if (!/headless/i.test(serialized)) {
+        return new ToolDomainError('INVALID_PLAY_STATE', error.message, remote?.details);
+      }
+    }
+  }
   return mapBridgeError(error);
 }
 

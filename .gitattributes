@@ -1,0 +1,27 @@
+# Text normalization: checkout LF, commit LF for text; keep binaries untouched.
+* text=auto
+
+# Flax text assets + code/docs: explicit LF (editor writes tabs+LF; repo stores LF on commit).
+*.scene text eol=lf
+*.prefab text eol=lf
+*.json text eol=lf
+*.cs text eol=lf
+*.ts text eol=lf
+*.md text eol=lf
+*.csproj text eol=lf
+*.props text eol=lf
+*.targets text eol=lf
+*.txt text eol=lf
+
+# Flax/binary payloads: never normalize.
+*.flax binary
+*.bin binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.fbx binary
+*.dll binary
+*.pdb binary
+*.lib binary
+*.exe binary
+*.zip binary
