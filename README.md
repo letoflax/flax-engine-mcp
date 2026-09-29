@@ -119,6 +119,7 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `play_stop` / `play_pause` / `play_resume` | Control the active simulation |
 | `play_step_frame` | Advance a paused simulation one request at a time and verify Flax's run-to-repause lifecycle before continuing |
 | `play_run_for` | Run for seconds, frames, or until a session-correlated log match, then request stop |
+| `test_run_scenario` | Run a bounded gameplay smoke scenario for `run_seconds` and assert `log_contains`/`log_absent`/`no_errors`/`viewport_captured` conditions, always stopping play |
 | `runtime_inspect_actor` | Read a bounded, allowlisted actor snapshot during play mode |
 | `viewport_capture` | Capture the game viewport (requires play mode) or the editor viewport (bridge v22, works outside play mode) and return a readable temporary `flax://capture/<id>` PNG resource |
 

@@ -91,7 +91,7 @@ export class ResourceSubscriptionManager {
       'script_attach', 'script_detach', 'script_instance_update', 'edit_undo', 'edit_redo',
     ]).has(name);
     const sourceMutation = new Set(['write_script', 'apply_script_patch', 'generate_script', 'code_compile', 'code_generate_project']).has(name);
-    const runtimeMutation = new Set(['play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume', 'play_step_frame', 'play_run_for', 'code_compile', 'code_generate_project']).has(name);
+    const runtimeMutation = new Set(['play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume', 'play_step_frame', 'play_run_for', 'test_run_scenario', 'code_compile', 'code_generate_project']).has(name);
     const generalMutation = sceneMutation || sourceMutation || runtimeMutation || /^(?:reimport_asset|install_editor_bridge)$/.test(name);
     if (sceneMutation) for (const uri of this.subscriptions) if (/^flax:\/\/scene\/[0-9a-f]{32}\/tree$/i.test(uri)) this.schedule(uri);
     if (sourceMutation) this.schedule('flax://code/diagnostics/latest');

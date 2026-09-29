@@ -220,6 +220,7 @@ import {
   handlePlayStepFrame,
   handlePlayStop,
 } from './runtimeLive.js';
+import { TestRunScenarioSchema, handleTestRunScenario } from './testScenario.js';
 import {
   BuildCookSchema,
   BuildListTargetsSchema,
@@ -319,6 +320,7 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   play_resume: PlayResumeSchema,
   play_step_frame: PlayStepFrameSchema,
   play_run_for: PlayRunForSchema,
+  test_run_scenario: TestRunScenarioSchema,
   get_project_info: GetProjectInfoSchema,
   get_game_settings: GetGameSettingsSchema,
   get_project_summary: GetProjectSummarySchema,
@@ -469,6 +471,7 @@ const WRITE_TOOL_NAMES = new Set([
   'play_resume',
   'play_step_frame',
   'play_run_for',
+  'test_run_scenario',
 ]);
 
 function annotationsFor(name: string): ToolAnnotations {
@@ -787,6 +790,12 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Runs a bounded smoke-test session for time, frames, or a log condition and always attempts cleanup.',
       inputSchema: zodToJsonSchema(PlayRunForSchema),
       handler: (a, c) => handlePlayRunFor(a as Parameters<typeof handlePlayRunFor>[0], c),
+    },
+    {
+      name: 'test_run_scenario',
+      description: 'Runs a bounded gameplay smoke scenario for run_seconds and asserts log/no-error/viewport conditions, always stopping play.',
+      inputSchema: zodToJsonSchema(TestRunScenarioSchema),
+      handler: (a, c) => handleTestRunScenario(a as Parameters<typeof handleTestRunScenario>[0], c),
     },
     {
       name: 'log_get_recent',
