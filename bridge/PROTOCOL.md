@@ -469,6 +469,42 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v25: canonical scene open
+
+Bridge v25 keeps protocol v1 and the full v24 surface. It adds
+`scene.open`, a canonical Content scene opener backed by the verified public
+Flax 1.12 `FlaxEngine.Level.LoadSceneAsync(Guid)` API (see
+`FlaxEngine.CSharp.xml` `M:FlaxEngine.Level.LoadSceneAsync(Guid)` and
+`Source/Engine/Level/Level.h` `API_FUNCTION() static bool
+LoadSceneAsync(const Guid& id)` — background load, returns true only when
+loading cannot be done). Node exposes `scene_open` (scene family), requires
+bridge v25, and reports `sceneOpen` in `get_server_capabilities`.
+
+The request DTO is `McpSceneOpen { AssetId, Path, AllowDirtyScenes }`
+(PascalCase on the wire: `{ "AssetId": "<32-hex>" }` or `{ "Path":
+"Content/Levels/Arena.scene", "AllowDirtyScenes": true }`). Exactly one of
+`AssetId` (32-hex GUID) or `Path` (`Content/...`, no traversal) is required
+— the same selector convention as `asset.get` — resolved through the
+existing Content registry. The selected asset must verify as
+`FlaxEngine.SceneAsset`, otherwise the call fails with `ASSET_NOT_FOUND`.
+
+The scene load is async: a started load returns `McpSceneOpenResult
+{ SceneId, Phase:"opening" }` immediately and the caller polls
+`scene.list_loaded` until the scene appears (documented; the bridge never
+blocks). An already-loaded scene ID returns it with Phase
+`"already_loaded"` as a no-op success without touching the editor.
+
+Safety gates (all hold unconditionally, including the no-op path): play mode
+or a requested play start fails with `INVALID_STATE`; compiling/reloading
+scripts fails with `EDITOR_BUSY` (the same
+`ScriptsBuilder.IsCompiling||!IsReady` check the scene-save path uses);
+any active bridge edit lease fails with `EDIT_LEASE_ACTIVE` (the same lease
+table check play start uses, with active-lease details); edited loaded
+scenes fail with `DIRTY_SCENE` listing the dirty scene names unless
+`AllowDirtyScenes:true` is explicit (mirroring the play-start
+`AllowDirtyScenes` gate convention, which uses `VALIDATION_FAILED` there).
+`status` adds `SceneOpenSupported:true`.
+
 ## Bridge v24: editor selection
 
 Bridge v24 keeps protocol v1 and the full v23 surface. It adds
@@ -712,12 +748,13 @@ separate from the global `edit.undo`.
 | Method | Lives on | Node tool | Notes |
 |---|---|---|---|
 | `mm.tuning` / `mm_apply_preset` | local dev bridge | `mm_tuning`, `mm_apply_preset` | Missing method answers `METHOD_NOT_ALLOWED` → shared mapper reports `UNSUPPORTED_FLAX_VERSION` with capability hint. |
-| `scene.open` | flax-test local bridge (`4bf59f3`, `SceneOpenSupported`) | none | Loads a Content scene asset (`FlaxEngine.SceneAsset` only) via `OpenScene(record.Id, additive)`; async — caller polls `scene.list_loaded`. Refuses play mode, compiling scripts, active edit leases; already-loaded returns the live ref. |
 
 Capability checks must use the `*Supported` status flags (e.g.
 `GraphSetModelSupported`, `ScriptFieldValuesReadSupported`,
 `SceneOpenSupported`), never the bare version number: the flax-test local
-`McpStatus` advertises `BridgeVersion = 21` for `scene.open` while canonical
-v21 means `graph.set_model` — the same number names two different
-capability sets. The canonical installer does not ship the rows above, so a
-stock editor answers those methods with `METHOD_NOT_ALLOWED`.
+bridge advertised `BridgeVersion = 21` for its experimental `scene.open`
+while canonical v21 means `graph.set_model` — the same number named two
+different capability sets. Canonical v25+ ships `scene.open` (`scene_open`
+in Node); older canonical installers answer that method with
+`METHOD_NOT_ALLOWED`. The canonical installer does not ship the row above,
+so a stock editor answers that method with `METHOD_NOT_ALLOWED`.

@@ -33,6 +33,16 @@ const RevisionedLiveWrite = {
 export const SceneListLoadedSchema = z.object({});
 export const SceneGetTreeSchema = z.object({ scene_id: FlaxId });
 export const SceneSaveSchema = z.object({ scene_id: FlaxId });
+export const SceneOpenSchema = z.object({
+  asset_id: FlaxId.optional(),
+  path: ContentPath.optional(),
+  allow_dirty_scenes: z.boolean().optional().default(false)
+    .describe('Acknowledge edited loaded scenes before opening. Without it the bridge refuses with DIRTY_SCENE listing dirty scene names (play-start gate convention). Requires bridge v25.'),
+}).strict().superRefine((value, ctx) => {
+  if ((value.asset_id === undefined) === (value.path === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one of asset_id or path.' });
+  }
+});
 export const ProjectSaveAllSchema = z.object({});
 export const ActorGetSchema = z.object({ actor_id: FlaxId });
 export const ActorFindSchema = z.object({
@@ -229,6 +239,14 @@ export const handleSceneGetTree = (args: z.infer<typeof SceneGetTreeSchema>, ctx
   liveCall(ctx, 'scene.get_tree', { SceneId: args.scene_id });
 export const handleSceneSave = (args: z.infer<typeof SceneSaveSchema>, ctx: ProjectMeta) =>
   liveCall(ctx, 'scene.save', { SceneId: args.scene_id }, [{ kind: 'scene.saved', id: args.scene_id }]);
+export const handleSceneOpen = (args: z.infer<typeof SceneOpenSchema>, ctx: ProjectMeta) =>
+  // Scene load is async: Phase 'opening' means poll scene_list_loaded; Phase
+  // 'already_loaded' is a no-op success for an already-loaded scene ID.
+  liveCall(ctx, 'scene.open', {
+    AssetId: args.asset_id,
+    Path: args.path,
+    AllowDirtyScenes: args.allow_dirty_scenes,
+  }, [{ kind: 'scene.opened', id: args.asset_id ?? args.path }], 25);
 export const handleProjectSaveAll = (_: unknown, ctx: ProjectMeta) =>
   liveCall(ctx, 'project.save_all', {}, [{ kind: 'project.saved' }]);
 export const handleActorGet = (args: z.infer<typeof ActorGetSchema>, ctx: ProjectMeta) =>

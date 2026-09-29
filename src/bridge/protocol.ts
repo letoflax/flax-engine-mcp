@@ -15,6 +15,7 @@ export type SceneBridgeMethod =
   | 'scene.list_loaded'
   | 'scene.get_tree'
   | 'scene.save'
+  | 'scene.open'
   | 'project.save_all';
 
 export type ActorBridgeMethod =

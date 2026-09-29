@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 24
+// MCP-BRIDGE-VERSION: 25
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -26,12 +26,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 24; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 25; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 24; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; }
+    public class McpStatus { public int BridgeVersion = 25; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -71,6 +71,16 @@ namespace Game.MCP
     public class McpScriptId { public string ScriptId; public bool IncludeValues; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptUpdate { public string ScriptId; public bool? Enabled; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpSceneSave { public string SceneId; }
+    // Bridge v25 canonical scene.open. Exactly one of AssetId/Path selects a
+    // Content scene asset (FlaxEngine.SceneAsset only). AllowDirtyScenes
+    // defaults to false, mirroring the play-start dirty gate convention.
+    public class McpSceneOpen { public string AssetId; public string Path; public bool AllowDirtyScenes; }
+    public class McpSceneOpenResult { public string SceneId; public string Phase; }
+    // Named field-based DTOs: FlaxEngine.Json drops anonymous-type
+    // properties to {}, which would silently empty these error details
+    // (same reason McpGraphReadinessDetails is a named class).
+    public class McpSceneOpenDirtyDetails { public string[] DirtyScenes; }
+    public class McpSceneOpenTypeDetails { public string TypeName; }
     // Bridge v24 editor selection. The result is a bounded snapshot of the
     // verified SceneEditingModule.Selection list (public List<SceneGraphNode>);
     // only ActorNode entries with a live Actor are reported.
@@ -210,7 +220,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 24;
+        private const int BridgeVersion = 25;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -337,7 +347,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v24 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v25 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -461,6 +471,7 @@ namespace Game.MCP
                 case "scene.list_loaded": result = OnMain(ListLoadedScenes, request.deadlineUnixMs); break;
                 case "scene.get_tree": result = OnMain(() => SceneTree(JsonSerializer.Deserialize<McpSceneSave>(p)), request.deadlineUnixMs); break;
                 case "scene.save": result = OnMain(() => SaveScene(JsonSerializer.Deserialize<McpSceneSave>(p)), request.deadlineUnixMs); break;
+                case "scene.open": result = OnMain(() => OpenScene(JsonSerializer.Deserialize<McpSceneOpen>(p)), request.deadlineUnixMs); break;
                 case "project.save_all": result = OnMain(SaveAll, request.deadlineUnixMs); break;
                 case "actor.get": result = OnMain(() => ActorDto(RequireActor(JsonSerializer.Deserialize<McpActorId>(p).ActorId), true), request.deadlineUnixMs); break;
                 case "actor.find": result = OnMain(() => FindActors(JsonSerializer.Deserialize<McpActorFind>(p)), request.deadlineUnixMs); break;
@@ -4798,6 +4809,65 @@ namespace Game.MCP
             if (!string.IsNullOrEmpty(report))
                 result.SaveReport = report;
             return result;
+        }
+
+        // Bridge v25 canonical scene.open. Loads one Content scene asset
+        // (FlaxEngine.SceneAsset only, selected by exactly one AssetId/Path
+        // like asset.get) through the verified public
+        // FlaxEngine.Level.LoadSceneAsync(Guid) API (see
+        // FlaxEngine.CSharp.xml M:FlaxEngine.Level.LoadSceneAsync(Guid):
+        // loads the scene in the background, returns true only when loading
+        // cannot be done). The load is async, so a started load returns
+        // Phase "opening" immediately and the caller polls scene.list_loaded;
+        // an already-loaded scene returns Phase "already_loaded" without
+        // touching the editor. All safety gates hold unconditionally,
+        // including for the already-loaded no-op: play mode or a requested
+        // play start (INVALID_STATE), compiling/reloading scripts
+        // (EDITOR_BUSY, same ScriptsBuilder check the scene-save path uses),
+        // any active bridge edit lease (EDIT_LEASE_ACTIVE, same lease-table
+        // check play start uses), and edited loaded scenes (DIRTY_SCENE
+        // listing dirty scene names unless AllowDirtyScenes is explicit,
+        // mirroring the play-start gate convention).
+        private object OpenScene(McpSceneOpen request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Scene open parameters are required.");
+            ValidateAssetSelector(request.AssetId, request.Path);
+            var editor = FEditor.Instance;
+            if (FEditor.IsPlayMode || editor.Simulation.IsPlayModeRequested)
+                throw new McpProtocolException("INVALID_STATE", "Scene open is unavailable while the editor is in play mode or play was requested.");
+            if (ScriptsBuilder.IsCompiling || !ScriptsBuilder.IsReady)
+                throw new McpProtocolException("EDITOR_BUSY", "Scene open is unavailable while game scripts are compiling or reloading. Retry once compilation finishes.");
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, BuildAssetRegistry());
+            if (!string.Equals(record.Info.TypeName, "FlaxEngine.SceneAsset", StringComparison.Ordinal))
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The selected asset is not a scene asset: " + record.Path, new McpSceneOpenTypeDetails { TypeName = record.Info.TypeName });
+            lock (_stateLock)
+            {
+                CleanupExpiredStateLocked(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                if (_sceneLeases.Count > 0) throw new McpProtocolException("EDIT_LEASE_ACTIVE", "Cannot open a scene while an edit lease is active. Commit or release the lease first.", ActiveLeasesDetailsLocked());
+            }
+            if (!request.AllowDirtyScenes)
+            {
+                var dirty = DirtyLoadedSceneNames();
+                if (dirty.Length > 0) throw new McpProtocolException("DIRTY_SCENE", "Edited scenes must be saved or AllowDirtyScenes:true must be explicit before opening a scene: " + string.Join(", ", dirty), new McpSceneOpenDirtyDetails { DirtyScenes = dirty });
+            }
+            var existing = Level.FindScene(record.Id);
+            if (existing != null) return new McpSceneOpenResult { SceneId = existing.ID.ToString("N"), Phase = "already_loaded" };
+            if (Level.LoadSceneAsync(record.Id))
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not start loading the scene asset: " + record.Path);
+            return new McpSceneOpenResult { SceneId = record.Id.ToString("N"), Phase = "opening" };
+        }
+
+        private static string[] DirtyLoadedSceneNames()
+        {
+            var dirty = new List<string>();
+            for (var i = 0; i < Level.ScenesCount; i++)
+            {
+                var scene = Level.GetScene(i);
+                if (scene == null) continue;
+                if (FEditor.Instance.Scene.IsEdited(scene))
+                    dirty.Add(scene.Name ?? scene.ID.ToString("N"));
+            }
+            return dirty.ToArray();
         }
 
         // Best-effort post-save change report: compares the scene file on

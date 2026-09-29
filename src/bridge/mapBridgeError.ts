@@ -69,6 +69,8 @@ export function mapBridgeError(error: unknown): ToolDomainError {
     if (code === 'EDIT_LEASE_CONFLICT') return new ToolDomainError('EDIT_LEASE_CONFLICT', error.message, details);
     if (code === 'EDIT_LEASE_EXPIRED') return new ToolDomainError('EDIT_LEASE_EXPIRED', error.message, details);
     if (code === 'EDIT_LEASE_ACTIVE') return new ToolDomainError('EDIT_LEASE_ACTIVE', error.message, details);
+    if (code === 'DIRTY_SCENE') return new ToolDomainError('DIRTY_SCENES', error.message, details);
+    if (code === 'ASSET_OPERATION_FAILED') return new ToolDomainError('ASSET_OPERATION_FAILED', error.message, details);
     if (code === 'INVALID_REQUEST' || code === 'VALIDATION_FAILED') {
       return new ToolDomainError('VALIDATION_FAILED', error.message, details);
     }

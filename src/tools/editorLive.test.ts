@@ -13,6 +13,7 @@ import {
   EditLeaseGetSchema,
   EditorGetSelectionSchema,
   EditorSetSelectionSchema,
+  SceneOpenSchema,
   ScriptInstanceGetSchema,
   ScriptInstanceUpdateSchema,
   handleActorCreate,
@@ -23,6 +24,7 @@ import {
   handleEditLeaseGet,
   handleEditorGetSelection,
   handleEditorSetSelection,
+  handleSceneOpen,
   handleScriptInstanceGet,
   handleScriptInstanceUpdate,
 } from './editorLive.js';
@@ -611,6 +613,91 @@ test('editor_set_selection maps remote NOT_FOUND to the stable tool-domain error
     const result = await pending;
     assert.equal(result.isError, true);
     assert.equal((result.structuredContent as any).error.code, 'NOT_FOUND');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('scene_open sends a PascalCase selector and returns the opening phase', async () => {
+  const f = await fixture(25);
+  try {
+    const pending = handleSceneOpen(SceneOpenSchema.parse({ asset_id: ACTOR_ID }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ SceneId: ACTOR_ID, Phase: 'opening' }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'scene.open');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), { AssetId: ACTOR_ID, AllowDirtyScenes: false });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.ok, true);
+    assert.equal(envelope.mode, 'editor-connected');
+    assert.equal(envelope.data.result.Phase, 'opening');
+    assert.equal(envelope.data.result.SceneId, ACTOR_ID);
+    assert.deepEqual(envelope.changes, [{ kind: 'scene.opened', id: ACTOR_ID }]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('scene_open maps a path selector and explicit dirty acknowledgement in PascalCase', async () => {
+  const f = await fixture(25);
+  try {
+    const pending = handleSceneOpen(SceneOpenSchema.parse({
+      path: 'Content/Levels/Arena.scene', allow_dirty_scenes: true,
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ SceneId: 'b'.repeat(32), Phase: 'already_loaded' }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'scene.open');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), { Path: 'Content/Levels/Arena.scene', AllowDirtyScenes: true });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.Phase, 'already_loaded');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('scene_open maps a dirty-scene refusal to the stable DIRTY_SCENES domain error', async () => {
+  const f = await fixture(25);
+  try {
+    const pending = handleSceneOpen(SceneOpenSchema.parse({ asset_id: ACTOR_ID }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: false, errorCode: 'DIRTY_SCENE',
+      error: 'Edited scenes must be saved or AllowDirtyScenes:true must be explicit before opening a scene: Arena',
+      errorDetails: JSON.stringify({ DirtyScenes: ['Arena'] }),
+      resultJson: null, timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'scene.open');
+    const result = await pending;
+    assert.equal(result.isError, true);
+    const error = (result.structuredContent as any).error;
+    assert.equal(error.code, 'DIRTY_SCENES');
+    assert.deepEqual(error.details, { DirtyScenes: ['Arena'] });
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('scene_open requires exactly one selector via zod', () => {
+  assert.equal(SceneOpenSchema.safeParse({}).success, false);
+  assert.equal(SceneOpenSchema.safeParse({ asset_id: ACTOR_ID, path: 'Content/Levels/Arena.scene' }).success, false);
+  assert.equal(SceneOpenSchema.safeParse({ asset_id: 'not-a-guid' }).success, false);
+  assert.equal(SceneOpenSchema.safeParse({ path: 'Other/Arena.scene' }).success, false);
+  assert.equal(SceneOpenSchema.safeParse({ asset_id: ACTOR_ID }).success, true);
+  assert.equal(SceneOpenSchema.safeParse({ path: 'Content/Levels/Arena.scene' }).success, true);
+  assert.deepEqual(SceneOpenSchema.parse({ asset_id: ACTOR_ID }), { asset_id: ACTOR_ID, allow_dirty_scenes: false });
+});
+
+test('scene_open fails closed on a pre-v25 bridge before creating a request', async () => {
+  const f = await fixture(24);
+  try {
+    const result = await handleSceneOpen(SceneOpenSchema.parse({ asset_id: ACTOR_ID }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
   } finally {
     await f.cleanup();
   }

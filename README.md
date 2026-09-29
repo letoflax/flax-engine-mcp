@@ -144,6 +144,7 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `scene_list_loaded` | List scenes currently loaded by the connected Flax Editor |
 | `scene_get_tree` | Read a loaded scene's live actor hierarchy |
 | `scene_save` | Save one loaded scene |
+| `scene_open` | Open one Content scene asset by GUID or project-relative path (async — poll `scene_list_loaded`; an already-loaded scene is a no-op; refuses play mode, compiling scripts, active edit leases, and edited scenes unless `allow_dirty_scenes:true`) (bridge v25) |
 | `project_save_all` | Ask Flax Editor to save all edited project content |
 | `actor_get` / `actor_find` | Read or search live actors; v7 snapshots include bounded hierarchy, local/world-transform, tags, and layer metadata |
 | `actor_create` / `actor_update` | Create or patch allowlisted actor fields with dry-run support |

@@ -17,8 +17,8 @@ test('bridge v20 keeps read-only sub-context inspection with navigate-and-restor
 
 test('bridge v21 binds AnimationGraph BaseModel plus the v20 clip/value/move surface', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*24/);
-  assert.match(source, /BridgeVersion\s*=\s*24/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
+  assert.match(source, /BridgeVersion\s*=\s*25/);
   assert.match(source, /case "graph\.set_model"/);
   assert.match(source, /McpGraphSetModelRequest/);
   assert.match(source, /SetGraphBaseModel/);
@@ -57,8 +57,8 @@ test('bridge refuses scene saves while scripts compile and keeps asset swaps ins
 
 test('bridge v21 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*24/);
-  assert.match(source, /BridgeVersion\s*=\s*24/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
+  assert.match(source, /BridgeVersion\s*=\s*25/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -258,7 +258,7 @@ test('bridge v17 exposes the window-backed Visject graph surface with bounded An
 
 test('bridge v22 captures game and editor viewports through verified Screenshot paths', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*24/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
   assert.match(source, /EditorViewportCaptureSupported = true/);
   assert.match(source, /Viewport must be 'game' or 'editor'/);
   assert.match(source, /EditWin\.Viewport\.Task/);
@@ -271,8 +271,8 @@ test('bridge v22 captures game and editor viewports through verified Screenshot 
 
 test('bridge v23 controls play time scale through verified Time.TimeScale', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*24/);
-  assert.match(source, /BridgeVersion\s*=\s*24/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
+  assert.match(source, /BridgeVersion\s*=\s*25/);
   assert.match(source, /PlayTimeScaleSupported = true/);
   assert.match(source, /McpTimeScaleRequest/);
   assert.match(source, /case "play\.set_time_scale"/);
@@ -284,8 +284,8 @@ test('bridge v23 controls play time scale through verified Time.TimeScale', asyn
 
 test('bridge v24 reads and replaces editor selection through verified SceneEditing APIs', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*24/);
-  assert.match(source, /BridgeVersion\s*=\s*24/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
+  assert.match(source, /BridgeVersion\s*=\s*25/);
   assert.match(source, /EditorSelectionSupported = true/);
   assert.match(source, /McpSelectionRequest/);
   assert.match(source, /McpSelectionEntry/);
@@ -300,6 +300,28 @@ test('bridge v24 reads and replaces editor selection through verified SceneEditi
   assert.match(source, /EditWin\.Viewport\.FocusSelection\(\)/);
   assert.match(source, /ActorIds must contain between 1 and 200 actor IDs/);
   assert.match(source, /Editor selection is unavailable in headless editor mode/);
+});
+
+test('bridge v25 opens canonical Content scenes through verified Level.LoadSceneAsync', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
+  assert.match(source, /BridgeVersion\s*=\s*25/);
+  assert.match(source, /SceneOpenSupported = true/);
+  assert.match(source, /McpSceneOpen\b/);
+  assert.match(source, /McpSceneOpenResult/);
+  assert.match(source, /case "scene\.open"/);
+  assert.match(source, /OpenScene\(JsonSerializer\.Deserialize<McpSceneOpen>/);
+  assert.match(source, /Level\.LoadSceneAsync\(record\.Id\)/);
+  assert.match(source, /FlaxEngine\.SceneAsset/);
+  assert.match(source, /already_loaded/);
+  assert.match(source, /Phase = "opening"/);
+  assert.match(source, /DIRTY_SCENE/);
+  assert.match(source, /DirtyLoadedSceneNames/);
+  assert.match(source, /McpSceneOpenDirtyDetails/);
+  assert.match(source, /McpSceneOpenTypeDetails/);
+  assert.match(source, /ScriptsBuilder\.IsCompiling \|\| !ScriptsBuilder\.IsReady/);
+  assert.match(source, /Scene open is unavailable while the editor is in play mode/);
+  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v25 listening/);
 });
 
 test('bridge v15 keeps domain mutations unsupported while exposing bounded public queries', async () => {

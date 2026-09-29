@@ -38,7 +38,7 @@ const TOOL_FAMILIES = {
     'apply_script_patch', 'generate_script',
   ],
   scene: [
-    'scene_save', 'project_save_all', 'actor_create', 'actor_update', 'actor_delete',
+    'scene_save', 'scene_open', 'project_save_all', 'actor_create', 'actor_update', 'actor_delete',
     'actor_duplicate', 'actor_reparent', 'script_attach', 'script_detach',
     'script_instance_update', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'editor_set_selection', 'create_actor', 'modify_actor',
     'prefab_instantiate', 'prefab_revert_overrides', 'prefab_break_link', 'material_assign_to_actor', 'animation_set_graph_parameter', 'graph_undo', 'mm_apply_preset',
