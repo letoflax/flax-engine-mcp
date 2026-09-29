@@ -41,6 +41,11 @@ export type EditBridgeMethod =
   | 'edit.lease_commit'
   | 'edit.lease_release';
 
+/** Bridge v24 editor selection surface (SceneEditingModule.Selection). */
+export type EditorBridgeMethod =
+  | 'editor.get_selection'
+  | 'editor.set_selection';
+
 export type CodeBridgeMethod =
   | 'code.status'
   | 'code.compile_start'
@@ -153,6 +158,7 @@ export type BridgeMethod =
   | ActorBridgeMethod
   | ScriptBridgeMethod
   | EditBridgeMethod
+  | EditorBridgeMethod
   | CodeBridgeMethod
   | PlayBridgeMethod
   | ObservabilityBridgeMethod

@@ -11,6 +11,8 @@ import {
   ActorUpdateSchema,
   EditLeaseBeginSchema,
   EditLeaseGetSchema,
+  EditorGetSelectionSchema,
+  EditorSetSelectionSchema,
   ScriptInstanceGetSchema,
   ScriptInstanceUpdateSchema,
   handleActorCreate,
@@ -19,6 +21,8 @@ import {
   handleActorUpdate,
   handleEditLeaseBegin,
   handleEditLeaseGet,
+  handleEditorGetSelection,
+  handleEditorSetSelection,
   handleScriptInstanceGet,
   handleScriptInstanceUpdate,
 } from './editorLive.js';
@@ -497,6 +501,116 @@ test('edit lease begin supports a scene-less graph asset scope', async () => {
     assert.deepEqual(JSON.parse(String(request.paramsJson)), { AssetId: 'a'.repeat(32), Owner: 'graph-smoke', TtlMs: 30_000 });
     const envelope = (await pending).structuredContent as Record<string, any>;
     assert.equal(envelope.data.result.LeaseId, 'c'.repeat(32));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('editor_get_selection returns the bounded bridge selection list', async () => {
+  const f = await fixture(24);
+  try {
+    const pending = handleEditorGetSelection(EditorGetSelectionSchema.parse({}), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({
+        Selection: [{ ActorId: ACTOR_ID, Name: 'Player', SceneId: 'b'.repeat(32) }],
+        Count: 1,
+      }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'editor.get_selection');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {});
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.ok, true);
+    assert.deepEqual(envelope.data.result.Selection, [{ ActorId: ACTOR_ID, Name: 'Player', SceneId: 'b'.repeat(32) }]);
+    assert.equal(envelope.data.result.Count, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('editor_get_selection returns an empty list for an empty selection', async () => {
+  const f = await fixture(24);
+  try {
+    const pending = handleEditorGetSelection(EditorGetSelectionSchema.parse({}), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ Selection: [], Count: 0 }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'editor.get_selection');
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.ok, true);
+    assert.deepEqual(envelope.data.result.Selection, []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('editor_set_selection sends PascalCase ActorIds and returns the new selection', async () => {
+  const f = await fixture(24);
+  try {
+    const pending = handleEditorSetSelection(EditorSetSelectionSchema.parse({
+      actor_ids: [ACTOR_ID, 'b'.repeat(32)], focus_viewport: true,
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({
+        Selection: [
+          { ActorId: ACTOR_ID, Name: 'Player', SceneId: 'c'.repeat(32) },
+          { ActorId: 'b'.repeat(32), Name: 'Light', SceneId: 'c'.repeat(32) },
+        ],
+        Count: 2,
+      }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'editor.set_selection');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), { ActorIds: [ACTOR_ID, 'b'.repeat(32)], FocusViewport: true });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.ok, true);
+    assert.equal(envelope.data.result.Count, 2);
+    assert.deepEqual(envelope.changes, [{ kind: 'editor.selection', count: 2 }]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('editor_set_selection rejects bad GUIDs, empty arrays, and oversized arrays via zod', () => {
+  assert.equal(EditorSetSelectionSchema.safeParse({ actor_ids: ['not-a-guid'] }).success, false);
+  assert.equal(EditorSetSelectionSchema.safeParse({ actor_ids: [] }).success, false);
+  assert.equal(EditorSetSelectionSchema.safeParse({ actor_ids: Array.from({ length: 201 }, () => ACTOR_ID) }).success, false);
+  assert.equal(EditorSetSelectionSchema.safeParse({ actor_ids: [ACTOR_ID] }).success, true);
+  assert.deepEqual(EditorSetSelectionSchema.parse({ actor_ids: [ACTOR_ID] }), { actor_ids: [ACTOR_ID], focus_viewport: false });
+});
+
+test('editor selection tools fail closed on a pre-v24 bridge before creating a request', async () => {
+  const f = await fixture(6);
+  try {
+    const get = await handleEditorGetSelection(EditorGetSelectionSchema.parse({}), f.ctx);
+    assert.equal(get.isError, true);
+    assert.equal((get.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+
+    const set = await handleEditorSetSelection(EditorSetSelectionSchema.parse({ actor_ids: [ACTOR_ID] }), f.ctx);
+    assert.equal(set.isError, true);
+    assert.equal((set.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('editor_set_selection maps remote NOT_FOUND to the stable tool-domain error', async () => {
+  const f = await fixture(24);
+  try {
+    const pending = handleEditorSetSelection(EditorSetSelectionSchema.parse({ actor_ids: ['d'.repeat(32)] }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: false, errorCode: 'NOT_FOUND',
+      error: 'Actor was not found.', resultJson: null, timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'editor.set_selection');
+    const result = await pending;
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'NOT_FOUND');
   } finally {
     await f.cleanup();
   }

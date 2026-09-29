@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 23
+// MCP-BRIDGE-VERSION: 24
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using FlaxEditor;
 using FlaxEditor.Content;
 using FlaxEditor.Content.Import;
+using FlaxEditor.SceneGraph;
 using FlaxEditor.Surface;
 using FlaxEngine.Tools;
 using FEditor = FlaxEditor.Editor;
@@ -25,12 +26,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 23; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 24; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 22; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; }
+    public class McpStatus { public int BridgeVersion = 24; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -70,6 +71,12 @@ namespace Game.MCP
     public class McpScriptId { public string ScriptId; public bool IncludeValues; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptUpdate { public string ScriptId; public bool? Enabled; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpSceneSave { public string SceneId; }
+    // Bridge v24 editor selection. The result is a bounded snapshot of the
+    // verified SceneEditingModule.Selection list (public List<SceneGraphNode>);
+    // only ActorNode entries with a live Actor are reported.
+    public class McpSelectionRequest { public string[] ActorIds; public bool FocusViewport; }
+    public class McpSelectionEntry { public string ActorId; public string Name; public string SceneId; }
+    public class McpSelectionResult { public McpSelectionEntry[] Selection; public int Count; }
     public class McpCompileStart { public string OperationId; public bool GenerateProjectFirst; }
     public class McpCompileStatus
     {
@@ -203,7 +210,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 23;
+        private const int BridgeVersion = 24;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -330,7 +337,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v23 listening at " + Root);
+                Debug.Log("[Flax MCP] Bridge v24 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -473,6 +480,8 @@ namespace Game.MCP
                 case "edit.lease_get": result = OnMain(() => GetLease(JsonSerializer.Deserialize<McpLeaseGet>(p)), request.deadlineUnixMs); break;
                 case "edit.lease_commit": result = OnMain(() => CommitLease(JsonSerializer.Deserialize<McpLeaseRelease>(p)), request.deadlineUnixMs); break;
                 case "edit.lease_release": result = OnMain(() => ReleaseLease(JsonSerializer.Deserialize<McpLeaseRelease>(p)), request.deadlineUnixMs); break;
+                case "editor.get_selection": result = OnMain(GetEditorSelection, request.deadlineUnixMs); break;
+                case "editor.set_selection": result = OnMain(() => SetEditorSelection(JsonSerializer.Deserialize<McpSelectionRequest>(p)), request.deadlineUnixMs); break;
                 // Phase 2: code operations intentionally acknowledge work quickly.
                 // A compile can reload this plugin, so callers poll status instead of
                 // keeping a request open across the reload boundary.
@@ -5116,6 +5125,84 @@ namespace Game.MCP
             FEditor.Instance.SceneEditing.Duplicate(); // Public API is undoable but returns no new Actor ID.
             var revision = AdvanceSceneRevision(scene);
             return new McpDuplicatedDto { SourceId = actor.ID.ToString("N"), NewActorId = null, Verified = false, ProjectRevision = revision.ProjectRevision, SceneId = scene == null ? null : scene.ID.ToString("N"), SceneRevision = revision.SceneRevision };
+        }
+
+        // Bridge v24 editor selection. Selection is an edit-time concept backed
+        // by the verified SceneEditingModule surface: the public
+        // List<SceneGraphNode> Selection field, Select/Deselect, and the main
+        // editor viewport FocusSelection (framing the current selection).
+        // Empty selection is valid and returns an empty list, not an error.
+        private const int MaxSelectionEntries = 200;
+
+        private static void RequireEditorSelectionAvailable()
+        {
+            if (FEditor.Instance.IsHeadlessMode)
+                throw new McpProtocolException("INVALID_STATE", "Editor selection is unavailable in headless editor mode.");
+        }
+
+        private static McpSelectionResult GetEditorSelection()
+        {
+            RequireEditorSelectionAvailable();
+            var selection = FEditor.Instance.SceneEditing.Selection;
+            var nodes = selection == null ? new SceneGraphNode[0] : selection.ToArray();
+            var entries = new List<McpSelectionEntry>(Math.Min(nodes.Length, MaxSelectionEntries));
+            foreach (var node in nodes)
+            {
+                if (entries.Count >= MaxSelectionEntries) break;
+                var actorNode = node as ActorNode;
+                var actor = actorNode == null ? null : actorNode.Actor;
+                if (actor == null) continue;
+                entries.Add(new McpSelectionEntry
+                {
+                    ActorId = actor.ID.ToString("N"),
+                    Name = actor.Name,
+                    SceneId = actor.Scene == null ? null : actor.Scene.ID.ToString("N"),
+                });
+            }
+            return new McpSelectionResult { Selection = entries.ToArray(), Count = entries.Count };
+        }
+
+        private static McpSelectionResult SetEditorSelection(McpSelectionRequest request)
+        {
+            RequireEditorSelectionAvailable();
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Editor selection parameters are required.");
+            if (request.ActorIds == null || request.ActorIds.Length == 0 || request.ActorIds.Length > MaxSelectionEntries)
+                throw new McpProtocolException("VALIDATION_FAILED", "ActorIds must contain between 1 and 200 actor IDs.");
+            // Resolve every actor before mutating so unknown IDs fail without
+            // changing the current selection. Duplicates are collapsed so one
+            // actor is never added to the selection twice.
+            var actors = new List<Actor>(request.ActorIds.Length);
+            var seen = new HashSet<string>();
+            foreach (var id in request.ActorIds)
+            {
+                if (!IsGuidN(id)) throw new McpProtocolException("INVALID_REQUEST", "actorId must be a 32-character GUID.");
+                var actor = RequireActor(id);
+                var key = actor.ID.ToString("N");
+                if (seen.Add(key)) actors.Add(actor);
+            }
+            // Resolve graph nodes up front: Select(nodes, additive:false) is the
+            // verified replace path, independent of per-actor Select accumulation.
+            var nodes = new List<SceneGraphNode>(actors.Count);
+            foreach (var actor in actors)
+            {
+                var node = FEditor.Instance.Scene.GetActorNode(actor);
+                if (node == null) throw new McpProtocolException("NOT_FOUND", "Actor is not present in the editor scene graph.");
+                nodes.Add(node);
+            }
+            if (request.FocusViewport)
+            {
+                // Verify the viewport before mutating so a missing editor window
+                // fails without changing the current selection.
+                var windows = FEditor.Instance.Windows;
+                var viewport = windows != null && windows.EditWin != null ? windows.EditWin.Viewport : null;
+                if (viewport == null)
+                    throw new McpProtocolException("INVALID_STATE", "Editor viewport is unavailable. Show the editor window and retry.");
+            }
+            var editing = FEditor.Instance.SceneEditing;
+            editing.Select(nodes, false);
+            if (request.FocusViewport)
+                FEditor.Instance.Windows.EditWin.Viewport.FocusSelection();
+            return GetEditorSelection();
         }
 
         private McpActorDto ReparentActor(McpActorReparent p)

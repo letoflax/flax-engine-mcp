@@ -152,6 +152,7 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `script_attach` / `script_detach` | Attach or detach a script with editor undo support |
 | `script_instance_get` / `script_instance_update` | Read a script instance or patch its enabled state (arbitrary serialized script properties are deferred). `script_instance_get` accepts opt-in `include_values` for a bounded read-only projection of whitelisted public field values (bool/int/float/string/enum/Guid/Vector2-4/Color; max 64 fields alphabetically, strings capped at 512 chars, unsupported types are null with a reason; never mutates the script) |
 | `edit_undo` / `edit_redo` | Execute the Flax Editor undo/redo stack |
+| `editor_get_selection` / `editor_set_selection` | Read the editor actor selection (bounded IDs, names, parent scene IDs; empty is an empty list) or replace it with 1–200 actor IDs; optional `focus_viewport` frames the EditWin viewport on the new selection (bridge v24) |
 | `edit_begin_lease` / `edit_get_lease` | Acquire or inspect a bounded v7 scene edit lease |
 | `edit_commit_lease` / `edit_release_lease` | End a lease after visible edits; neither operation rolls changes back |
 

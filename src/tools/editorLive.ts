@@ -150,6 +150,13 @@ export const EditLeaseCommitSchema = z.object({
   lease_id: z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character edit lease ID.'),
 });
 export const EditLeaseReleaseSchema = EditLeaseCommitSchema;
+export const EditorGetSelectionSchema = z.object({});
+export const EditorSetSelectionSchema = z.object({
+  actor_ids: z.array(FlaxId).min(1).max(200)
+    .describe('Live actor IDs that replace the editor selection (1-200). Unknown IDs fail without changing the selection.'),
+  focus_viewport: z.boolean().optional().default(false)
+    .describe('Frame the EditWin viewport on the new selection via FocusSelection after replacing it.'),
+});
 
 type AnyRecord = Record<string, unknown>;
 
@@ -181,7 +188,10 @@ async function liveCall(
 ): Promise<ToolResponse> {
   try {
     const requiresV7 = minimumBridgeVersion === 7 || params.ExpectedSceneRevision !== undefined || params.LeaseId !== undefined || params.IdempotencyKey !== undefined;
-    const response = await callEditorBridge(ctx, method, params, requiresV7 ? { minimumBridgeVersion: 7 } : {});
+    const versionOption = minimumBridgeVersion !== undefined
+      ? { minimumBridgeVersion }
+      : requiresV7 ? { minimumBridgeVersion: 7 } : {};
+    const response = await callEditorBridge(ctx, method, params, versionOption);
     const data = { result: response.data, bridge: response.bridge };
     return toolResult(JSON.stringify(data, null, 2), {
       mode: response.mode,
@@ -384,3 +394,11 @@ export const handleEditLeaseCommit = (args: z.infer<typeof EditLeaseCommitSchema
   liveCall(ctx, 'edit.lease_commit', { LeaseId: args.lease_id }, [{ kind: 'edit.lease.committed', leaseId: args.lease_id }]);
 export const handleEditLeaseRelease = (args: z.infer<typeof EditLeaseReleaseSchema>, ctx: ProjectMeta) =>
   liveCall(ctx, 'edit.lease_release', { LeaseId: args.lease_id }, [{ kind: 'edit.lease.released', leaseId: args.lease_id }]);
+
+export const handleEditorGetSelection = (_: unknown, ctx: ProjectMeta) =>
+  liveCall(ctx, 'editor.get_selection', {}, [], 24);
+export const handleEditorSetSelection = (args: z.infer<typeof EditorSetSelectionSchema>, ctx: ProjectMeta) =>
+  liveCall(ctx, 'editor.set_selection', {
+    ActorIds: args.actor_ids,
+    FocusViewport: args.focus_viewport,
+  }, [{ kind: 'editor.selection', count: args.actor_ids.length }], 24);

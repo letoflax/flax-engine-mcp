@@ -207,6 +207,7 @@ export async function handleGetServerCapabilities(
     const domainQueries = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 14;
     const editorViewportCapture = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 22;
     const playTimeScale = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 23;
+    const editorSelection = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 24;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -224,6 +225,7 @@ export async function handleGetServerCapabilities(
         viewportCapture: phase2,
         editorViewportCapture,
         playTimeScale,
+        editorSelection,
         runtimeInspection: phase2,
         sceneRevisions: phase3,
         editLeases: phase3,

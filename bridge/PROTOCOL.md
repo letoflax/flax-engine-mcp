@@ -469,6 +469,41 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v24: editor selection
+
+Bridge v24 keeps protocol v1 and the full v23 surface. It adds
+`editor.get_selection` and `editor.set_selection`, an edit-time selection
+surface backed by the verified Flax 1.12 `SceneEditingModule` API
+(`FlaxEngine.CSharp.xml` `F:FlaxEditor.Modules.SceneEditingModule.Selection`
+— a public `List<SceneGraphNode>` — plus `Select`/`Deselect`; actor mapping
+via `ActorNode.Actor` and `SceneModule.GetActorNode`, all verified by
+reflection against the shipped `FlaxEngine.CSharp.dll`).
+
+`editor.get_selection` takes no parameters and returns `McpSelectionResult
+{ Selection: McpSelectionEntry[] { ActorId, Name, SceneId }, Count }`,
+bounded to 200 entries in selection order. Only `ActorNode` entries with a
+live actor are reported. An empty selection is valid and returns an empty
+list, not an error. It works outside play mode.
+
+`editor.set_selection` takes `McpSelectionRequest { ActorIds, FocusViewport
+}` (PascalCase on the wire: `{ "ActorIds": ["..."], "FocusViewport": true
+}`). `ActorIds` must contain 1–200 32-hex GUIDs (`VALIDATION_FAILED`
+outside that range, `INVALID_REQUEST` for malformed IDs); each ID is
+resolved with the existing `RequireActor` helper (`NOT_FOUND` for unknown
+actors). Every actor resolves before any mutation, so unknown IDs fail
+without changing the current selection; duplicates collapse to one entry.
+The replacement uses the verified `Select(nodes, additive:false)` path, and
+the new selection is returned in the same shape as get. Optional
+`FocusViewport` (default false) frames the `EditWin` viewport on the new
+selection via the verified `MainEditorGizmoViewport.FocusSelection()` (a
+single-actor selection frames exactly that actor); a missing editor window
+fails with `INVALID_STATE` before mutating. No play-mode gating applies
+(selection is an edit-time concept), but both calls are meaningless
+headless and fail with `INVALID_STATE`. `status` adds
+`EditorSelectionSupported:true`. Node exposes `editor_get_selection`
+(read family) and `editor_set_selection` (scene family), requires bridge
+v24 for both, and reports `editorSelection` in `get_server_capabilities`.
+
 ## Bridge v23: play time scale
 
 Bridge v23 keeps protocol v1 and the full v22 surface. It adds
