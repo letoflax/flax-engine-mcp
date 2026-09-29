@@ -55,7 +55,8 @@ export type PlayBridgeMethod =
   | 'play.stop'
   | 'play.pause'
   | 'play.resume'
-  | 'play.step';
+  | 'play.step'
+  | 'play.set_time_scale';
 
 export type ObservabilityBridgeMethod =
   | 'log.query'

@@ -12,7 +12,7 @@ type RuntimeBridgeMethod =
   | 'code.status' | 'code.compile_start' | 'code.diagnostics'
   | 'code.generate_project_start' | 'code.generate_project_status'
   | 'play.status' | 'play.start_scenes' | 'play.start_game' | 'play.stop'
-  | 'play.pause' | 'play.resume' | 'play.step' | 'log.query';
+  | 'play.pause' | 'play.resume' | 'play.step' | 'play.set_time_scale' | 'log.query';
 
 const asBridgeMethod = (method: RuntimeBridgeMethod): BridgeMethod => method as unknown as BridgeMethod;
 const TimeoutMs = z.number().int().min(250).max(120_000);
@@ -59,6 +59,9 @@ export const PlayPauseSchema = PlayMutation;
 export const PlayResumeSchema = PlayMutation;
 export const PlayStepFrameSchema = PlayMutation.extend({
   frames: z.number().int().min(1).max(120).optional().default(1),
+});
+export const PlaySetTimeScaleSchema = z.object({
+  time_scale: z.number().min(0).max(10),
 });
 export const PlayRunForSchema = z.object({
   seconds: z.number().positive().max(60).optional(),
@@ -480,6 +483,16 @@ export async function handlePlayStepFrame(args: z.infer<typeof PlayStepFrameSche
     }
     return success({ framesRequested: args.frames, framesStepped: args.frames, result: latest.data }, latest.bridge, warnings,
       [{ kind: 'play.stepped', frames: args.frames }]);
+  } catch (error) { return toolError(runtimeError(error)); }
+}
+
+export async function handlePlaySetTimeScale(args: z.infer<typeof PlaySetTimeScaleSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  try {
+    const response = await callEditorBridge(ctx, asBridgeMethod('play.set_time_scale'), { TimeScale: args.time_scale }, { minimumBridgeVersion: 23 });
+    const observed = numberField(response.data, 'TimeScale', 'timeScale', 'time_scale');
+    const timeScale = observed ?? args.time_scale;
+    return success({ time_scale: timeScale, result: response.data, bridge: response.bridge }, response.bridge, response.warnings,
+      [{ kind: 'play.time_scale', time_scale: timeScale }]);
   } catch (error) { return toolError(runtimeError(error)); }
 }
 

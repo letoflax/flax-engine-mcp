@@ -11,7 +11,9 @@ import {
   handleCodeGetDiagnostics,
   handleCodeGenerateProject,
   handlePlayRunFor,
+  handlePlaySetTimeScale,
   handlePlayStepFrame,
+  PlaySetTimeScaleSchema,
   PlayStepFrameSchema,
   PlayRunForSchema,
 } from './runtimeLive.js';
@@ -467,5 +469,38 @@ test('play_run_for validates at least one termination condition in handler', asy
   try {
     const result = await handlePlayRunFor(PlayRunForSchema.parse({}), f.ctx);
     assert.equal((result.structuredContent as Record<string, any>).error.code, 'VALIDATION_FAILED');
+  } finally { await f.cleanup(); }
+});
+
+test('play_set_time_scale sends Pascal TimeScale and returns cleaned time_scale', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(f.heartbeat, JSON.stringify({ Pid: process.pid, Project: f.root, Timestamp: Date.now(), BridgeVersion: 23, ProtocolVersion: 1 }));
+    const pending = handlePlaySetTimeScale(PlaySetTimeScaleSchema.parse({ time_scale: 0.5 }), f.ctx);
+    const request = await nextRequest(f);
+    assert.equal(request.body.method, 'play.set_time_scale');
+    assert.deepEqual(JSON.parse(String(request.body.paramsJson)), { TimeScale: 0.5 });
+    await respond(f, request, { State: 'running', IsPlayMode: true, IsPaused: false, TimeScale: 0.5 });
+    const result = await pending;
+    const envelope = result.structuredContent as Record<string, any>;
+    assert.equal(envelope.ok, true);
+    assert.equal(envelope.data.time_scale, 0.5);
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally { await f.cleanup(); }
+});
+
+test('play_set_time_scale rejects out-of-range time_scale via zod', () => {
+  assert.throws(() => PlaySetTimeScaleSchema.parse({ time_scale: -1 }), /Number must be greater than or equal to 0/);
+  assert.throws(() => PlaySetTimeScaleSchema.parse({ time_scale: 11 }), /Number must be less than or equal to 10/);
+  assert.deepEqual(PlaySetTimeScaleSchema.parse({ time_scale: 0 }), { time_scale: 0 });
+});
+
+test('play_set_time_scale refuses outdated bridge without RPC', async () => {
+  const f = await fixture();
+  try {
+    const result = await handlePlaySetTimeScale(PlaySetTimeScaleSchema.parse({ time_scale: 0.5 }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
   } finally { await f.cleanup(); }
 });

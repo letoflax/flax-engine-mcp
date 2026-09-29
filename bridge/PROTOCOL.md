@@ -469,6 +469,31 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v23: play time scale
+
+Bridge v23 keeps protocol v1 and the full v22 surface. It adds
+`play.set_time_scale`, a bounded play-mode mutation backed by the public
+Flax 1.12 `FlaxEngine.Time.TimeScale` property (float, get/set; default 1 —
+verified via `Source/Engine/Engine/Time.h` `API_FIELD() static float
+TimeScale` and `FlaxEngine.CSharp.xml` `P:FlaxEngine.Time.TimeScale`
+`[Unmanaged] { get; set; }`).
+
+The request DTO is `McpTimeScaleRequest { TimeScale }` (PascalCase on the
+wire: `{ "TimeScale": 0.25 }`); the result reuses the existing
+`McpPlayStatus` shape returned by `play.status`/`play.pause` so callers keep
+one play-state contract. `status` adds `PlayTimeScaleSupported:true`. Node
+requires bridge v23 for this tool and reports `playTimeScale` in
+`get_server_capabilities`.
+
+Validation: play mode is required (`INVALID_STATE` when not playing, same
+code as `play.pause` — this also covers headless editors, where play cannot
+start). `TimeScale` must be finite and within 0..10 (`VALIDATION_FAILED`
+outside); 0 = frozen is legitimate for frame-step debugging alongside
+`play.step`. The bridge never resets the scale on `play.stop`: the value is
+engine-global and persists until changed or until play stops (Flax owns play
+lifecycle cleanup; always set explicitly after each play start rather than
+assuming it survived a stop/start cycle).
+
 ## Bridge v22: editor viewport capture
 
 Bridge v22 keeps protocol v1 and the full v21 surface. `capture.start`
