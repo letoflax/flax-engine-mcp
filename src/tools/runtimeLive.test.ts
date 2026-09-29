@@ -10,9 +10,13 @@ import {
   handleCodeCompile,
   handleCodeGetDiagnostics,
   handleCodeGenerateProject,
+  handleInputKeyPress,
+  handleInputMouseClick,
   handlePlayRunFor,
   handlePlaySetTimeScale,
   handlePlayStepFrame,
+  InputKeyPressSchema,
+  InputMouseClickSchema,
   PlaySetTimeScaleSchema,
   PlayStepFrameSchema,
   PlayRunForSchema,
@@ -502,5 +506,96 @@ test('play_set_time_scale refuses outdated bridge without RPC', async () => {
     assert.equal(result.isError, true);
     assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
     assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally { await f.cleanup(); }
+});
+
+test('input_key_press sends PascalCase Key/HoldMs with bounded defaults', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(f.heartbeat, JSON.stringify({ Pid: process.pid, Project: f.root, Timestamp: Date.now(), BridgeVersion: 26, ProtocolVersion: 1 }));
+    assert.deepEqual(InputKeyPressSchema.parse({ key: 'W' }), { key: 'W', hold_ms: 50 });
+    const pending = handleInputKeyPress(InputKeyPressSchema.parse({ key: 'W' }), f.ctx);
+    const request = await nextRequest(f);
+    assert.equal(request.body.method, 'input.key_press');
+    assert.deepEqual(JSON.parse(String(request.body.paramsJson)), { Key: 'W', HoldMs: 50 });
+    await respond(f, request, { State: 'running', IsPlayMode: true, IsPaused: false });
+    const result = await pending;
+    const envelope = result.structuredContent as Record<string, any>;
+    assert.equal(envelope.ok, true);
+    assert.equal(envelope.data.key, 'W');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally { await f.cleanup(); }
+});
+
+test('input_key_press rejects bad key and hold_ms via zod', () => {
+  assert.throws(() => InputKeyPressSchema.parse({ key: '' }), /String must contain at least 1 character/);
+  assert.throws(() => InputKeyPressSchema.parse({ key: 'k'.repeat(65) }), /String must contain at most 64 character/);
+  assert.throws(() => InputKeyPressSchema.parse({ key: 'W', hold_ms: -1 }), /Number must be greater than or equal to 0/);
+  assert.throws(() => InputKeyPressSchema.parse({ key: 'W', hold_ms: 2001 }), /Number must be less than or equal to 2000/);
+  assert.throws(() => InputKeyPressSchema.parse({ key: 'W', hold_ms: 1.5 }), /Expected integer/);
+});
+
+test('input_key_press refuses outdated bridge without RPC', async () => {
+  const f = await fixture();
+  try {
+    const result = await handleInputKeyPress(InputKeyPressSchema.parse({ key: 'W' }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally { await f.cleanup(); }
+});
+
+test('input_mouse_click sends PascalCase Button/X/Y/HoldMs with bounded defaults', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(f.heartbeat, JSON.stringify({ Pid: process.pid, Project: f.root, Timestamp: Date.now(), BridgeVersion: 26, ProtocolVersion: 1 }));
+    assert.deepEqual(InputMouseClickSchema.parse({ x: 0.5, y: 0.5 }), { button: 'Left', x: 0.5, y: 0.5, hold_ms: 50 });
+    const pending = handleInputMouseClick(InputMouseClickSchema.parse({ button: 'Right', x: 0.5, y: 0.5, hold_ms: 120 }), f.ctx);
+    const request = await nextRequest(f);
+    assert.equal(request.body.method, 'input.mouse_click');
+    assert.deepEqual(JSON.parse(String(request.body.paramsJson)), { Button: 'Right', X: 0.5, Y: 0.5, HoldMs: 120 });
+    await respond(f, request, { State: 'running', IsPlayMode: true, IsPaused: false });
+    const result = await pending;
+    const envelope = result.structuredContent as Record<string, any>;
+    assert.equal(envelope.ok, true);
+    assert.equal(envelope.data.button, 'Right');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally { await f.cleanup(); }
+});
+
+test('input_mouse_click rejects bad button, coords, and hold_ms via zod', () => {
+  assert.throws(() => InputMouseClickSchema.parse({ x: 0.5, y: 0.5, button: 'Wheel' }), /Invalid enum value/);
+  assert.throws(() => InputMouseClickSchema.parse({ x: -0.1, y: 0.5 }), /Number must be greater than or equal to 0/);
+  assert.throws(() => InputMouseClickSchema.parse({ x: 0.5, y: 1.1 }), /Number must be less than or equal to 1/);
+  assert.throws(() => InputMouseClickSchema.parse({ x: Number.NaN, y: 0.5 }), /Expected number/);
+  assert.throws(() => InputMouseClickSchema.parse({ x: 0.5, y: 0.5, hold_ms: 2001 }), /Number must be less than or equal to 2000/);
+});
+
+test('input_mouse_click refuses outdated bridge without RPC', async () => {
+  const f = await fixture();
+  try {
+    const result = await handleInputMouseClick(InputMouseClickSchema.parse({ x: 0.5, y: 0.5 }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally { await f.cleanup(); }
+});
+
+test('input tools surface the scoped managed-API-only capability without mapping it to internal error', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(f.heartbeat, JSON.stringify({ Pid: process.pid, Project: f.root, Timestamp: Date.now(), BridgeVersion: 26, ProtocolVersion: 1 }));
+    const pendingKey = handleInputKeyPress(InputKeyPressSchema.parse({ key: 'W' }), f.ctx);
+    const keyRequest = await nextRequest(f);
+    await respondFailure(f, keyRequest, 'UNSUPPORTED_FLAX_VERSION', 'Key press injection has no verified managed Flax 1.12 API.');
+    const keyResult = await pendingKey;
+    assert.equal(keyResult.isError, true);
+    assert.equal((keyResult.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    const pendingClick = handleInputMouseClick(InputMouseClickSchema.parse({ x: 0.5, y: 0.5 }), f.ctx);
+    const clickRequest = await nextRequest(f, keyRequest.name);
+    await respondFailure(f, clickRequest, 'UNSUPPORTED_FLAX_VERSION', 'Mouse button injection has no verified managed Flax 1.12 API.');
+    const clickResult = await pendingClick;
+    assert.equal(clickResult.isError, true);
+    assert.equal((clickResult.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
   } finally { await f.cleanup(); }
 });

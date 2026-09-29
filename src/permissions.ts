@@ -46,7 +46,7 @@ const TOOL_FAMILIES = {
   asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete', 'prefab_create_from_actor', 'prefab_apply_overrides', 'material_set_parameters', 'material_create_instance', 'graph_set_default_parameter', 'graph_add_parameter', 'animgraph_add_state', 'animgraph_add_transition', 'graph_remove_node', 'graph_disconnect', 'graph_set_node_values', 'graph_move_node', 'graph_set_model', 'animgraph_set_state_clip'],
   runtime: [
     'play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume',
-    'play_step_frame', 'play_set_time_scale', 'play_run_for', 'test_run_scenario', 'viewport_capture', 'runtime_inspect_actor', 'build_cook', 'build_cancel', 'navigation_build', 'lighting_bake', 'environment_probe_bake',
+    'play_step_frame', 'play_set_time_scale', 'input_key_press', 'input_mouse_click', 'play_run_for', 'test_run_scenario', 'viewport_capture', 'runtime_inspect_actor', 'build_cook', 'build_cancel', 'navigation_build', 'lighting_bake', 'environment_probe_bake',
   ],
 } as const;
 

@@ -469,6 +469,51 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v26: play-mode input simulation (managed-API-only scope)
+
+Bridge v26 keeps protocol v1 and the full v25 surface. It adds
+`input.key_press` and `input.mouse_click`, one input event per call (a single
+key press OR a single click). `status` adds `InputSimulationSupported:true`.
+Node exposes `input_key_press` and `input_mouse_click` (runtime family),
+requires bridge v26 for both, and reports `inputSimulation` in
+`get_server_capabilities`.
+
+The request DTOs are `McpKeyPress { Key, HoldMs }` and `McpMouseClick
+{ Button, X, Y, HoldMs }` (PascalCase on the wire: `{ "Key": "W",
+"HoldMs": 50 }`, `{ "Button": "Left", "X": 0.5, "Y": 0.5, "HoldMs": 50 }`).
+`Key` must parse to a `FlaxEngine.KeyboardKeys` member (case-insensitive,
+1–64 characters, names only — numeric strings rejected; `None`/`MAX`
+rejected) with `VALIDATION_FAILED` otherwise. `Button` defaults to `Left`
+and must be `Left`/`Right`/`Middle` (`VALIDATION_FAILED` otherwise).
+`X`/`Y` must be finite viewport-normalized coordinates in `[0,1]`
+(`VALIDATION_FAILED` outside). `HoldMs` defaults to 50 and must be within
+0..2000 (`VALIDATION_FAILED` outside). Both calls require running,
+unpaused play (`INVALID_STATE` when not playing or paused — key presses
+while paused do nothing in Flax, mirroring the `play.pause` gate shape;
+headless needs no separate gate because play cannot start headless).
+
+Managed-API-only scope (verified, not inferred): Flax 1.12 exposes no
+managed key/button injection primitive. `FlaxEngine.Input` offers only read
+state (`GetKey`/`GetKeyDown`/`GetKeyUp`, `GetMouseButton*`, `GetAction*`)
+plus engine-raised events (`KeyDown`/`KeyUp`/`MouseDown`/`MouseUp`) that C#
+cannot raise (verified: `Keyboard.OnKeyDown`/`Mouse.OnMouseDown` carry no
+`API_FUNCTION` and are absent from `FlaxEngine.CSharp`, and raising
+`Input.KeyDown` from outside fails compilation — see `Source/Engine/Input`
+headers and the shipped `FlaxEngine.CSharp.xml`). No Simulate/Inject input
+API exists anywhere under `Source/Engine/Input` or `Source/Editor`. The
+only managed-verified cursor primitive is the `Input.MousePosition` setter,
+which moves the cursor but cannot press buttons, and viewport-normalized
+mapping has no verified managed game-viewport-rect API in play-in-editor.
+OS-level injection (`SendInput`/user32 P/Invoke, child processes, every
+other unmanaged escape) stays forbidden, so the bridge performs no partial
+click: after gates and validation both methods report a stable
+`UNSUPPORTED_FLAX_VERSION` capability (`input_key_press`/`input_mouse_click`
+with the bridge version in details), the same pattern as
+`navigation.build`/`lighting.bake`. `HoldMs` is still validated so the
+contract is stable for a future managed primitive; the intended release
+design is a `Scripting.Update` frame countdown (already subscribed) — never
+blocking the main thread — with guaranteed release even if the caller
+disconnects.
 ## Bridge v25: canonical scene open
 
 Bridge v25 keeps protocol v1 and the full v24 surface. It adds

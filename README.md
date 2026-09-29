@@ -119,6 +119,8 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `play_stop` / `play_pause` / `play_resume` | Control the active simulation |
 | `play_step_frame` | Advance a paused simulation one request at a time and verify Flax's run-to-repause lifecycle before continuing |
 | `play_set_time_scale` | Set the play-mode time scale 0–10 (0 freezes for frame-step debugging) via `FlaxEngine.Time.TimeScale`; requires play mode, bridge v23. The bridge never resets it on `play_stop` — it persists until changed or play stops (Flax owns play lifecycle; set explicitly after each play start) |
+| `input_key_press` | Simulate one key press in running, unpaused play (bridge v26). Managed-Flax-API-only scope: Flax 1.12 exposes no managed key-injection primitive, so valid calls report `UNSUPPORTED_FLAX_VERSION` after gates and validation |
+| `input_mouse_click` | Simulate one Left/Right/Middle click at viewport-normalized x/y in running, unpaused play (bridge v26). Managed-Flax-API-only scope: Flax 1.12 exposes no managed button-injection primitive, so valid calls report `UNSUPPORTED_FLAX_VERSION` after gates and validation |
 | `play_run_for` | Run for seconds, frames, or until a session-correlated log match, then request stop |
 | `test_run_scenario` | Run a bounded gameplay smoke scenario for `run_seconds` and assert `log_contains`/`log_absent`/`no_errors`/`viewport_captured` conditions, always stopping play |
 | `runtime_inspect_actor` | Read a bounded, allowlisted actor snapshot during play mode |

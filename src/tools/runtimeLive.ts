@@ -12,7 +12,8 @@ type RuntimeBridgeMethod =
   | 'code.status' | 'code.compile_start' | 'code.diagnostics'
   | 'code.generate_project_start' | 'code.generate_project_status'
   | 'play.status' | 'play.start_scenes' | 'play.start_game' | 'play.stop'
-  | 'play.pause' | 'play.resume' | 'play.step' | 'play.set_time_scale' | 'log.query';
+  | 'play.pause' | 'play.resume' | 'play.step' | 'play.set_time_scale' | 'log.query'
+  | 'input.key_press' | 'input.mouse_click';
 
 const asBridgeMethod = (method: RuntimeBridgeMethod): BridgeMethod => method as unknown as BridgeMethod;
 const TimeoutMs = z.number().int().min(250).max(120_000);
@@ -62,6 +63,22 @@ export const PlayStepFrameSchema = PlayMutation.extend({
 });
 export const PlaySetTimeScaleSchema = z.object({
   time_scale: z.number().min(0).max(10),
+});
+// Bridge v26 play-mode input simulation. The bridge validates + gates fully
+// but key/button injection has no verified managed Flax API, so valid calls
+// currently report UNSUPPORTED_FLAX_VERSION after validation (managed-only
+// scope, documented in bridge/PROTOCOL.md). Schemas stay strict so the
+// contract is stable for a future managed primitive.
+export const InputKeyPressSchema = z.object({
+  key: z.string().min(1).max(64),
+  hold_ms: z.number().int().min(0).max(2000).optional().default(50),
+});
+export const InputMouseButtonSchema = z.enum(['Left', 'Right', 'Middle']);
+export const InputMouseClickSchema = z.object({
+  button: InputMouseButtonSchema.optional().default('Left'),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  hold_ms: z.number().int().min(0).max(2000).optional().default(50),
 });
 export const PlayRunForSchema = z.object({
   seconds: z.number().positive().max(60).optional(),
@@ -123,6 +140,7 @@ function runtimeError(error: unknown): ToolDomainError {
   if (remote === 'COMPILATION_IN_PROGRESS' || remote === 'PLAY_BUSY') return new ToolDomainError('EDITOR_BUSY', error.message, error.details);
   if (remote === 'INVALID_STATE') return new ToolDomainError('INVALID_PLAY_STATE', error.message, error.details);
   if (remote === 'PLAY_STATE_CONFLICT' || remote === 'DIRTY_SCENES' || remote === 'INVALID_REQUEST' || remote === 'VALIDATION_FAILED') return new ToolDomainError('VALIDATION_FAILED', error.message, error.details);
+  if (remote === 'UNSUPPORTED_FLAX_VERSION') return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, error.details);
   if (remote === 'REQUEST_TOO_LARGE' || remote === 'RESPONSE_TOO_LARGE') return new ToolDomainError('CONTENT_TOO_LARGE', error.message, error.details);
   return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
 }
@@ -493,6 +511,22 @@ export async function handlePlaySetTimeScale(args: z.infer<typeof PlaySetTimeSca
     const timeScale = observed ?? args.time_scale;
     return success({ time_scale: timeScale, result: response.data, bridge: response.bridge }, response.bridge, response.warnings,
       [{ kind: 'play.time_scale', time_scale: timeScale }]);
+  } catch (error) { return toolError(runtimeError(error)); }
+}
+
+export async function handleInputKeyPress(args: z.infer<typeof InputKeyPressSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  try {
+    const response = await callEditorBridge(ctx, asBridgeMethod('input.key_press'), { Key: args.key, HoldMs: args.hold_ms }, { minimumBridgeVersion: 26 });
+    return success({ key: args.key, hold_ms: args.hold_ms, result: response.data, bridge: response.bridge }, response.bridge, response.warnings,
+      [{ kind: 'input.key_press', key: args.key, hold_ms: args.hold_ms }]);
+  } catch (error) { return toolError(runtimeError(error)); }
+}
+
+export async function handleInputMouseClick(args: z.infer<typeof InputMouseClickSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  try {
+    const response = await callEditorBridge(ctx, asBridgeMethod('input.mouse_click'), { Button: args.button, X: args.x, Y: args.y, HoldMs: args.hold_ms }, { minimumBridgeVersion: 26 });
+    return success({ button: args.button, x: args.x, y: args.y, hold_ms: args.hold_ms, result: response.data, bridge: response.bridge }, response.bridge, response.warnings,
+      [{ kind: 'input.mouse_click', button: args.button, x: args.x, y: args.y, hold_ms: args.hold_ms }]);
   } catch (error) { return toolError(runtimeError(error)); }
 }
 

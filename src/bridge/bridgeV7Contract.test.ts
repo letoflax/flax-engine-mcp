@@ -17,8 +17,8 @@ test('bridge v20 keeps read-only sub-context inspection with navigate-and-restor
 
 test('bridge v21 binds AnimationGraph BaseModel plus the v20 clip/value/move surface', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
-  assert.match(source, /BridgeVersion\s*=\s*25/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*26/);
+  assert.match(source, /BridgeVersion\s*=\s*26/);
   assert.match(source, /case "graph\.set_model"/);
   assert.match(source, /McpGraphSetModelRequest/);
   assert.match(source, /SetGraphBaseModel/);
@@ -57,8 +57,8 @@ test('bridge refuses scene saves while scripts compile and keeps asset swaps ins
 
 test('bridge v21 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
-  assert.match(source, /BridgeVersion\s*=\s*25/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*26/);
+  assert.match(source, /BridgeVersion\s*=\s*26/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -258,7 +258,7 @@ test('bridge v17 exposes the window-backed Visject graph surface with bounded An
 
 test('bridge v22 captures game and editor viewports through verified Screenshot paths', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*26/);
   assert.match(source, /EditorViewportCaptureSupported = true/);
   assert.match(source, /Viewport must be 'game' or 'editor'/);
   assert.match(source, /EditWin\.Viewport\.Task/);
@@ -271,8 +271,8 @@ test('bridge v22 captures game and editor viewports through verified Screenshot 
 
 test('bridge v23 controls play time scale through verified Time.TimeScale', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
-  assert.match(source, /BridgeVersion\s*=\s*25/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*26/);
+  assert.match(source, /BridgeVersion\s*=\s*26/);
   assert.match(source, /PlayTimeScaleSupported = true/);
   assert.match(source, /McpTimeScaleRequest/);
   assert.match(source, /case "play\.set_time_scale"/);
@@ -284,8 +284,8 @@ test('bridge v23 controls play time scale through verified Time.TimeScale', asyn
 
 test('bridge v24 reads and replaces editor selection through verified SceneEditing APIs', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
-  assert.match(source, /BridgeVersion\s*=\s*25/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*26/);
+  assert.match(source, /BridgeVersion\s*=\s*26/);
   assert.match(source, /EditorSelectionSupported = true/);
   assert.match(source, /McpSelectionRequest/);
   assert.match(source, /McpSelectionEntry/);
@@ -304,8 +304,8 @@ test('bridge v24 reads and replaces editor selection through verified SceneEditi
 
 test('bridge v25 opens canonical Content scenes through verified Level.LoadSceneAsync', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*25/);
-  assert.match(source, /BridgeVersion\s*=\s*25/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*26/);
+  assert.match(source, /BridgeVersion\s*=\s*26/);
   assert.match(source, /SceneOpenSupported = true/);
   assert.match(source, /McpSceneOpen\b/);
   assert.match(source, /McpSceneOpenResult/);
@@ -321,7 +321,7 @@ test('bridge v25 opens canonical Content scenes through verified Level.LoadScene
   assert.match(source, /McpSceneOpenTypeDetails/);
   assert.match(source, /ScriptsBuilder\.IsCompiling \|\| !ScriptsBuilder\.IsReady/);
   assert.match(source, /Scene open is unavailable while the editor is in play mode/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v25 listening/);
+  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v26 listening/);
 });
 
 test('bridge v15 keeps domain mutations unsupported while exposing bounded public queries', async () => {
@@ -341,4 +341,32 @@ test('bridge v15 keeps domain mutations unsupported while exposing bounded publi
   assert.match(source, /UnsupportedDomainMutation\("environment_probe_bake"/);
   assert.doesNotMatch(source, /Navigation\.BuildNavMesh\(/);
   assert.doesNotMatch(source, /Foliage\.AddInstance\(/);
+});
+
+test('bridge v26 gates play-mode input simulation to managed Flax APIs only', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*26/);
+  assert.match(source, /BridgeVersion\s*=\s*26/);
+  assert.match(source, /InputSimulationSupported = true/);
+  assert.match(source, /McpKeyPress/);
+  assert.match(source, /McpMouseClick/);
+  assert.match(source, /case "input\.key_press"/);
+  assert.match(source, /case "input\.mouse_click"/);
+  assert.match(source, /SimulateKeyPress\(JsonSerializer\.Deserialize<McpKeyPress>/);
+  assert.match(source, /SimulateMouseClick\(JsonSerializer\.Deserialize<McpMouseClick>/);
+  assert.match(source, /Editor must be running play \(not paused\) to simulate input/);
+  assert.match(source, /Key must name a FlaxEngine\.KeyboardKeys member/);
+  assert.match(source, /Button must be Left, Right, or Middle/);
+  assert.match(source, /X and Y must be viewport-normalized coordinates in \[0,1\]/);
+  assert.match(source, /HoldMs must be between 0 and 2000/);
+  assert.match(source, /Capability = "input_key_press"/);
+  assert.match(source, /Capability = "input_mouse_click"/);
+  assert.match(source, /KeyboardKeys\.None/);
+  assert.match(source, /KeyboardKeys\.MAX/);
+  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v26 listening/);
+  assert.doesNotMatch(source, /\[\s*DllImport/);
+  assert.doesNotMatch(source, /user32\.dll/i);
+  assert.doesNotMatch(source, /SendInput\s*\(/);
+  assert.doesNotMatch(source, /Thread\.Sleep\s*\(/);
+  assert.doesNotMatch(source, /Process\.Start\s*\(/);
 });

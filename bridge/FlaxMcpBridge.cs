@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 25
+// MCP-BRIDGE-VERSION: 26
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -26,12 +26,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 25; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 26; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 25; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; }
+    public class McpStatus { public int BridgeVersion = 26; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -103,6 +103,13 @@ namespace Game.MCP
     public class McpLogQueryResult { public string SessionId; public long NextSequence; public bool HasMore; public long DroppedCount; public McpLogEntry[] Entries; }
     public class McpPlayStart { public bool AllowCompileFailure; public bool AllowDirtyScenes; }
     public class McpTimeScaleRequest { public float TimeScale; }
+    // Bridge v26 play-mode input simulation surface. Exactly one input event
+    // per call (single key press OR single click). Key/button injection has no
+    // verified managed Flax API (see SimulateKeyPress/SimulateMouseClick), so
+    // both calls validate + gate fully and then report a stable unsupported
+    // capability — the same pattern as navigation.build/lighting.bake.
+    public class McpKeyPress { public string Key; public int HoldMs = 50; }
+    public class McpMouseClick { public string Button = "Left"; public double X; public double Y; public int HoldMs = 50; }
     public class McpPlayStatus { public string State; public string SessionId; public string Mode; public long StartedUnixMs; public long DurationMs; public ulong FrameCount; public bool HasDirtyScenes; public bool IsPlayMode; public bool IsPaused; public bool IsPlayModeRequested; public bool IsDuringBreakpointHang; }
     public class McpCaptureStart { public string Viewport; public int Width; public int Height; }
     public class McpCaptureStatusRequest { public string CaptureId; }
@@ -220,7 +227,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 25;
+        private const int BridgeVersion = 26;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -347,7 +354,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Bridge v25 listening at " + Root);
+                    Debug.Log("[Flax MCP] Bridge v26 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -531,6 +538,8 @@ namespace Game.MCP
                 case "play.resume": result = OnMain(ResumePlay, request.deadlineUnixMs); break;
                 case "play.step": result = OnMain(StepPlay, request.deadlineUnixMs); break;
                 case "play.set_time_scale": result = OnMain(() => SetPlayTimeScale(JsonSerializer.Deserialize<McpTimeScaleRequest>(p)), request.deadlineUnixMs); break;
+                case "input.key_press": result = OnMain(() => SimulateKeyPress(JsonSerializer.Deserialize<McpKeyPress>(p)), request.deadlineUnixMs); break;
+                case "input.mouse_click": result = OnMain(() => SimulateMouseClick(JsonSerializer.Deserialize<McpMouseClick>(p)), request.deadlineUnixMs); break;
                 case "log.query": result = QueryLogs(JsonSerializer.Deserialize<McpLogQuery>(p)); break;
                 case "capture.start": result = OnMain(() => StartCapture(JsonSerializer.Deserialize<McpCaptureStart>(p)), request.deadlineUnixMs); break;
                 case "capture.status": result = GetCaptureStatus(JsonSerializer.Deserialize<McpCaptureStatusRequest>(p)); break;
@@ -4629,6 +4638,100 @@ namespace Game.MCP
             if (float.IsNaN(request.TimeScale) || float.IsInfinity(request.TimeScale) || request.TimeScale < 0.0f || request.TimeScale > 10.0f) throw new McpProtocolException("VALIDATION_FAILED", "TimeScale must be between 0 and 10.");
             Time.TimeScale = request.TimeScale;
             return PlayStatus();
+        }
+
+        // Bridge v26: play-mode input simulation (managed-Flax-API-only scope).
+        //
+        // SDK truth (Flax 1.12, verified against Source/Engine/Input/Input.h,
+        // Keyboard.h, Mouse.h, FlaxEngine.CSharp.xml, plus a compile probe
+        // against the shipped FlaxEngine.CSharp.dll):
+        // - FlaxEngine.Input exposes only READ state to C#: GetKey/GetKeyDown/
+        //   GetKeyUp, GetMouseButton/GetMouseButtonDown/GetMouseButtonUp,
+        //   GetAction/GetAxis, plus engine-raised events (KeyDown/KeyUp,
+        //   MouseDown/MouseUp, ActionTriggered).
+        // - Keyboard.OnKeyDown/OnKeyUp and Mouse.OnMouseDown/OnMouseUp exist in
+        //   C++ but carry no API_FUNCTION(), so they are NOT bound to C#. The
+        //   probe confirmed: 'Keyboard' has no 'OnKeyDown' (CS1061), 'Mouse'
+        //   has no 'OnMouseDown' (CS1061), and 'Input.KeyDown' may only appear
+        //   on the left of += or -= (CS0079) — managed code cannot raise the
+        //   engine's input events either.
+        // - No Simulate/Inject/Post input method exists anywhere under
+        //   Source/Engine/Input or Source/Editor. The only managed-verified
+        //   cursor primitive is the Input.MousePosition setter (native
+        //   SetMousePosition API_PROPERTY), which moves the cursor but cannot
+        //   press buttons; viewport-normalized mapping additionally has no
+        //   verified managed game-viewport-rect API in play-in-editor.
+        // Therefore key presses and mouse button clicks cannot be synthesized
+        // from purely managed Flax API. OS-level input injection, native
+        // P/Invoke, child processes, and every other unmanaged escape stay
+        // FORBIDDEN: the
+        // bridge never leaves managed Flax API for input.
+        // Both methods below enforce the play gate + full parameter validation
+        // so callers get actionable errors, then report a stable
+        // UNSUPPORTED_FLAX_VERSION capability (same pattern as
+        // navigation.build/lighting.bake). HoldMs is validated (0..2000,
+        // default 50) so the contract is stable for a future managed
+        // primitive; the intended release design is a Scripting.Update frame
+        // countdown (OnUpdate is already subscribed) — never blocking the main
+        // thread — with guaranteed key release even if the caller
+        // disconnects.
+        private const int MaxInputKeyChars = 64;
+        private const int MaxInputHoldMs = 2000;
+
+        private void RequireRunningPlayForInput()
+        {
+            // Key presses while paused do nothing in Flax, so running
+            // (not paused) play is required. Headless needs no separate gate:
+            // play cannot start headless, so the play check covers it.
+            if (!FEditor.Instance.StateMachine.IsPlayMode || FEditor.Instance.StateMachine.PlayingState.IsPaused) throw new McpProtocolException("INVALID_STATE", "Editor must be running play (not paused) to simulate input.");
+        }
+
+        private static KeyboardKeys ParseInputKey(string key)
+        {
+            var name = key == null ? "" : key.Trim();
+            if (name.Length == 0 || name.Length > MaxInputKeyChars || !char.IsLetter(name[0])) throw new McpProtocolException("VALIDATION_FAILED", "Key must name a FlaxEngine.KeyboardKeys member (1-64 characters, case-insensitive).");
+            KeyboardKeys parsed;
+            // Enum.TryParse also accepts raw numeric strings; game keys are names only.
+            if (!Enum.TryParse<KeyboardKeys>(name, true, out parsed) || !Enum.IsDefined(typeof(KeyboardKeys), parsed) || parsed == KeyboardKeys.None || parsed == KeyboardKeys.MAX) throw new McpProtocolException("VALIDATION_FAILED", "Key must name a FlaxEngine.KeyboardKeys member (1-64 characters, case-insensitive).");
+            return parsed;
+        }
+
+        private static MouseButton ParseInputButton(string button)
+        {
+            var name = string.IsNullOrEmpty(button) ? "Left" : button.Trim();
+            MouseButton parsed;
+            if (!Enum.TryParse<MouseButton>(name, true, out parsed) || !Enum.IsDefined(typeof(MouseButton), parsed) || (parsed != MouseButton.Left && parsed != MouseButton.Right && parsed != MouseButton.Middle)) throw new McpProtocolException("VALIDATION_FAILED", "Button must be Left, Right, or Middle.");
+            return parsed;
+        }
+
+        private static void ValidateInputHoldMs(int holdMs)
+        {
+            if (holdMs < 0 || holdMs > MaxInputHoldMs) throw new McpProtocolException("VALIDATION_FAILED", "HoldMs must be between 0 and 2000 milliseconds.");
+        }
+
+        private static void ValidateInputViewport(double value)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) || value < 0.0 || value > 1.0) throw new McpProtocolException("VALIDATION_FAILED", "X and Y must be viewport-normalized coordinates in [0,1].");
+        }
+
+        private object SimulateKeyPress(McpKeyPress request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Key press parameters are required.");
+            RequireRunningPlayForInput();
+            ParseInputKey(request.Key);
+            ValidateInputHoldMs(request.HoldMs);
+            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "Key press injection has no verified managed Flax 1.12 API: FlaxEngine.Input exposes only read state (GetKey/GetKeyDown/GetKeyUp) and engine-raised events that C# cannot raise, and Keyboard.OnKeyDown is not bound to C#. The bridge stays managed-Flax-API-only and never uses OS-level input injection.", new { Capability = "input_key_press", BridgeVersion = BridgeVersion });
+        }
+
+        private object SimulateMouseClick(McpMouseClick request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Mouse click parameters are required.");
+            RequireRunningPlayForInput();
+            ParseInputButton(request.Button);
+            ValidateInputViewport(request.X);
+            ValidateInputViewport(request.Y);
+            ValidateInputHoldMs(request.HoldMs);
+            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "Mouse button injection has no verified managed Flax 1.12 API: Mouse.OnMouseDown/OnMouseUp are not bound to C#, engine input events cannot be raised from C#, and viewport-normalized mapping has no verified managed game-viewport-rect API. The bridge stays managed-Flax-API-only and never uses OS-level input injection.", new { Capability = "input_mouse_click", BridgeVersion = BridgeVersion });
         }
 
         private void PreparePlayStart(McpPlayStart request, string mode)
