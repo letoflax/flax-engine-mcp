@@ -20,7 +20,7 @@ import {
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE';
 interface Fixture { root: string; ctx: ProjectMeta; requests: string; responses: string; cleanup(): Promise<void> }
 
-async function fixture(): Promise<Fixture> {
+async function fixture(bridgeVersion = 6): Promise<Fixture> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flax-mcp-observe-'));
   const cache = path.join(root, 'Cache', 'MCP');
   const requests = path.join(cache, 'requests');
@@ -28,7 +28,7 @@ async function fixture(): Promise<Fixture> {
   await Promise.all([fs.mkdir(requests, { recursive: true }), fs.mkdir(responses, { recursive: true })]);
   await fs.writeFile(path.join(root, 'Fixture.flaxproj'), '{"Name":"Fixture"}');
   await fs.writeFile(path.join(cache, 'bridge.json'), JSON.stringify({
-    Pid: process.pid, Project: root, Timestamp: Date.now(), BridgeVersion: 6, ProtocolVersion: 1,
+    Pid: process.pid, Project: root, Timestamp: Date.now(), BridgeVersion: bridgeVersion, ProtocolVersion: 1,
   }));
   await fs.writeFile(path.join(cache, 'token'), TOKEN);
   return { root, ctx: await createProjectContext(root), requests, responses, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
@@ -135,12 +135,14 @@ test('log_search passes Contains and advances the bridge sequence cursor', async
 test('viewport_capture starts and polls, exposing only a flax resource URI', async () => {
   const f = await fixture();
   try {
-    assert.throws(() => ViewportCaptureSchema.parse({ viewport: 'editor' }));
+    assert.equal(ViewportCaptureSchema.parse({}).viewport, 'game');
+    assert.equal(ViewportCaptureSchema.parse({ viewport: 'editor' }).viewport, 'editor');
+    assert.throws(() => ViewportCaptureSchema.parse({ viewport: 'headless' }));
     const pending = handleViewportCapture(ViewportCaptureSchema.parse({ poll_interval_ms: 50 }), f.ctx);
     const captureId = '0123456789abcdef0123456789abcdef';
     const start = await reply(f, { CaptureId: captureId });
     assert.equal(start.method, 'capture.start');
-    assert.deepEqual(JSON.parse(String(start.paramsJson)), {});
+    assert.deepEqual(JSON.parse(String(start.paramsJson)), { Viewport: 'game' });
     const status = await reply(f, {
       Phase: 'Completed', Path: 'C:\\secret\\capture.png', SizeBytes: 1234,
       StartedUnixMs: 100, CompletedUnixMs: 200,
@@ -148,10 +150,38 @@ test('viewport_capture starts and polls, exposing only a flax resource URI', asy
     assert.equal(status.method, 'capture.status');
     const envelope = (await pending).structuredContent as Record<string, any>;
     assert.deepEqual(envelope.data, {
-      capture_id: captureId, uri: `flax://capture/${captureId}`, phase: 'completed',
+      capture_id: captureId, uri: `flax://capture/${captureId}`, viewport: 'game', phase: 'completed',
       size_bytes: 1234, started_unix_ms: 100, completed_unix_ms: 200,
     });
     assert.equal(JSON.stringify(envelope.data).includes('secret'), false);
+  } finally { await f.cleanup(); }
+});
+
+test('viewport_capture editor requests bridge v22 with the editor viewport selector', async () => {
+  const f = await fixture(22);
+  try {
+    const pending = handleViewportCapture(ViewportCaptureSchema.parse({ viewport: 'editor', poll_interval_ms: 50 }), f.ctx);
+    const captureId = 'abcdef0123456789abcdef0123456789';
+    const start = await reply(f, { CaptureId: captureId });
+    assert.equal(start.method, 'capture.start');
+    assert.deepEqual(JSON.parse(String(start.paramsJson)), { Viewport: 'editor' });
+    const status = await reply(f, {
+      Phase: 'Completed', SizeBytes: 4321, StartedUnixMs: 300, CompletedUnixMs: 400,
+    });
+    assert.equal(status.method, 'capture.status');
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.viewport, 'editor');
+    assert.equal(envelope.data.uri, `flax://capture/${captureId}`);
+  } finally { await f.cleanup(); }
+});
+
+test('viewport_capture editor refuses an outdated bridge without contacting it', async () => {
+  const f = await fixture(6);
+  try {
+    const result = await handleViewportCapture(ViewportCaptureSchema.parse({ viewport: 'editor' }), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
   } finally { await f.cleanup(); }
 });
 

@@ -10,14 +10,17 @@ start Flax or claim GUI coverage.
 The current compatibility metadata is in `test/compatibility-matrix.json`.
 It records Windows + Flax 1.12 as the current/recommended baseline, with
 headless coverage limited to status, compile, diagnostics, and logs. Flax 1.12
-play, viewport capture, and runtime inspection require a headed Editor and a
-game window; run those manually on a dedicated project copy. Linux and macOS
+play, game-viewport capture, and runtime inspection require a headed Editor and a
+game window; editor-viewport capture (bridge v22) requires a headed Editor with
+the editor window visible and works outside play mode. Run those manually on a
+dedicated project copy. Linux and macOS
 are intentionally marked unverified until their workflow has passed.
 
 For a real manual run, install the bundled bridge into a disposable fixture
 project, open it using Flax 1.12, then perform the roadmap sequence: connect,
 read scene, create/update/attach, undo/redo/save, patch the intentional error,
-compile fail/fix/succeed, and (headed only) play/log/stop. Record the result in
+compile fail/fix/succeed, and (headed only) play/log/game-capture/stop plus an
+editor-capture outside play mode. Record the result in
 the matrix rather than treating the simulated peer as Editor verification.
 
 The integration suite has explicit skips where the host has no configured

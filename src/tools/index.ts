@@ -808,7 +808,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'viewport_capture',
-      description: 'Captures a bounded game or editor viewport image into the bridge cache and returns a resource URI.',
+      description: 'Captures a bounded viewport image (game requires play mode; editor works outside play mode) into the bridge cache and returns a resource URI.',
       inputSchema: zodToJsonSchema(ViewportCaptureSchema),
       handler: (a, c) => handleViewportCapture(a as Parameters<typeof handleViewportCapture>[0], c),
     },

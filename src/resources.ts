@@ -119,7 +119,7 @@ async function captureResources(ctx: ProjectMeta): Promise<Resource[]> {
   return candidates.filter((value): value is NonNullable<typeof value> => value !== null)
     .sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, MaxListedCaptures).map(({ id, stat }) => ({
       uri: `flax://capture/${id}`, name: `Flax viewport capture ${id}`,
-      description: 'Temporary game-viewport PNG; expires automatically.', mimeType: 'image/png', size: Number(stat.size),
+      description: 'Temporary viewport PNG; expires automatically.', mimeType: 'image/png', size: Number(stat.size),
       annotations: { audience: ['user', 'assistant'], priority: 0.7, lastModified: stat.mtime.toISOString() },
     }));
 }

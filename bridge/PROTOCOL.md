@@ -469,6 +469,18 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v22: editor viewport capture
+
+Bridge v22 keeps protocol v1 and the full v21 surface. `capture.start`
+accepts a `Viewport` selector: `game`/`main` (default, requires play mode,
+captures `MainRenderTask` via `Screenshot.Capture(path)`) or
+`editor`/`edit` (captures `EditWin.Viewport.Task` via
+`Screenshot.Capture(task, path)`, works outside play mode). Unknown values
+fail with `VALIDATION_FAILED`; a missing editor task fails with
+`CAPTURE_UNAVAILABLE`. Both scopes remain unavailable in headless mode.
+`status` adds `EditorViewportCaptureSupported:true`. Node requires bridge v22
+only for the `editor` selector; `game` captures keep working on bridge v6+.
+
 ## Bridge v21: AnimationGraph BaseModel binding (Phase 7)
 
 Bridge v21 keeps protocol v1 and the full v20 surface. It adds

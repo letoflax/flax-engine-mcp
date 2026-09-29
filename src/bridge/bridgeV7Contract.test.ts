@@ -17,8 +17,8 @@ test('bridge v20 keeps read-only sub-context inspection with navigate-and-restor
 
 test('bridge v21 binds AnimationGraph BaseModel plus the v20 clip/value/move surface', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*21/);
-  assert.match(source, /BridgeVersion\s*=\s*21/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*22/);
+  assert.match(source, /BridgeVersion\s*=\s*22/);
   assert.match(source, /case "graph\.set_model"/);
   assert.match(source, /McpGraphSetModelRequest/);
   assert.match(source, /SetGraphBaseModel/);
@@ -57,8 +57,8 @@ test('bridge refuses scene saves while scripts compile and keeps asset swaps ins
 
 test('bridge v21 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*21/);
-  assert.match(source, /BridgeVersion\s*=\s*21/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*22/);
+  assert.match(source, /BridgeVersion\s*=\s*22/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -254,6 +254,19 @@ test('bridge v17 exposes the window-backed Visject graph surface with bounded An
   assert.match(source, /IConnectionInstigator/);
   assert.doesNotMatch(source, /new VisjectSurface\(/);
   assert.doesNotMatch(source, /\.SaveSurface\(/);
+});
+
+test('bridge v22 captures game and editor viewports through verified Screenshot paths', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*22/);
+  assert.match(source, /EditorViewportCaptureSupported = true/);
+  assert.match(source, /Viewport must be 'game' or 'editor'/);
+  assert.match(source, /EditWin\.Viewport\.Task/);
+  assert.match(source, /Screenshot\.Capture\(editorTask, path\)/);
+  assert.match(source, /Screenshot\.Capture\(path\)/);
+  assert.match(source, /Game viewport capture requires play mode/);
+  assert.match(source, /Use viewport 'editor' to capture outside play mode/);
+  assert.doesNotMatch(source, /Only the main game viewport is supported for capture/);
 });
 
 test('bridge v15 keeps domain mutations unsupported while exposing bounded public queries', async () => {

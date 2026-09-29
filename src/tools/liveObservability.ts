@@ -33,7 +33,7 @@ export const LogGetRuntimeErrorsSchema = z.object({
   max_scan: z.number().int().min(1).max(2_000).optional().default(1_000),
 });
 export const ViewportCaptureSchema = z.object({
-  viewport: z.literal('game').optional().default('game'),
+  viewport: z.enum(['game', 'editor']).optional().default('game'),
   timeout_ms: z.number().int().min(500).max(30_000).optional().default(10_000),
   poll_interval_ms: z.number().int().min(50).max(1_000).optional().default(100),
 });
@@ -213,7 +213,7 @@ export async function handleLogGetRuntimeErrors(args: z.infer<typeof LogGetRunti
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 export async function handleViewportCapture(args: z.infer<typeof ViewportCaptureSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
-    const started = await call<unknown>(ctx, 'capture.start', {});
+    const started = await callEditorBridge(ctx, 'capture.start', { Viewport: args.viewport }, args.viewport === 'editor' ? { minimumBridgeVersion: 22 } : undefined);
     const start = started.data && typeof started.data === 'object' ? started.data as Row : {};
     const id = String(val(start, 'CaptureId', 'captureId', 'Id', 'id') ?? '');
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new ToolDomainError('INTERNAL_ERROR', 'Bridge returned an invalid capture identifier.');
@@ -227,6 +227,7 @@ export async function handleViewportCapture(args: z.infer<typeof ViewportCapture
         const data = clean({
           capture_id: id,
           uri: `flax://capture/${id}`,
+          viewport: args.viewport,
           phase: 'completed',
           size_bytes: val(status, 'SizeBytes', 'sizeBytes'),
           started_unix_ms: val(status, 'StartedUnixMs', 'startedUnixMs'),

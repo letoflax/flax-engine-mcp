@@ -205,6 +205,7 @@ export async function handleGetServerCapabilities(
     const buildCook = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const materialAnimation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const domainQueries = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 14;
+    const editorViewportCapture = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 22;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -220,6 +221,7 @@ export async function handleGetServerCapabilities(
         playMode: phase2,
         liveLogs: phase2,
         viewportCapture: phase2,
+        editorViewportCapture,
         runtimeInspection: phase2,
         sceneRevisions: phase3,
         editLeases: phase3,
