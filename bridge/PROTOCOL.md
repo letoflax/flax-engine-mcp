@@ -469,6 +469,71 @@ underlying APIs are public, no reviewed bridge-owned completion, cancellation,
 undo, and result lifecycle is available. Terrain and foliage are deliberately
 metadata-only; painting, height/splat edits, foliage instance changes, and
 cluster rebuilds remain unavailable.
+## Bridge v27: engine-side performance snapshot
+
+Bridge v27 keeps protocol v1 and the full v26 surface. It adds
+`perf.snapshot`, a read-only, single-sample engine telemetry read that works
+in and out of play mode (no play gate, no headless gate — headless only
+nulls the GPU fields). `status` adds `PerfSnapshotSupported:true`. Node
+exposes `perf_get_snapshot` (read family, so the read-only profile keeps
+it), requires bridge v27, and reports `perfSnapshot` in
+`get_server_capabilities`.
+
+The method takes no parameters (`{}`) and returns `McpPerfSnapshot { Fps,
+FrameTimeMs, DrawCalls, Triangles, ManagedMemoryBytes, ActorCount,
+GpuAdapter, RendererType, IsPlayMode, TimestampUnixMs }` — all primitive or
+nullable, where null means the backing API had no data (never an error).
+There is no history or averaging in the bridge; callers average by making N
+calls. The sample is one main-thread read (`OnMain`) with no allocation
+storms beyond a single actor-enumeration array.
+
+SDK truth per field (Flax 1.12, verified against `Source/` headers plus the
+shipped `FlaxEngine.CSharp.xml`):
+
+- `Fps` (`Engine.FramesPerSecond`, `Source/Engine/Engine/Engine.h`
+  `API_FUNCTION`/`API_PROPERTY GetFramesPerSecond`, `P:FlaxEngine.Engine.
+  FramesPerSecond`): frames rendered during the last second. Outside play
+  mode this is the editor viewport rendering rate (editor-idle FPS), not
+  game FPS. Null unless positive and sane.
+- `FrameTimeMs` (`Time.UnscaledDeltaTime * 1000`, `Source/Engine/Engine/
+  Time.h` `API_PROPERTY`, `P:FlaxEngine.Time.UnscaledDeltaTime`):
+  TimeScale-independent last-frame delta, so `play_set_time_scale` never
+  distorts it. Null unless finite, positive, and under 60 s.
+- `DrawCalls`/`Triangles` (`ProfilingTools.Stats.DrawStats`,
+  `Source/Engine/Profiler/ProfilingTools.h` `API_FIELD(ReadOnly) static
+  MainStats Stats` updated every frame, `P:FlaxEngine.ProfilingTools.Stats`
+  with `F:...MainStats.DrawStats` of `T:FlaxEngine.RenderStatsData`):
+  `ProfilerGPU.GetLastFrameData` was evaluated and rejected — its C++
+  `(float&, float&, RenderStatsData&)` refs bind by value in C#
+  (`M:FlaxEngine.ProfilerGPU.GetLastFrameData(Single,Single,
+  RenderStatsData)` carries no byref markers, and both `out` and `ref`
+  fail with CS1615), so managed code cannot receive its outputs.
+  `Stats.DrawStats` is the only public managed path to `RenderStatsData`.
+  `MainStats` is only populated while the profiler session counts frames,
+  so `Stats.FPS` is its own freshness signal, and an all-zero `DrawStats`
+  beside `FPS > 0` is self-contradictory (every presented frame issues
+  draw calls): it positively means "no valid sample right now", so both
+  stay null. Live-verified: a default editor session reports `FPS > 0`
+  with zeroed `DrawStats`, so the snapshot honestly returns nulls rather
+  than misleading zeros.
+  Headless editors render nothing, so both stay null there.
+- `ManagedMemoryBytes` (`System.GC.GetTotalMemory(false)`, BCL): no
+  induced collection; always available in and out of play.
+- `ActorCount` (`Level.GetActors(typeof(Actor), false).Length`,
+  `M:FlaxEngine.Level.GetActors(Type,Boolean)`): the same public
+  enumeration the bridge validation scans already use; one call, includes
+  inactive actors, works in and out of play because editor scenes are
+  loaded levels.
+- `GpuAdapter` (`GPUDevice.Instance.Adapter.Description`,
+  `Source/Engine/Graphics/GPUDevice.h` `API_PROPERTY GetAdapter` plus
+  `GPUAdapter.h` `API_PROPERTY GetDescription`,
+  `P:FlaxEngine.GPUDevice.Instance` / `P:FlaxEngine.GPUAdapter.
+  Description`, capped at 256 chars) and `RendererType`
+  (`GPUDevice.Instance.RendererType`, `API_PROPERTY GetRendererType`,
+  `P:FlaxEngine.GPUDevice.RendererType`). Headless editors have no GPU
+  device, so both stay null without throwing.
+- `IsPlayMode` (`FEditor.IsPlayMode`, the same flag `status` reports) and
+  `TimestampUnixMs` (`DateTimeOffset.UtcNow`, always present).
 ## Bridge v26: play-mode input simulation (managed-API-only scope)
 
 Bridge v26 keeps protocol v1 and the full v25 surface. It adds

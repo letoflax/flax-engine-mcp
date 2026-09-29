@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 26
+// MCP-BRIDGE-VERSION: 27
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -26,12 +26,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 26; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 27; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 26; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; }
+    public class McpStatus { public int BridgeVersion = 27; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -111,6 +111,11 @@ namespace Game.MCP
     public class McpKeyPress { public string Key; public int HoldMs = 50; }
     public class McpMouseClick { public string Button = "Left"; public double X; public double Y; public int HoldMs = 50; }
     public class McpPlayStatus { public string State; public string SessionId; public string Mode; public long StartedUnixMs; public long DurationMs; public ulong FrameCount; public bool HasDirtyScenes; public bool IsPlayMode; public bool IsPaused; public bool IsPlayModeRequested; public bool IsDuringBreakpointHang; }
+    // Bridge v27 engine-side performance snapshot. Single instantaneous
+    // sample, read-only: every field is a primitive or null, and null means
+    // the backing API had no data (never an error). No history or averaging
+    // lives here; callers average by making N calls.
+    public class McpPerfSnapshot { public int? Fps; public float? FrameTimeMs; public long? DrawCalls; public long? Triangles; public long? ManagedMemoryBytes; public int? ActorCount; public string GpuAdapter; public string RendererType; public bool IsPlayMode; public long TimestampUnixMs; }
     public class McpCaptureStart { public string Viewport; public int Width; public int Height; }
     public class McpCaptureStatusRequest { public string CaptureId; }
     public class McpCaptureStatus { public string CaptureId; public string Phase; public string Path; public long StartedUnixMs; public long CompletedUnixMs; public long SizeBytes; }
@@ -227,7 +232,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 26;
+        private const int BridgeVersion = 27;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -354,7 +359,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                    Debug.Log("[Flax MCP] Bridge v26 listening at " + Root);
+                    Debug.Log("[Flax MCP] Bridge v27 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -538,6 +543,7 @@ namespace Game.MCP
                 case "play.resume": result = OnMain(ResumePlay, request.deadlineUnixMs); break;
                 case "play.step": result = OnMain(StepPlay, request.deadlineUnixMs); break;
                 case "play.set_time_scale": result = OnMain(() => SetPlayTimeScale(JsonSerializer.Deserialize<McpTimeScaleRequest>(p)), request.deadlineUnixMs); break;
+                case "perf.snapshot": result = OnMain(PerfSnapshot, request.deadlineUnixMs); break;
                 case "input.key_press": result = OnMain(() => SimulateKeyPress(JsonSerializer.Deserialize<McpKeyPress>(p)), request.deadlineUnixMs); break;
                 case "input.mouse_click": result = OnMain(() => SimulateMouseClick(JsonSerializer.Deserialize<McpMouseClick>(p)), request.deadlineUnixMs); break;
                 case "log.query": result = QueryLogs(JsonSerializer.Deserialize<McpLogQuery>(p)); break;
@@ -4638,6 +4644,115 @@ namespace Game.MCP
             if (float.IsNaN(request.TimeScale) || float.IsInfinity(request.TimeScale) || request.TimeScale < 0.0f || request.TimeScale > 10.0f) throw new McpProtocolException("VALIDATION_FAILED", "TimeScale must be between 0 and 10.");
             Time.TimeScale = request.TimeScale;
             return PlayStatus();
+        }
+
+        // Bridge v27: engine-side performance snapshot (read-only, single
+        // instantaneous sample, no history or averaging). All fields are
+        // primitive/nullable and null means the backing API had no data.
+        //
+        // SDK truth (Flax 1.12, verified against Source/Engine headers plus
+        // the shipped FlaxEngine.CSharp.xml):
+        // - Fps: FlaxEngine.Engine.FramesPerSecond (Source/Engine/Engine/
+        //   Engine.h API_PROPERTY GetFramesPerSecond — frames rendered during
+        //   the last second). Outside play mode this is the editor viewport
+        //   rendering rate (editor-idle FPS), not game FPS.
+        // - FrameTimeMs: FlaxEngine.Time.UnscaledDeltaTime * 1000
+        //   (Source/Engine/Engine/Time.h API_PROPERTY — TimeScale-independent
+        //   last-frame delta, so play_set_time_scale never distorts it).
+        // - DrawCalls/Triangles: FlaxEngine.ProfilingTools.Stats.DrawStats
+        //   (Source/Engine/Profiler/ProfilingTools.h API_FIELD ReadOnly
+        //   MainStats Stats, updated every frame with the last rendered
+        //   frame RenderStatsData). NOTE: ProfilerGPU.GetLastFrameData was
+        //   evaluated and rejected: its C++ (float&, float&,
+        //   RenderStatsData&) refs bind by value in C#
+        //   (FlaxEngine.CSharp.xml
+        //   M:FlaxEngine.ProfilerGPU.GetLastFrameData(Single,Single,
+        //   RenderStatsData) — no byref markers, and both out and ref fail
+        //   with CS1615), so managed code cannot receive its outputs.
+        //   Stats.DrawStats is the only public managed path to
+        //   RenderStatsData. MainStats is only populated while the profiler
+        //   session counts frames, so Stats.FPS is its own freshness signal,
+        //   and an all-zero DrawStats beside FPS > 0 is self-contradictory
+        //   (every presented frame issues draw calls): it positively means
+        //   "no valid sample right now", so both stay null. Headless editors
+        //   render nothing, so both stay null there (same gate as the GPU
+        //   device fields below).
+        // - ManagedMemoryBytes: System.GC.GetTotalMemory(false) (BCL, no
+        //   induced collection; always available, in and out of play).
+        // - ActorCount: FlaxEngine.Level.GetActors(typeof(Actor), false)
+        //   (the same public enumeration the bridge validation scans use;
+        //   one call, includes inactive actors, works in and out of play).
+        // - GpuAdapter: FlaxEngine.GPUDevice.Instance.Adapter.Description
+        //   (Source/Engine/Graphics/GPUDevice.h API_PROPERTY GetAdapter plus
+        //   GPUAdapter.h API_PROPERTY GetDescription, capped at 256 chars).
+        // - RendererType: FlaxEngine.GPUDevice.Instance.RendererType
+        //   (GPUDevice.h API_PROPERTY GetRendererType). Headless editors have
+        //   no GPU device, so both GPU fields stay null without throwing.
+        private McpPerfSnapshot PerfSnapshot()
+        {
+            var snapshot = new McpPerfSnapshot
+            {
+                IsPlayMode = FEditor.IsPlayMode,
+                TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            };
+            var headless = false;
+            try { headless = FEditor.Instance.IsHeadlessMode; }
+            catch { }
+            try
+            {
+                var fps = Engine.FramesPerSecond;
+                if (fps > 0 && fps < 100000) snapshot.Fps = fps;
+            }
+            catch { }
+            try
+            {
+                var delta = Time.UnscaledDeltaTime;
+                if (!float.IsNaN(delta) && !float.IsInfinity(delta) && delta > 0.0f && delta < 60.0f) snapshot.FrameTimeMs = delta * 1000.0f;
+            }
+            catch { }
+            if (!headless)
+            {
+                try
+                {
+                    var main = ProfilingTools.Stats;
+                    if (main.FPS > 0 && (main.DrawStats.DrawCalls > 0 || main.DrawStats.Triangles > 0))
+                    {
+                        if (main.DrawStats.DrawCalls >= 0) snapshot.DrawCalls = main.DrawStats.DrawCalls;
+                        if (main.DrawStats.Triangles >= 0) snapshot.Triangles = main.DrawStats.Triangles;
+                    }
+                }
+                catch { }
+            }
+            try { snapshot.ManagedMemoryBytes = GC.GetTotalMemory(false); }
+            catch { }
+            try
+            {
+                var actors = Level.GetActors(typeof(Actor), false);
+                if (actors != null) snapshot.ActorCount = actors.Length;
+            }
+            catch { }
+            try
+            {
+                if (headless) return snapshot;
+                var device = GPUDevice.Instance;
+                if (device != null)
+                {
+                    try
+                    {
+                        var adapter = device.Adapter;
+                        if (adapter != null)
+                        {
+                            var description = adapter.Description;
+                            if (!string.IsNullOrEmpty(description)) snapshot.GpuAdapter = description.Length > 256 ? description.Substring(0, 256) : description;
+                        }
+                    }
+                    catch { }
+                    try { snapshot.RendererType = device.RendererType.ToString(); }
+                    catch { }
+                }
+            }
+            catch { }
+            return snapshot;
         }
 
         // Bridge v26: play-mode input simulation (managed-Flax-API-only scope).

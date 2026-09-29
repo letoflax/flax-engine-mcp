@@ -194,11 +194,13 @@ import {
   LogGetRecentSchema,
   LogGetRuntimeErrorsSchema,
   LogSearchSchema,
+  PerfGetSnapshotSchema,
   RuntimeInspectActorSchema,
   ViewportCaptureSchema,
   handleLogGetRecent,
   handleLogGetRuntimeErrors,
   handleLogSearch,
+  handlePerfGetSnapshot,
   handleRuntimeInspectActor,
   handleViewportCapture,
 } from './liveObservability.js';
@@ -302,6 +304,7 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   log_get_runtime_errors: LogGetRuntimeErrorsSchema,
   viewport_capture: ViewportCaptureSchema,
   runtime_inspect_actor: RuntimeInspectActorSchema,
+  perf_get_snapshot: PerfGetSnapshotSchema,
   code_compile: CodeCompileSchema,
   code_get_diagnostics: CodeGetDiagnosticsSchema,
   code_generate_project: CodeGenerateProjectSchema,
@@ -885,6 +888,12 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Reads an allowlisted, depth-bounded live actor snapshot while play mode is active.',
       inputSchema: zodToJsonSchema(RuntimeInspectActorSchema),
       handler: (a, c) => handleRuntimeInspectActor(a as Parameters<typeof handleRuntimeInspectActor>[0], c),
+    },
+    {
+      name: 'perf_get_snapshot',
+      description: 'Reads one instantaneous engine performance snapshot (FPS, frame time, draw calls, triangles, managed memory, actor count, GPU adapter) from the connected editor. Works outside play mode (editor viewport rate) and in play mode; GPU fields are null when headless. Requires bridge v27.',
+      inputSchema: zodToJsonSchema(PerfGetSnapshotSchema),
+      handler: (a, c) => handlePerfGetSnapshot(a as Parameters<typeof handlePerfGetSnapshot>[0], c),
     },
 
     // ── Project Info ──────────────────────────────────────────────────────────

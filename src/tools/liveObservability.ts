@@ -42,6 +42,9 @@ export const RuntimeInspectActorSchema = z.object({
   depth: z.number().int().min(0).max(4).optional().default(1),
   include_scripts: z.boolean().optional().default(true),
 });
+// Bridge v27 engine performance snapshot. No arguments: the bridge returns
+// one instantaneous, read-only sample (null = backing API had no data).
+export const PerfGetSnapshotSchema = z.object({});
 
 function bridgeError(error: unknown, capture = false): ToolDomainError {
   if (!(error instanceof BridgeRpcError)) return new ToolDomainError('INTERNAL_ERROR', error instanceof Error ? error.message : String(error));
@@ -248,5 +251,40 @@ export async function handleRuntimeInspectActor(args: z.infer<typeof RuntimeInsp
     const result = clean(response.data, ctx);
     if (JSON.stringify(result).length > 262_144) throw new ToolDomainError('CONTENT_TOO_LARGE', 'Runtime actor inspection exceeded 256 KiB.');
     return ok({ actor: result }, response.warnings);
+  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error)); }
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function shortText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  return text ? text.slice(0, 256) : null;
+}
+
+// Allowlisted projection: only the documented McpPerfSnapshot primitives
+// survive, so unknown bridge keys (and any path-shaped extras) never leave.
+function cleanPerfSnapshot(raw: unknown): Row {
+  const row = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Row : {};
+  return {
+    fps: finiteNumber(val(row, 'Fps', 'fps')),
+    frame_time_ms: finiteNumber(val(row, 'FrameTimeMs', 'frameTimeMs')),
+    draw_calls: finiteNumber(val(row, 'DrawCalls', 'drawCalls')),
+    triangles: finiteNumber(val(row, 'Triangles', 'triangles')),
+    managed_memory_bytes: finiteNumber(val(row, 'ManagedMemoryBytes', 'managedMemoryBytes')),
+    actor_count: finiteNumber(val(row, 'ActorCount', 'actorCount')),
+    gpu_adapter: shortText(val(row, 'GpuAdapter', 'gpuAdapter')),
+    renderer_type: shortText(val(row, 'RendererType', 'rendererType')),
+    is_play_mode: val(row, 'IsPlayMode', 'isPlayMode') === true,
+    timestamp_unix_ms: finiteNumber(val(row, 'TimestampUnixMs', 'timestampUnixMs')),
+  };
+}
+
+export async function handlePerfGetSnapshot(_args: z.infer<typeof PerfGetSnapshotSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  try {
+    const response = await callEditorBridge(ctx, 'perf.snapshot', {}, { minimumBridgeVersion: 27 });
+    return ok({ snapshot: clean(cleanPerfSnapshot(response.data), ctx) }, response.warnings);
   } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error)); }
 }

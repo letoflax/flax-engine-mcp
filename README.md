@@ -124,6 +124,7 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `play_run_for` | Run for seconds, frames, or until a session-correlated log match, then request stop |
 | `test_run_scenario` | Run a bounded gameplay smoke scenario for `run_seconds` and assert `log_contains`/`log_absent`/`no_errors`/`viewport_captured` conditions, always stopping play |
 | `runtime_inspect_actor` | Read a bounded, allowlisted actor snapshot during play mode |
+| `perf_get_snapshot` | Read one instantaneous engine performance snapshot (FPS, frame time, draw calls, triangles, managed memory, actor count, GPU adapter/renderer). Works outside play mode (editor viewport rate) and in play mode; GPU fields are null when headless; single sample, no averaging (bridge v27) |
 | `viewport_capture` | Capture the game viewport (requires play mode) or the editor viewport (bridge v22, works outside play mode) and return a readable temporary `flax://capture/<id>` PNG resource |
 
 ### Live Logs

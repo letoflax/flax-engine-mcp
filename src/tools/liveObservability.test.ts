@@ -8,11 +8,13 @@ import {
   handleLogGetRecent,
   handleLogGetRuntimeErrors,
   handleLogSearch,
+  handlePerfGetSnapshot,
   handleRuntimeInspectActor,
   handleViewportCapture,
   LogGetRecentSchema,
   LogGetRuntimeErrorsSchema,
   LogSearchSchema,
+  PerfGetSnapshotSchema,
   RuntimeInspectActorSchema,
   ViewportCaptureSchema,
 } from './liveObservability.js';
@@ -215,5 +217,58 @@ test('runtime_inspect_actor enforces DTO bounds and sanitizes returned paths', a
     assert.deepEqual(JSON.parse(String(request.paramsJson)), { ActorId: 'a'.repeat(32), Depth: 2, IncludeScripts: true });
     const envelope = (await pending).structuredContent as Record<string, any>;
     assert.equal(JSON.stringify(envelope.data).includes(f.root), false);
+  } finally { await f.cleanup(); }
+});
+
+test('perf_get_snapshot returns a cleaned allowlisted snapshot without paths', async () => {
+  const f = await fixture(27);
+  try {
+    assert.deepEqual(PerfGetSnapshotSchema.parse({}), {});
+    const pending = handlePerfGetSnapshot(PerfGetSnapshotSchema.parse({}), f.ctx);
+    const request = await reply(f, {
+      Fps: 60, FrameTimeMs: 16.6, DrawCalls: 128, Triangles: 45678,
+      ManagedMemoryBytes: 134217728, ActorCount: 42,
+      GpuAdapter: 'NVIDIA GeForce RTX 4070', RendererType: 'DirectX11',
+      IsPlayMode: false, TimestampUnixMs: 1759132800000,
+      SecretPath: path.join(f.root, 'Source', 'Secret.cs'), Extra: { Nested: 'drop me' },
+    });
+    assert.equal(request.method, 'perf.snapshot');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {});
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.deepEqual(envelope.data.snapshot, {
+      fps: 60, frame_time_ms: 16.6, draw_calls: 128, triangles: 45678,
+      managed_memory_bytes: 134217728, actor_count: 42,
+      gpu_adapter: 'NVIDIA GeForce RTX 4070', renderer_type: 'DirectX11',
+      is_play_mode: false, timestamp_unix_ms: 1759132800000,
+    });
+    assert.equal(JSON.stringify(envelope.data).includes(f.root), false);
+  } finally { await f.cleanup(); }
+});
+
+test('perf_get_snapshot reports null for unavailable GPU fields without failing', async () => {
+  const f = await fixture(27);
+  try {
+    const pending = handlePerfGetSnapshot(PerfGetSnapshotSchema.parse({}), f.ctx);
+    await reply(f, {
+      Fps: 30, FrameTimeMs: 33.3, DrawCalls: null, Triangles: null,
+      ManagedMemoryBytes: 67108864, ActorCount: 7,
+      GpuAdapter: null, RendererType: null, IsPlayMode: true, TimestampUnixMs: 1759132801000,
+    });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.snapshot.draw_calls, null);
+    assert.equal(envelope.data.snapshot.triangles, null);
+    assert.equal(envelope.data.snapshot.gpu_adapter, null);
+    assert.equal(envelope.data.snapshot.renderer_type, null);
+    assert.equal(envelope.data.snapshot.is_play_mode, true);
+  } finally { await f.cleanup(); }
+});
+
+test('perf_get_snapshot refuses an outdated bridge without contacting it', async () => {
+  const f = await fixture(26);
+  try {
+    const result = await handlePerfGetSnapshot(PerfGetSnapshotSchema.parse({}), f.ctx);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
   } finally { await f.cleanup(); }
 });

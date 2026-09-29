@@ -68,7 +68,8 @@ export type ObservabilityBridgeMethod =
   | 'log.query'
   | 'capture.start'
   | 'capture.status'
-  | 'runtime.inspect_actor';
+  | 'runtime.inspect_actor'
+  | 'perf.snapshot';
 
 export type AssetBridgeMethod =
   | 'asset.search'
