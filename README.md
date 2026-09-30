@@ -81,6 +81,7 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `get_project_info` | Project config from `.flaxproj` — name, version, default scene, directory layout |
 | `get_game_settings` | Contents of `GameSettings.json` — product name, scene ID, all sub-settings refs |
 | `get_project_summary` | Full project overview in one call — scripts, scenes, assets, settings, docs |
+| `project_get_packages` | Offline `.flaxproj` reference inspection — engine/plugin/other refs with existence flags plus `Plugins/` names (no absolute paths) |
 
 ### Scripts
 | Tool | What it does |

@@ -13,6 +13,7 @@ import {
 
 // Existing tools
 import { GetProjectInfoSchema, GetGameSettingsSchema, handleGetProjectInfo, handleGetGameSettings } from './project.js';
+import { GetProjectPackagesSchema, handleGetProjectPackages } from './packages.js';
 import { ListScriptsSchema, ReadScriptSchema, WriteScriptSchema, ApplyScriptPatchSchema, handleListScripts, handleReadScript, handleWriteScript, handleApplyScriptPatch } from './scripts.js';
 import { GetAuditEntriesSchema, handleGetAuditEntries } from '../audit.js';
 import { ListAssetsSchema, GetSceneActorsSchema, handleGetSceneActors } from './assets.js';
@@ -343,6 +344,7 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   input_mouse_click: InputMouseClickSchema,
   test_run_scenario: TestRunScenarioSchema,
   get_project_info: GetProjectInfoSchema,
+  project_get_packages: GetProjectPackagesSchema,
   get_game_settings: GetGameSettingsSchema,
   get_project_summary: GetProjectSummarySchema,
   list_scripts: ListScriptsSchema,
@@ -902,6 +904,12 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Returns Flax project config from .flaxproj and meta.xml: name, version, default scene, engine version, and directory layout.',
       inputSchema: zodToJsonSchema(GetProjectInfoSchema),
       handler: (a, c) => handleGetProjectInfo(a, c),
+    },
+    {
+      name: 'project_get_packages',
+      description: 'Inspects the .flaxproj project references offline: engine/plugin/other refs with existence flags plus Plugins/ directory names. Never returns absolute paths.',
+      inputSchema: zodToJsonSchema(GetProjectPackagesSchema),
+      handler: (a, c) => handleGetProjectPackages(a, c),
     },
     {
       name: 'get_game_settings',
