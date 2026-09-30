@@ -1,4 +1,4 @@
-// Compile-only probe for the public Flax 1.12 material and animation APIs used by bridge v13.
+// Compile-only probe for the public Flax 1.12 material and animation APIs used by bridge v13 reads and bridge v29 writes.
 using FlaxEngine;
 
 namespace FlaxMcpCompileSmoke
@@ -36,6 +36,32 @@ namespace FlaxMcpCompileSmoke
             var animationInfoChannelsCount = animationInfo.ChannelsCount;
             var animationInfoKeyframesCount = animationInfo.KeyframesCount;
             var animationInfoMemoryUsage = animationInfo.MemoryUsage;
+        }
+
+        // Bridge v29 bounded material write/create/assign surface (all public
+        // Flax 1.12 managed APIs; headers + FlaxEngine.CSharp.xml spot-checked).
+        internal static void InspectWrites(
+            MaterialBase material,
+            Material baseMaterial,
+            ModelInstanceActor modelActor,
+            int slot,
+            string destinationPath)
+        {
+            MaterialParameter lookup = material.GetParameter("Tint");
+            object current = material.GetParameterValue("Tint");
+            material.SetParameterValue("Tint", current, true);
+
+            MaterialInstance virtualInstance = Content.CreateVirtualAsset<MaterialInstance>();
+            virtualInstance.BaseMaterial = baseMaterial;
+            bool saveFailed = virtualInstance.Save(destinationPath);
+            bool ownSaveFailed = material.Save();
+
+            var slots = modelActor.MaterialSlots;
+            int slotCount = slots.Length;
+            MaterialBase previous = modelActor.GetMaterial(slot);
+            modelActor.SetMaterial(slot, material);
+
+            Content.UnloadAsset(material);
         }
     }
 }

@@ -1194,19 +1194,19 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'material_set_parameters',
-      description: 'Reports a stable unsupported capability: material runtime setters lack a reviewed Editor undo, persistence, and preview path. Requires bridge v13.',
+      description: 'Sets 1-16 named parameters on one Material or MaterialInstance (bool/number, or strict strings for vectors, colors, and texture GUIDs) with dry-run preview, editor undo, Asset.Save persistence, and unload/reload durability verification. Requires bridge v29.',
       inputSchema: zodToJsonSchema(MaterialSetParametersSchema),
       handler: (a, c) => handleMaterialSetParameters(a as Parameters<typeof handleMaterialSetParameters>[0], c),
     },
     {
       name: 'material_create_instance',
-      description: 'Reports a stable unsupported capability: virtual material instances cannot be safely persisted as a reviewed Editor mutation. Requires bridge v13.',
+      description: 'Creates a persisted MaterialInstance from one Material into a new Content/.../*.flax file (never overwrites) via virtual-asset save, with dry-run preview. Requires bridge v29.',
       inputSchema: zodToJsonSchema(MaterialCreateInstanceSchema),
       handler: (a, c) => handleMaterialCreateInstance(a as Parameters<typeof handleMaterialCreateInstance>[0], c),
     },
     {
       name: 'material_assign_to_actor',
-      description: 'Reports a stable unsupported capability: actor material-slot assignment lacks a verified undoable, previewable Editor API path. Requires bridge v13.',
+      description: 'Assigns one Material or MaterialInstance to a ModelInstanceActor slot via SetMaterial with editor undo; marks the scene edited without saving. Requires bridge v29.',
       inputSchema: zodToJsonSchema(MaterialAssignToActorSchema),
       handler: (a, c) => handleMaterialAssignToActor(a as Parameters<typeof handleMaterialAssignToActor>[0], c),
     },

@@ -213,6 +213,9 @@ export async function handleGetServerCapabilities(
     const perfSnapshot = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 27;
     const scriptFieldWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 28;
     const actorPropertyWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 28;
+    const materialParameterWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
+    const materialInstanceCreation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
+    const materialAssignment = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -293,9 +296,9 @@ export async function handleGetServerCapabilities(
         material: {
           available: materialAnimation,
           parameters: materialAnimation,
-          setParameters: false,
-          createInstance: false,
-          assignToActor: false,
+          setParameters: materialParameterWrite,
+          createInstance: materialInstanceCreation,
+          assignToActor: materialAssignment,
         },
         animation: {
           available: materialAnimation,

@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 28
+// MCP-BRIDGE-VERSION: 29
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -28,12 +28,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 28; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 29; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 28; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; }
+    public class McpStatus { public int BridgeVersion = 29; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -194,7 +194,18 @@ namespace Game.MCP
     public class McpPrefabInstanceDto { public string ActorId; public string SceneId; public string ParentId; public string Name; public string PrefabId; public string PrefabObjectId; public bool IsPrefabRoot; }
     public class McpPrefabInstancesResult { public McpAssetMetadata Prefab; public McpPrefabInstanceDto[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
     public class McpMaterialAssetRequest { public string AssetId; public string Path; public bool IncludeNonPublic; }
-    public class McpMaterialMutationRequest { public string AssetId; public string Path; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    public class McpMaterialParameterSet { public string Name; public bool? Bool; public double? Number; public string Text; }
+    // Bridge v29 bounded material writes. Values use the same exactly-one-of
+    // Bool/Number/Text shape as the v28 script-field/component writes: Node
+    // splits its bool|number|string union and the bridge coerces strictly to
+    // the target MaterialParameterType (vectors/colors/textures arrive as
+    // strict Text and are parsed, never blended).
+    public class McpMaterialSetParametersRequest { public string AssetId; public string Path; public McpMaterialParameterSet[] Parameters; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    public class McpMaterialSetParametersResult { public McpAssetMetadata Material; public bool IsInstance; public bool DryRun; public bool Saved; public bool Verified; public McpMaterialParameterDto[] Parameters; public long ProjectRevision; public string[] Warnings; }
+    public class McpMaterialCreateInstanceRequest { public string AssetId; public string Path; public string DestinationPath; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; }
+    public class McpMaterialCreateInstanceResult { public bool DryRun; public bool Created; public McpAssetMetadata Material; public McpAssetMetadata BaseMaterial; public string DestinationPath; public long ProjectRevision; public string[] Warnings; }
+    public class McpMaterialAssignRequest { public string AssetId; public string Path; public string ActorId; public int Slot; public bool DryRun = true; public bool Confirm; public string IdempotencyKey; public long? ExpectedSceneRevision; public string LeaseId; }
+    public class McpMaterialAssignResult { public bool DryRun; public string ActorId; public string ActorType; public int Slot; public int SlotCount; public McpAssetMetadata Material; public McpAssetMetadata Before; public McpAssetMetadata After; public bool SceneEdited; public long ProjectRevision; public long SceneRevision; public string[] Warnings; }
     public class McpMaterialTypedValue { public string Kind; public bool? Boolean; public long? Integer; public double? Number; public string Text; public McpVector2 Vector2; public McpVector3 Vector3; public McpVector4 Vector4; public string AssetId; public string TypeName; }
     public class McpVector2 { public float X; public float Y; }
     public class McpVector4 { public float X; public float Y; public float Z; public float W; }
@@ -245,7 +256,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 28;
+        private const int BridgeVersion = 29;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -373,7 +384,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                    Debug.Log("[Flax MCP] Bridge v28 listening at " + Root);
+                    Debug.Log("[Flax MCP] Bridge v29 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -586,9 +597,9 @@ namespace Game.MCP
                 case "prefab.apply_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_apply_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
                 case "prefab.break_link": result = OnMain(() => UnsupportedPrefabOperation("prefab_break_link", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
                 case "material.get_parameters": result = OnMain(() => GetMaterialParameters(JsonSerializer.Deserialize<McpMaterialAssetRequest>(p)), request.deadlineUnixMs); break;
-                case "material.set_parameters": result = OnMain(() => UnsupportedMaterialOperation("material_set_parameters", JsonSerializer.Deserialize<McpMaterialMutationRequest>(p)), request.deadlineUnixMs); break;
-                case "material.create_instance": result = OnMain(() => UnsupportedMaterialOperation("material_create_instance", JsonSerializer.Deserialize<McpMaterialMutationRequest>(p)), request.deadlineUnixMs); break;
-                case "material.assign_to_actor": result = OnMain(() => UnsupportedMaterialOperation("material_assign_to_actor", JsonSerializer.Deserialize<McpMaterialMutationRequest>(p)), request.deadlineUnixMs); break;
+                case "material.set_parameters": { var q = JsonSerializer.Deserialize<McpMaterialSetParametersRequest>(p); result = OnMain(() => ExecuteMaterialSetParameters(q), request.deadlineUnixMs); break; }
+                case "material.create_instance": { var q = JsonSerializer.Deserialize<McpMaterialCreateInstanceRequest>(p); result = OnMain(() => ExecuteMaterialCreateInstance(q), request.deadlineUnixMs); break; }
+                case "material.assign_to_actor": { var q = JsonSerializer.Deserialize<McpMaterialAssignRequest>(p); result = OnMain(() => ExecuteMaterialAssign(q), request.deadlineUnixMs); break; }
                 case "animation.list_clips": result = OnMain(() => ListAnimationClips(JsonSerializer.Deserialize<McpAnimationListClips>(p)), request.deadlineUnixMs); break;
                 case "animation.get_graph_parameters": result = OnMain(() => GetAnimationGraphParameters(JsonSerializer.Deserialize<McpAnimationActorRequest>(p)), request.deadlineUnixMs); break;
                 case "animation.set_graph_parameter": result = OnMain(() => UnsupportedAnimationOperation("animation_set_graph_parameter", JsonSerializer.Deserialize<McpAnimationGraphMutationRequest>(p)), request.deadlineUnixMs); break;
@@ -1348,8 +1359,9 @@ namespace Game.MCP
         }
 
         // Bridge v13 material/animation reads use public Flax 1.12 managed
-        // APIs only. Writes are not exposed: the public runtime setters do not
-        // provide a reviewed Editor undo, durable-save, or preview boundary.
+        // APIs only. Bridge v29 adds the bounded write/create/assign surface
+        // below (SetMaterialParameters, CreateMaterialInstance,
+        // AssignMaterialToActor); animation graph writes stay unsupported.
         private McpMaterialParametersResult GetMaterialParameters(McpMaterialAssetRequest request)
         {
             if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Material parameters are required.");
@@ -1386,17 +1398,509 @@ namespace Game.MCP
                 BaseMaterial = instance == null ? null : AssetMetadataForLoadedAsset(instance.BaseMaterial),
                 Parameters = entries.ToArray(),
                 NonPublicIncluded = request.IncludeNonPublic,
-                Warnings = new[] { "Values are a bounded safe projection of public material parameters. Unsupported Variant shapes are reported by type only; material writes and persistent instance creation are intentionally unavailable." },
+                Warnings = new[] { "Values are a bounded safe projection of public material parameters. Unsupported Variant shapes are reported by type only; bounded writes are available via material.set_parameters / material.create_instance / material.assign_to_actor (bridge v29)." },
             };
         }
 
-        private object UnsupportedMaterialOperation(string capability, McpMaterialMutationRequest request)
+        // Bridge v29 bounded material writes (see bridge/PROTOCOL.md "Bridge
+        // v29"). All three are edit-time only (RequireEditTime: headless and
+        // play mode fail INVALID_STATE), dry-run by default, confirm-gated,
+        // and idempotent. Undo honesty: parameter edits use a bridge-owned
+        // generic snapshot undo (McpMaterialParametersUndo: before/after
+        // values re-applied plus Asset.Save), NOT the editor
+        // MaterialInstanceWindow action, which requires an open material
+        // window and is not bridge-usable. Slot assignment composes the
+        // generic Undo.RecordAction path (no dedicated slot action exists in
+        // Flax 1.12). Instance creation has no verified undo (like v10 asset
+        // organization) and reports it.
+        private const int MaxMaterialParameters = 16;
+        private const int MaxMaterialTextChars = 512;
+
+        private object ExecuteMaterialSetParameters(McpMaterialSetParametersRequest q)
         {
-            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Material operation parameters are required.");
-            var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, BuildAssetRegistry());
+            // Dry-run previews never consume idempotency keys (same convention
+            // as ExecuteSetScriptField): a preview filed under the same key as
+            // a later real write would collide on the request fingerprint.
+            if (q != null && q.DryRun) return SetMaterialParameters(q);
+            return ExecuteIdempotent("material.set_parameters", q == null ? null : q.IdempotencyKey, q, () => SetMaterialParameters(q));
+        }
+
+        private object ExecuteMaterialCreateInstance(McpMaterialCreateInstanceRequest q)
+        {
+            if (q != null && q.DryRun) return CreateMaterialInstance(q);
+            return ExecuteIdempotent("material.create_instance", q == null ? null : q.IdempotencyKey, q, () => CreateMaterialInstance(q));
+        }
+
+        private object ExecuteMaterialAssign(McpMaterialAssignRequest q)
+        {
+            if (q != null && q.DryRun) return AssignMaterialToActor(q);
+            return ExecuteIdempotent("material.assign_to_actor", q == null ? null : q.IdempotencyKey, q, () => AssignMaterialToActor(q));
+        }
+
+        private McpMaterialSetParametersResult SetMaterialParameters(McpMaterialSetParametersRequest q)
+        {
+            if (q == null) throw new McpProtocolException("INVALID_REQUEST", "Material parameter mutation requires parameters.");
+            if (q.Parameters == null || q.Parameters.Length < 1 || q.Parameters.Length > MaxMaterialParameters)
+                throw new McpProtocolException("VALIDATION_FAILED", "Parameters must contain between 1 and " + MaxMaterialParameters + " entries.");
+            ValidateAssetSelector(q.AssetId, q.Path);
+            RequireEditTime("material.set_parameters");
+            var records = BuildAssetRegistry();
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = q.AssetId, Path = q.Path }, records);
             if (!string.Equals(record.Info.TypeName, "FlaxEngine.Material", StringComparison.Ordinal) && !string.Equals(record.Info.TypeName, "FlaxEngine.MaterialInstance", StringComparison.Ordinal))
                 throw new McpProtocolException("VALIDATION_FAILED", "The selected Content asset is not a Flax material or material instance.");
-            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", capability + " is intentionally unavailable: Flax 1.12 exposes runtime material setters and virtual instances, but this bridge has no reviewed undo, durable-save, actor-slot targeting, and preview/confirmation path for an Editor mutation.", new { Capability = capability, BridgeVersion = BridgeVersion, DryRun = request.DryRun });
+            Asset loaded = null;
+            try { loaded = Content.Load(record.Id, AssetLoadTimeoutMs); } catch { }
+            var material = loaded as MaterialBase;
+            if (material == null || material.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The selected material could not be loaded by Flax Editor.");
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var defs = new MaterialParameter[q.Parameters.Length];
+            var coerced = new object[q.Parameters.Length];
+            for (var i = 0; i < q.Parameters.Length; i++)
+            {
+                var entry = q.Parameters[i];
+                if (entry == null) throw new McpProtocolException("INVALID_REQUEST", "Material parameter entry " + i + " is required.");
+                ValidateAssetText(entry.Name, 256, "Material parameter name");
+                if (!seen.Add(entry.Name))
+                    throw new McpProtocolException("VALIDATION_FAILED", "Duplicate material parameter '" + entry.Name + "'.");
+                MaterialParameter def = null;
+                try { def = material.GetParameter(entry.Name); } catch { def = null; }
+                if (def == null)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Material parameter '" + entry.Name + "' does not exist on the selected material." + MaterialParameterNameHint(material));
+                defs[i] = def;
+                coerced[i] = CoerceMaterialParameterValue(entry, def);
+            }
+
+            var before = new object[defs.Length];
+            for (var i = 0; i < defs.Length; i++)
+            {
+                try { before[i] = material.GetParameterValue(defs[i].Name); }
+                catch (Exception ex) { throw new McpProtocolException("VALIDATION_FAILED", "Material parameter '" + defs[i].Name + "' read failed: " + ex.GetType().FullName + "."); }
+            }
+
+            if (q.DryRun)
+            {
+                var preview = new McpMaterialParameterDto[defs.Length];
+                for (var i = 0; i < defs.Length; i++)
+                    preview[i] = MaterialParameterPreview(defs[i], coerced[i]);
+                return new McpMaterialSetParametersResult
+                {
+                    Material = AssetMetadata(record), IsInstance = material is MaterialInstance,
+                    DryRun = true, Saved = false, Verified = false, Parameters = preview,
+                    ProjectRevision = _projectRevision,
+                    Warnings = new[] { "Dry-run preview only: parameters were validated and coerced but nothing was applied or saved. Reissue with dryRun:false + confirm:true to persist via Asset.Save with unload/reload verification." },
+                };
+            }
+            if (!q.Confirm)
+                throw new McpProtocolException("VALIDATION_FAILED", "Material parameter writes require confirm:true alongside dryRun:false. Values persist via Asset.Save; undo is a bridge-owned snapshot action, not the editor material-window action.");
+
+            var names = new string[defs.Length];
+            for (var i = 0; i < defs.Length; i++) names[i] = defs[i].Name;
+            var applied = 0;
+            try
+            {
+                for (; applied < defs.Length; applied++)
+                    material.SetParameterValue(defs[applied].Name, coerced[applied], true);
+            }
+            catch (Exception ex)
+            {
+                for (var r = applied - 1; r >= 0; r--)
+                {
+                    try { material.SetParameterValue(defs[r].Name, before[r], true); } catch { }
+                }
+                throw new McpProtocolException("VALIDATION_FAILED", "Material parameter '" + defs[applied].Name + "' write failed (" + ex.GetType().FullName + "); earlier entries were reverted in memory and nothing was saved.");
+            }
+            FEditor.Instance.Undo.AddAction(new McpMaterialParametersUndo(record.Id, names, before, coerced));
+            if (material.Save())
+            {
+                for (var r = 0; r < defs.Length; r++)
+                {
+                    try { material.SetParameterValue(defs[r].Name, before[r], true); } catch { }
+                }
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not save the selected material to disk; in-memory values were reverted.");
+            }
+            // Durability verification (the byte-level save path is headers-only
+            // in the SDK, so prove it): unload the asset and reload from disk,
+            // then compare every written value.
+            Content.UnloadAsset(material);
+            MaterialBase reloaded = null;
+            try { reloaded = Content.Load(record.Id, AssetLoadTimeoutMs) as MaterialBase; } catch { reloaded = null; }
+            if (reloaded == null || reloaded.LastLoadFailed)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "The material was saved but could not be reloaded from disk for verification.", new { Verified = false });
+            var disk = new object[defs.Length];
+            for (var i = 0; i < defs.Length; i++)
+            {
+                var diskOk = false;
+                try { disk[i] = reloaded.GetParameterValue(defs[i].Name); diskOk = true; } catch { diskOk = false; }
+                if (!diskOk || !MaterialVariantEquals(disk[i], coerced[i]))
+                    throw new McpProtocolException("ASSET_OPERATION_FAILED", "The material was saved but the reloaded value of '" + defs[i].Name + "' differs; durability is not proven.", new { Verified = false, Parameter = defs[i].Name });
+            }
+            var revision = AdvanceProjectRevision();
+            var after = new McpMaterialParameterDto[defs.Length];
+            for (var i = 0; i < defs.Length; i++)
+            {
+                MaterialParameter fresh = null;
+                try { fresh = reloaded.GetParameter(defs[i].Name); } catch { fresh = null; }
+                after[i] = new McpMaterialParameterDto
+                {
+                    Id = (fresh == null ? defs[i].ParameterID : fresh.ParameterID).ToString("N"),
+                    Name = defs[i].Name,
+                    Type = defs[i].ParameterType.ToString(),
+                    IsPublic = defs[i].IsPublic,
+                    IsOverride = fresh == null ? defs[i].IsOverride : fresh.IsOverride,
+                    Value = SafeMaterialAnimationValue(disk[i]),
+                };
+            }
+            var warnings = new List<string>
+            {
+                "Parameter edits are recorded as a bridge-owned generic snapshot undo (before/after values re-applied plus Asset.Save), not the editor MaterialInstanceWindow action, which requires an open material window.",
+                "Durability was verified by unloading the asset and reloading it from disk; every written value matched the reloaded value.",
+            };
+            for (var i = 0; i < defs.Length; i++)
+            {
+                if (!defs[i].IsPublic)
+                {
+                    warnings.Add("One or more written parameters are non-public; they were applied because the parameter exists on the asset.");
+                    break;
+                }
+            }
+            return new McpMaterialSetParametersResult
+            {
+                Material = AssetMetadata(record), IsInstance = reloaded is MaterialInstance,
+                DryRun = false, Saved = true, Verified = true, Parameters = after,
+                ProjectRevision = revision, Warnings = warnings.ToArray(),
+            };
+        }
+
+        private static McpMaterialParameterDto MaterialParameterPreview(MaterialParameter def, object next)
+        {
+            return new McpMaterialParameterDto
+            {
+                Id = def.ParameterID.ToString("N"), Name = def.Name, Type = def.ParameterType.ToString(),
+                IsPublic = def.IsPublic, IsOverride = def.IsOverride, Value = SafeMaterialAnimationValue(next),
+            };
+        }
+
+        private static string MaterialParameterNameHint(MaterialBase material)
+        {
+            try
+            {
+                var list = new List<string>();
+                var parameters = material.Parameters ?? new MaterialParameter[0];
+                foreach (var parameter in parameters)
+                {
+                    if (parameter != null && !string.IsNullOrEmpty(parameter.Name)) list.Add(parameter.Name);
+                }
+                list.Sort(StringComparer.Ordinal);
+                var shown = list.Count > 32 ? list.GetRange(0, 32) : list;
+                return " Available: " + string.Join(", ", shown.ToArray()) + (list.Count > 32 ? "..." : "");
+            }
+            catch { return ""; }
+        }
+
+        private static string RequireMaterialText(McpMaterialParameterSet entry, MaterialParameter def, string shape)
+        {
+            if (entry.Text == null)
+                throw new McpProtocolException("VALIDATION_FAILED", "Parameter '" + def.Name + "' (" + def.ParameterType + ") requires " + shape + ".");
+            if (entry.Text.Length > MaxMaterialTextChars)
+                throw new McpProtocolException("VALIDATION_FAILED", "Parameter '" + def.Name + "' exceeds " + MaxMaterialTextChars + " characters.");
+            return entry.Text;
+        }
+
+        private static object CoerceMaterialParameterValue(McpMaterialParameterSet entry, MaterialParameter def)
+        {
+            var setCount = (entry.Bool.HasValue ? 1 : 0) + (entry.Number.HasValue ? 1 : 0) + (entry.Text != null ? 1 : 0);
+            if (setCount != 1)
+                throw new McpProtocolException("VALIDATION_FAILED", "Parameter '" + def.Name + "' requires exactly one of Bool, Number, or Text.");
+            var need = "Parameter '" + def.Name + "' (" + def.ParameterType + ") requires ";
+            switch (def.ParameterType)
+            {
+                case MaterialParameterType.Bool:
+                    if (!entry.Bool.HasValue) throw new McpProtocolException("VALIDATION_FAILED", need + "a boolean value.");
+                    return entry.Bool.Value;
+                case MaterialParameterType.Integer:
+                    if (!entry.Number.HasValue) throw new McpProtocolException("VALIDATION_FAILED", need + "an integral numeric value.");
+                    var integer = entry.Number.Value;
+                    if (double.IsNaN(integer) || double.IsInfinity(integer) || Math.Truncate(integer) != integer)
+                        throw new McpProtocolException("VALIDATION_FAILED", need + "an integral numeric value.");
+                    if (integer < int.MinValue || integer > int.MaxValue)
+                        throw new McpProtocolException("VALIDATION_FAILED", need + "a value within Int32 range.");
+                    return (int)integer;
+                case MaterialParameterType.Float:
+                    if (!entry.Number.HasValue) throw new McpProtocolException("VALIDATION_FAILED", need + "a numeric value.");
+                    var number = entry.Number.Value;
+                    if (double.IsNaN(number) || double.IsInfinity(number))
+                        throw new McpProtocolException("VALIDATION_FAILED", need + "a finite numeric value.");
+                    if (number < -(double)float.MaxValue || number > (double)float.MaxValue)
+                        throw new McpProtocolException("VALIDATION_FAILED", need + "a value within float range.");
+                    return (float)number;
+                case MaterialParameterType.Vector2:
+                {
+                    var values = ParseStrictFloatList(RequireMaterialText(entry, def, "an \"x,y\" string"), 2, need + "an \"x,y\" string", "x,y");
+                    return new Float2(values[0], values[1]);
+                }
+                case MaterialParameterType.Vector3:
+                {
+                    var values = ParseStrictFloatList(RequireMaterialText(entry, def, "an \"x,y,z\" string"), 3, need + "an \"x,y,z\" string", "x,y,z");
+                    return new Float3(values[0], values[1], values[2]);
+                }
+                case MaterialParameterType.Vector4:
+                {
+                    var values = ParseStrictFloatList(RequireMaterialText(entry, def, "an \"x,y,z,w\" string"), 4, need + "an \"x,y,z,w\" string", "x,y,z,w");
+                    return new Float4(values[0], values[1], values[2], values[3]);
+                }
+                case MaterialParameterType.Color:
+                    return ParseStrictColor(RequireMaterialText(entry, def, "a \"#rrggbb\" or \"r,g,b[,a]\" string"), need + "a color");
+                case MaterialParameterType.Texture:
+                case MaterialParameterType.CubeTexture:
+                case MaterialParameterType.NormalMap:
+                {
+                    var text = RequireMaterialText(entry, def, "a 32-character texture asset GUID string");
+                    Guid guid;
+                    if (!Guid.TryParseExact(text, "N", out guid))
+                        throw new McpProtocolException("VALIDATION_FAILED", need + "a 32-character texture asset GUID string.");
+                    AssetInfo info;
+                    if (!Content.GetAssetInfo(guid, out info))
+                        throw new McpProtocolException("VALIDATION_FAILED", "Parameter '" + def.Name + "' references an unknown asset " + text + ".");
+                    return guid;
+                }
+                default:
+                    throw new McpProtocolException("VALIDATION_FAILED", "Unsupported parameter type " + def.ParameterType + " for '" + def.Name + "'. Supported: Bool, Integer, Float, Vector2, Vector3, Vector4, Color, Texture, CubeTexture, NormalMap.");
+            }
+        }
+
+        private static bool MaterialVariantEquals(object left, object right)
+        {
+            if (left == null || right == null) return left == null && right == null;
+            if ((left is float || left is double) && (right is float || right is double))
+            {
+                try { return Math.Abs(Convert.ToDouble(left) - Convert.ToDouble(right)) < 1e-6; }
+                catch { return left.Equals(right); }
+            }
+            if (left is Float2 && right is Float2)
+            {
+                var a = (Float2)left; var b = (Float2)right;
+                return Math.Abs(a.X - b.X) < 1e-6f && Math.Abs(a.Y - b.Y) < 1e-6f;
+            }
+            if (left is Float3 && right is Float3)
+            {
+                var a = (Float3)left; var b = (Float3)right;
+                return Math.Abs(a.X - b.X) < 1e-6f && Math.Abs(a.Y - b.Y) < 1e-6f && Math.Abs(a.Z - b.Z) < 1e-6f;
+            }
+            if (left is Float4 && right is Float4)
+            {
+                var a = (Float4)left; var b = (Float4)right;
+                return Math.Abs(a.X - b.X) < 1e-6f && Math.Abs(a.Y - b.Y) < 1e-6f && Math.Abs(a.Z - b.Z) < 1e-6f && Math.Abs(a.W - b.W) < 1e-6f;
+            }
+            if (left is Color && right is Color)
+            {
+                var a = (Color)left; var b = (Color)right;
+                return Math.Abs(a.R - b.R) < 1e-6f && Math.Abs(a.G - b.G) < 1e-6f && Math.Abs(a.B - b.B) < 1e-6f && Math.Abs(a.A - b.A) < 1e-6f;
+            }
+            if (left is Guid && right is Guid) return (Guid)left == (Guid)right;
+            // Texture reads may project the loaded Asset while the write
+            // carried its GUID (or vice versa); compare by asset identity.
+            if (left is Asset && right is Guid) return ((Asset)left).ID == (Guid)right;
+            if (left is Guid && right is Asset) return (Guid)left == ((Asset)right).ID;
+            if (left is Asset && right is Asset) return ((Asset)left).ID == ((Asset)right).ID;
+            if (left is bool && right is bool) return (bool)left == (bool)right;
+            if (left is string && right is string) return string.Equals((string)left, (string)right, StringComparison.Ordinal);
+            return left.Equals(right);
+        }
+
+        private McpMaterialCreateInstanceResult CreateMaterialInstance(McpMaterialCreateInstanceRequest q)
+        {
+            if (q == null) throw new McpProtocolException("INVALID_REQUEST", "Material instance creation requires parameters.");
+            ValidateAssetSelector(q.AssetId, q.Path);
+            var destination = ValidateProjectContentPath(q.DestinationPath, false);
+            if (!destination.EndsWith(".flax", StringComparison.OrdinalIgnoreCase))
+                throw new McpProtocolException("VALIDATION_FAILED", "Material instance destination must use a .flax path under Content/.");
+            RequireEditTime("material.create_instance");
+            var records = BuildAssetRegistry();
+            var baseRecord = ResolveAssetRecord(new McpAssetGet { AssetId = q.AssetId, Path = q.Path }, records);
+            if (!string.Equals(baseRecord.Info.TypeName, "FlaxEngine.Material", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "Material instances can only be created from a Flax Material; got " + (baseRecord.Info.TypeName ?? "unknown") + ".");
+            // Never overwrite: both the registry identity and on-disk presence refuse.
+            AssetInfo clash;
+            if (Content.GetAssetInfo(destination, out clash))
+                throw new McpProtocolException("FILE_EXISTS", "A Content asset already exists at the requested destination.");
+            var contentRoot = CanonicalExistingPath(Path.Combine(Globals.ProjectFolder, "Content"), false);
+            var absolute = Path.GetFullPath(Path.Combine(contentRoot, destination.Substring("Content/".Length).Replace('/', Path.DirectorySeparatorChar)));
+            if (!PathIsWithin(contentRoot, absolute))
+                throw new McpProtocolException("VALIDATION_FAILED", "Material instance destination escapes Content.");
+            if (File.Exists(absolute) || Directory.Exists(absolute))
+                throw new McpProtocolException("FILE_EXISTS", "A file already exists at the requested destination.");
+            if (q.DryRun)
+            {
+                return new McpMaterialCreateInstanceResult
+                {
+                    DryRun = true, Created = false, Material = null, BaseMaterial = AssetMetadata(baseRecord),
+                    DestinationPath = destination, ProjectRevision = _projectRevision,
+                    Warnings = new[] { "Dry-run preview only: no asset was created. Reissue with dryRun:false + confirm:true to persist via virtual-asset save." },
+                };
+            }
+            if (!q.Confirm)
+                throw new McpProtocolException("VALIDATION_FAILED", "Material instance creation requires confirm:true alongside dryRun:false. Creation has no verified Editor undo; remove the file with asset_delete (quarantine) if it is not needed.");
+            Asset loadedBase = null;
+            try { loadedBase = Content.Load(baseRecord.Id, AssetLoadTimeoutMs); } catch { }
+            var baseMaterial = loadedBase as Material;
+            if (baseMaterial == null || baseMaterial.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The base material could not be loaded by Flax Editor.");
+            var instance = Content.CreateVirtualAsset<MaterialInstance>();
+            if (instance == null)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not create a virtual material instance.");
+            try { instance.BaseMaterial = baseMaterial; }
+            catch (Exception ex) { throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not bind the base material: " + ex.GetType().FullName + "."); }
+            try { Directory.CreateDirectory(Path.GetDirectoryName(absolute)); }
+            catch (Exception ex) { throw new McpProtocolException("ASSET_OPERATION_FAILED", "Could not prepare the destination folder: " + ex.GetType().FullName + "."); }
+            if (File.Exists(absolute) || Directory.Exists(absolute))
+                throw new McpProtocolException("FILE_EXISTS", "A file already exists at the requested destination.");
+            if (instance.Save(absolute))
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor could not save the material instance to the destination.");
+            if (!File.Exists(absolute))
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor reported success but the material instance file is missing.");
+            // Live-verified (bridge v29 scratch save): Asset.Save to a new
+            // path does NOT preserve the virtual asset's in-memory ID — the
+            // persisted file carries a fresh identity in its binary header.
+            // The header is the durable truth; read it back instead of
+            // trusting instance.ID.
+            var persistedId = ReadPersistedMaterialInstanceId(absolute);
+            var newId = persistedId.ToString("N");
+            var revision = AdvanceProjectRevision();
+            // The Content database discovers the new file asynchronously; one
+            // registry rebuild confirms the common case without stalling the
+            // main-thread pump that drives the scan.
+            McpAssetMetadata createdMeta = null;
+            try
+            {
+                foreach (var candidate in BuildAssetRegistry())
+                {
+                    if (candidate.Id == persistedId && string.Equals(candidate.Path, destination, StringComparison.OrdinalIgnoreCase)) { createdMeta = AssetMetadata(candidate); break; }
+                }
+            }
+            catch { }
+            var warnings = new List<string>
+            {
+                "Instance creation has no verified Editor undo record (like v10 asset organization); remove the file with asset_delete (quarantine) if it is not needed.",
+                "The bridge does not save the project automatically; unsaved scenes referencing the new file still need scene_save.",
+            };
+            if (persistedId != instance.ID)
+                warnings.Add("Asset.Save assigned the persisted file a fresh identity (virtual " + instance.ID.ToString("N") + " vs persisted " + newId + "); the persisted ID is the durable reference.");
+            if (createdMeta == null)
+            {
+                var folder = Path.GetDirectoryName(destination);
+                createdMeta = new McpAssetMetadata { Id = newId, Path = destination, TypeName = "FlaxEngine.MaterialInstance", Extension = ".flax", Folder = string.IsNullOrEmpty(folder) ? "Content" : folder.Replace('\\', '/') };
+                warnings.Add("The Content registry did not list the new file on the first rebuild (database scan is asynchronous); poll asset_get for the destination path before referencing it.");
+            }
+            return new McpMaterialCreateInstanceResult
+            {
+                DryRun = false, Created = true, Material = createdMeta, BaseMaterial = AssetMetadata(baseRecord),
+                DestinationPath = destination, ProjectRevision = revision, Warnings = warnings.ToArray(),
+            };
+        }
+
+        private static Guid ReadPersistedMaterialInstanceId(string absolute)
+        {
+            // Binary .flax assets start with the CFWF magic followed by the
+            // asset ID in .NET Guid byte order (live-verified: magic at
+            // offset 0, 16 ID bytes at offset 28, then the UTF-16 type name).
+            // This is the durable identity of a saved material instance.
+            byte[] header;
+            try
+            {
+                using (var stream = File.OpenRead(absolute))
+                {
+                    header = new byte[44];
+                    var read = 0;
+                    while (read < header.Length)
+                    {
+                        var count = stream.Read(header, read, header.Length - read);
+                        if (count <= 0) break;
+                        read += count;
+                    }
+                    if (read < header.Length) throw new IOException("Short asset header.");
+                }
+            }
+            catch (McpProtocolException) { throw; }
+            catch (Exception ex) { throw new McpProtocolException("ASSET_OPERATION_FAILED", "The material instance file could not be read back to confirm its persisted identity: " + ex.GetType().FullName + "."); }
+            if (header[0] != (byte)'C' || header[1] != (byte)'F' || header[2] != (byte)'W' || header[3] != (byte)'F')
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "The material instance file does not carry the expected binary asset header.");
+            var idBytes = new byte[16];
+            Array.Copy(header, 28, idBytes, 0, 16);
+            Guid persisted;
+            try { persisted = new Guid(idBytes); }
+            catch { throw new McpProtocolException("ASSET_OPERATION_FAILED", "The material instance file carries an unreadable asset identity."); }
+            if (persisted == Guid.Empty)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "The material instance file carries an empty asset identity.");
+            return persisted;
+        }
+
+        private McpMaterialAssignResult AssignMaterialToActor(McpMaterialAssignRequest q)
+        {
+            if (q == null) throw new McpProtocolException("INVALID_REQUEST", "Material slot assignment requires parameters.");
+            if (string.IsNullOrEmpty(q.ActorId)) throw new McpProtocolException("INVALID_REQUEST", "ActorId is required.");
+            if (q.Slot < 0 || q.Slot > 255)
+                throw new McpProtocolException("VALIDATION_FAILED", "Slot must be between 0 and 255.");
+            ValidateAssetSelector(q.AssetId, q.Path);
+            RequireEditTime("material.assign_to_actor");
+            var actor = RequireActor(q.ActorId);
+            var modelActor = actor as ModelInstanceActor;
+            if (modelActor == null)
+                throw new McpProtocolException("VALIDATION_FAILED", "ActorId must identify a loaded FlaxEngine.ModelInstanceActor subtype (StaticModel, AnimatedModel, SkinnedModel, or another ModelInstanceActor); got " + (actor.TypeName ?? "unknown") + ".");
+            int slotCount;
+            try { slotCount = modelActor.MaterialSlots.Length; }
+            catch (Exception ex) { throw new McpProtocolException("VALIDATION_FAILED", "Material slot count is unavailable for '" + actor.Name + "': " + ex.GetType().FullName + "."); }
+            if (q.Slot >= slotCount)
+                throw new McpProtocolException("VALIDATION_FAILED", "Slot " + q.Slot + " is out of range; '" + actor.Name + "' exposes " + slotCount + " material slot(s) (0.." + (slotCount - 1) + ").");
+            CheckSceneWrite(actor.Scene, q.ExpectedSceneRevision, q.LeaseId);
+            var records = BuildAssetRegistry();
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = q.AssetId, Path = q.Path }, records);
+            if (!string.Equals(record.Info.TypeName, "FlaxEngine.Material", StringComparison.Ordinal) && !string.Equals(record.Info.TypeName, "FlaxEngine.MaterialInstance", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", "The selected Content asset is not a Flax material or material instance.");
+            Asset loaded = null;
+            try { loaded = Content.Load(record.Id, AssetLoadTimeoutMs); } catch { }
+            var newMaterial = loaded as MaterialBase;
+            if (newMaterial == null || newMaterial.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The selected material could not be loaded by Flax Editor.");
+            MaterialBase before = null;
+            try { before = modelActor.GetMaterial(q.Slot); }
+            catch (Exception ex) { throw new McpProtocolException("VALIDATION_FAILED", "Slot " + q.Slot + " read failed: " + ex.GetType().FullName + "."); }
+            var beforeMeta = AssetMetadataForLoadedAsset(before);
+            var targetMeta = AssetMetadata(record);
+            if (q.DryRun)
+            {
+                var preview = CurrentRevision(actor.Scene);
+                return new McpMaterialAssignResult
+                {
+                    DryRun = true, ActorId = actor.ID.ToString("N"), ActorType = actor.TypeName,
+                    Slot = q.Slot, SlotCount = slotCount, Material = targetMeta, Before = beforeMeta, After = targetMeta,
+                    SceneEdited = false, ProjectRevision = preview.ProjectRevision, SceneRevision = preview.SceneRevision,
+                    Warnings = new[] { "Dry-run preview only: the slot was not assigned. Reissue with dryRun:false + confirm:true; the scene is marked edited, never saved." },
+                };
+            }
+            if (!q.Confirm)
+                throw new McpProtocolException("VALIDATION_FAILED", "Material slot assignment requires confirm:true alongside dryRun:false. The scene is marked edited, never saved.");
+            // No dedicated slot undo action exists in Flax 1.12, so compose the
+            // generic path (same UpdateActor pattern as actor.set_property).
+            FEditor.Instance.Undo.RecordAction(actor, "Assign material", () =>
+            {
+                modelActor.SetMaterial(q.Slot, newMaterial);
+                MarkEdited(actor);
+            });
+            var revision = AdvanceSceneRevision(actor.Scene);
+            MaterialBase after = null;
+            try { after = modelActor.GetMaterial(q.Slot); } catch { after = null; }
+            if (after == null || after.ID != newMaterial.ID)
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax Editor did not report the assigned material on the slot after SetMaterial.");
+            return new McpMaterialAssignResult
+            {
+                DryRun = false, ActorId = actor.ID.ToString("N"), ActorType = actor.TypeName,
+                Slot = q.Slot, SlotCount = slotCount, Material = targetMeta, Before = beforeMeta, After = AssetMetadataForLoadedAsset(after),
+                SceneEdited = FEditor.Instance.Scene.IsEdited(actor.Scene),
+                ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision,
+                Warnings = new[] { "The scene was marked edited, not saved; persist with scene_save. Assignment undo is available via edit_undo (generic composed action)." },
+            };
         }
 
         private McpAnimationClipsResult ListAnimationClips(McpAnimationListClips request)
@@ -7353,6 +7857,53 @@ namespace Game.MCP
             script.Enabled = enabled;
             if (script.Actor != null && script.Actor.Scene != null)
                 FEditor.Instance.Scene.MarkSceneEdited(script.Actor.Scene);
+        }
+    }
+
+    // Bridge v29 material-parameter undo. This is a bridge-owned generic
+    // snapshot action (before/after values re-applied plus Asset.Save), NOT
+    // the editor MaterialInstanceWindow action: that action requires an open
+    // material window and is not bridge-usable, so the choice is documented
+    // in every set_parameters result warning.
+    internal sealed class McpMaterialParametersUndo : IUndoAction
+    {
+        private Guid _assetId;
+        private readonly string[] _names;
+        private readonly object[] _before;
+        private readonly object[] _after;
+
+        public string ActionString { get { return "Set material parameters"; } }
+
+        public McpMaterialParametersUndo(Guid assetId, string[] names, object[] before, object[] after)
+        {
+            _assetId = assetId;
+            _names = names;
+            _before = before;
+            _after = after;
+        }
+
+        public void Do() { Apply(_after); }
+        public void Undo() { Apply(_before); }
+        public void Dispose() { }
+
+        private void Apply(object[] values)
+        {
+            MaterialBase material = null;
+            try { material = Content.Load(_assetId, 250) as MaterialBase; } catch { material = null; }
+            if (material == null || material.LastLoadFailed) return;
+            for (var i = 0; i < _names.Length; i++)
+            {
+                try { material.SetParameterValue(_names[i], values[i], true); }
+                catch { }
+            }
+            // Undo/redo of an asset edit must restore durability, not just
+            // memory: failures here are logged, never thrown, because Flax
+            // invokes undo outside any request context.
+            try
+            {
+                if (material.Save()) Debug.LogWarning("[Flax MCP] Material undo save failed for " + _assetId.ToString("N") + ".");
+            }
+            catch (Exception ex) { Debug.LogWarning("[Flax MCP] Material undo save failed: " + ex.Message); }
         }
     }
 

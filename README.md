@@ -223,7 +223,9 @@ both. The name excludes the extension, which remains the source extension.
 | Tool | What it does |
 |------|-------------|
 | material_get_parameters | Read bounded public Material/MaterialInstance parameter metadata and safe value projections (bridge v13) |
-| material_set_parameters / material_create_instance / material_assign_to_actor | Stable unsupported capabilities until a reviewed Editor undo, persistence, slot-targeting, and preview path is verified (bridge v13) |
+| material_set_parameters | Set 1-16 named parameters on one Material/MaterialInstance with dry-run preview, editor undo, Asset.Save persistence, and unload/reload durability verification (bridge v29) |
+| material_create_instance | Create a persisted MaterialInstance from one Material into a new Content/.../*.flax file, never overwriting (bridge v29) |
+| material_assign_to_actor | Assign one Material/MaterialInstance to a ModelInstanceActor slot with editor undo; marks the scene edited without saving (bridge v29) |
 | animation_list_clips | List registered Animation clips with public metadata and opaque cursor pagination (bridge v13) |
 | animation_get_graph_parameters | Read live graph parameters from one loaded AnimatedModel (bridge v13) |
 | animation_set_graph_parameter | Stable unsupported capability until an Editor-safe persistence, undo, and preview path is verified (bridge v13) |

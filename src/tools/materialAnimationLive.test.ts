@@ -17,6 +17,8 @@ import {
   handleAnimationListClips,
   handleAnimationSetGraphParameter,
   handleAnimationValidateBindings,
+  handleMaterialAssignToActor,
+  handleMaterialCreateInstance,
   handleMaterialGetParameters,
   handleMaterialSetParameters,
 } from './materialAnimationLive.js';
@@ -79,10 +81,26 @@ test('material and animation schemas reject ambiguous selectors, unsafe paths, n
   assert.equal(MaterialGetParametersSchema.safeParse({ asset_id: MATERIAL_ID, path: 'Content/Materials/Surface.flax' }).success, false);
   assert.equal(MaterialGetParametersSchema.safeParse({ path: 'Content/../Surface.flax' }).success, false);
   assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [] }).success, false);
-  assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [{ name: 'Tint', value: Infinity }] }).success, false);
-  assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [{ name: 'Tint', value: 1 }], dry_run: false }).success, false);
-  assert.equal(MaterialCreateInstanceSchema.safeParse({ asset_id: MATERIAL_ID, destination_path: 'Content/Materials/Instance.material' }).success, false);
-  assert.equal(MaterialAssignToActorSchema.safeParse({ asset_id: MATERIAL_ID, actor_id: ACTOR_ID, dry_run: false, confirm: true }).success, true);
+  assert.equal(MaterialSetParametersSchema.safeParse({
+    asset_id: MATERIAL_ID,
+    parameters: Array.from({ length: 17 }, (_, index) => ({ name: `P${index}`, value: 1 })),
+    dry_run: true,
+  }).success, false);
+  assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [{ value: 1 }], dry_run: true }).success, false);
+  assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [{ name: 'Tint', value: Infinity }], dry_run: true }).success, false);
+  assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [{ name: 'Tint', value: { x: 1 } }], dry_run: true }).success, false);
+  assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [{ name: 'Tint', value: 1 }] }).success, false);
+  assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [{ name: 'Tint', value: 1 }], dry_run: true }).success, true);
+  assert.equal(MaterialSetParametersSchema.safeParse({ asset_id: MATERIAL_ID, parameters: [{ name: 'Tint', value: '1,0,0,1' }], dry_run: false, confirm: true }).success, true);
+  assert.equal(MaterialCreateInstanceSchema.safeParse({ base_id: MATERIAL_ID, base_path: 'Content/Materials/Base.flax', destination: 'Content/Materials/Instance.flax', dry_run: true }).success, false);
+  assert.equal(MaterialCreateInstanceSchema.safeParse({ destination: 'Content/Materials/Instance.flax', dry_run: true }).success, false);
+  assert.equal(MaterialCreateInstanceSchema.safeParse({ base_id: MATERIAL_ID, destination: 'Content/Materials/Instance.material', dry_run: true }).success, false);
+  assert.equal(MaterialCreateInstanceSchema.safeParse({ base_id: MATERIAL_ID, destination: 'Content/Materials/Instance.flax' }).success, false);
+  assert.equal(MaterialCreateInstanceSchema.safeParse({ base_path: 'Content/Materials/Base.flax', destination: 'Content/Materials/Instance.flax', dry_run: true }).success, true);
+  assert.equal(MaterialAssignToActorSchema.safeParse({ material_id: MATERIAL_ID, material_path: 'Content/Materials/Surface.flax', actor_id: ACTOR_ID, dry_run: true }).success, false);
+  assert.equal(MaterialAssignToActorSchema.safeParse({ actor_id: ACTOR_ID, dry_run: true }).success, false);
+  assert.equal(MaterialAssignToActorSchema.safeParse({ material_id: MATERIAL_ID, actor_id: ACTOR_ID }).success, false);
+  assert.equal(MaterialAssignToActorSchema.safeParse({ material_id: MATERIAL_ID, actor_id: ACTOR_ID, dry_run: false, confirm: true }).success, true);
   assert.equal(AnimationListClipsSchema.safeParse({ folder: 'Content/Animations', limit: 201 }).success, false);
   assert.equal(AnimationSetGraphParameterSchema.safeParse({ actor_id: ACTOR_ID, parameter_id: PARAMETER_ID, parameter_name: 'Speed', value: 1 }).success, false);
   assert.equal(AnimationSetGraphParameterSchema.safeParse({ actor_id: ACTOR_ID, parameter_name: 'Speed', value: 1 }).success, true);
@@ -119,31 +137,101 @@ test('material and animation reads marshal PascalCase requests and preserve curs
   }
 });
 
-test('unsupported material and animation writes expose stable bridge capability errors without reporting changes', async () => {
-  const f = await fixture();
+test('bounded material writes split the value union and marshal PascalCase v29 requests', async () => {
+  const f = await fixture(29);
   try {
-    const material = handleMaterialSetParameters(MaterialSetParametersSchema.parse({
+    const set = handleMaterialSetParameters(MaterialSetParametersSchema.parse({
       asset_id: MATERIAL_ID,
-      parameters: [{ parameter_id: PARAMETER_ID, value: { x: 1, y: 0, z: 0, w: 1 } }],
+      parameters: [
+        { name: 'Roughness', value: 0.5 },
+        { name: 'UseTint', value: true },
+        { name: 'Tint', value: '1,0,0,1' },
+      ],
+      dry_run: true,
     }), f.ctx);
-    const first = await respond(f, {
-      ok: false,
-      errorCode: 'UNSUPPORTED_FLAX_VERSION',
-      error: 'material_set_parameters is intentionally unavailable.',
-      errorDetails: JSON.stringify({ Capability: 'material_set_parameters', BridgeVersion: 13, DryRun: true }),
-      resultJson: null,
-    });
+    const first = await respond(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Saved: false, Verified: false }) });
     assert.equal(first.body.method, 'material.set_parameters');
     assert.deepEqual(first.params, {
       AssetId: MATERIAL_ID,
-      Parameters: [{ ParameterId: PARAMETER_ID, Value: { x: 1, y: 0, z: 0, w: 1 } }],
+      Parameters: [
+        { Name: 'Roughness', Number: 0.5 },
+        { Name: 'UseTint', Bool: true },
+        { Name: 'Tint', Text: '1,0,0,1' },
+      ],
       DryRun: true,
       Confirm: false,
     });
-    const materialResult = await material;
-    assert.equal(materialResult.isError, true);
-    assert.equal((materialResult.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.equal((await set).isError, undefined);
 
+    const create = handleMaterialCreateInstance(MaterialCreateInstanceSchema.parse({
+      base_id: MATERIAL_ID,
+      destination: 'Content/Materials/Scratch.flax',
+      dry_run: true,
+    }), f.ctx);
+    const second = await respond(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Created: false }) });
+    assert.equal(second.body.method, 'material.create_instance');
+    assert.deepEqual(second.params, {
+      AssetId: MATERIAL_ID,
+      DestinationPath: 'Content/Materials/Scratch.flax',
+      DryRun: true,
+      Confirm: false,
+    });
+    assert.equal((await create).isError, undefined);
+
+    const assign = handleMaterialAssignToActor(MaterialAssignToActorSchema.parse({
+      material_id: MATERIAL_ID,
+      actor_id: ACTOR_ID,
+      slot: 2,
+      dry_run: true,
+    }), f.ctx);
+    const third = await respond(f, { ok: true, resultJson: JSON.stringify({ DryRun: true, Slot: 2 }) });
+    assert.equal(third.body.method, 'material.assign_to_actor');
+    assert.deepEqual(third.params, {
+      AssetId: MATERIAL_ID,
+      ActorId: ACTOR_ID,
+      Slot: 2,
+      DryRun: true,
+      Confirm: false,
+    });
+    assert.equal((await assign).isError, undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('material writes fail closed before writing a request to bridges older than v29', async () => {
+  const f = await fixture(28);
+  try {
+    const set = await handleMaterialSetParameters(MaterialSetParametersSchema.parse({
+      asset_id: MATERIAL_ID,
+      parameters: [{ name: 'Roughness', value: 0.5 }],
+      dry_run: true,
+    }), f.ctx);
+    assert.equal(set.isError, true);
+    assert.equal((set.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    const create = await handleMaterialCreateInstance(MaterialCreateInstanceSchema.parse({
+      base_id: MATERIAL_ID,
+      destination: 'Content/Materials/Scratch.flax',
+      dry_run: true,
+    }), f.ctx);
+    assert.equal(create.isError, true);
+    assert.equal((create.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    const assign = await handleMaterialAssignToActor(MaterialAssignToActorSchema.parse({
+      material_id: MATERIAL_ID,
+      actor_id: ACTOR_ID,
+      dry_run: true,
+    }), f.ctx);
+    assert.equal(assign.isError, true);
+    assert.equal((assign.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('unsupported animation writes expose stable bridge capability errors without reporting changes', async () => {
+  const f = await fixture();
+  try {
     const animation = handleAnimationSetGraphParameter(AnimationSetGraphParameterSchema.parse({
       actor_id: ACTOR_ID,
       parameter_name: 'Speed',
@@ -179,6 +267,35 @@ test('material and animation methods fail closed before writing a request to bri
     assert.equal(result.isError, true);
     assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
     assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('material assign carries revision and lease guards through to the v29 bridge', async () => {
+  const f = await fixture(29);
+  try {
+    const assign = handleMaterialAssignToActor(MaterialAssignToActorSchema.parse({
+      material_id: MATERIAL_ID,
+      actor_id: ACTOR_ID,
+      slot: 1,
+      dry_run: false,
+      confirm: true,
+      expected_scene_revision: 7,
+      lease_id: 'e'.repeat(32),
+    }), f.ctx);
+    const seen = await respond(f, { ok: true, resultJson: JSON.stringify({ DryRun: false, Slot: 1 }) });
+    assert.equal(seen.body.method, 'material.assign_to_actor');
+    assert.deepEqual(seen.params, {
+      AssetId: MATERIAL_ID,
+      ActorId: ACTOR_ID,
+      Slot: 1,
+      DryRun: false,
+      Confirm: true,
+      ExpectedSceneRevision: 7,
+      LeaseId: 'e'.repeat(32),
+    });
+    assert.equal((await assign).isError, undefined);
   } finally {
     await f.cleanup();
   }

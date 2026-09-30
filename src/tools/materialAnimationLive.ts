@@ -65,35 +65,48 @@ export const MaterialGetParametersSchema = z.object({
 export const MaterialSetParametersSchema = z.object({
   ...AssetSelector,
   parameters: z.array(z.object({
-    parameter_id: FlaxId.optional(),
-    name: z.string().min(1).max(256).optional(),
-    value: MaterialAnimationValue,
-  }).strict().superRefine((value, ctx) => {
-    if ((value.parameter_id === undefined) === (value.name === undefined)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one of parameter_id or name.' });
-    }
-  })).min(1).max(64),
-  dry_run: z.boolean().optional().default(true),
+    name: z.string().min(1).max(256),
+    value: z.union([z.boolean(), z.number().finite(), z.string().min(1).max(512)]),
+  }).strict()).min(1).max(16),
+  dry_run: z.boolean().optional().default(false),
   confirm: z.literal(true).optional(),
   idempotency_key: z.string().min(1).max(128).optional(),
 }).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
+
+const MaterialBaseSelector = { base_id: FlaxId.optional(), base_path: ContentPath.optional() };
+
+function exactlyOneBaseSelector(value: { base_id?: string; base_path?: string }, ctx: z.RefinementCtx): void {
+  if ((value.base_id === undefined) === (value.base_path === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one of base_id or base_path.' });
+  }
+}
 
 export const MaterialCreateInstanceSchema = z.object({
-  ...AssetSelector,
-  destination_path: MaterialInstancePath,
-  dry_run: z.boolean().optional().default(true),
+  ...MaterialBaseSelector,
+  destination: MaterialInstancePath,
+  dry_run: z.boolean().optional().default(false),
   confirm: z.literal(true).optional(),
   idempotency_key: z.string().min(1).max(128).optional(),
-}).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
+}).strict().superRefine((value, ctx) => { exactlyOneBaseSelector(value, ctx); requiresConfirmation(value, ctx); });
+
+const MaterialAssignSelector = { material_id: FlaxId.optional(), material_path: ContentPath.optional() };
+
+function exactlyOneMaterialSelector(value: { material_id?: string; material_path?: string }, ctx: z.RefinementCtx): void {
+  if ((value.material_id === undefined) === (value.material_path === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one of material_id or material_path.' });
+  }
+}
 
 export const MaterialAssignToActorSchema = z.object({
-  ...AssetSelector,
+  ...MaterialAssignSelector,
   actor_id: FlaxId,
   slot: z.number().int().min(0).max(255).optional().default(0),
-  dry_run: z.boolean().optional().default(true),
+  dry_run: z.boolean().optional().default(false),
   confirm: z.literal(true).optional(),
   idempotency_key: z.string().min(1).max(128).optional(),
-}).strict().superRefine((value, ctx) => { exactlyOneSelector(value, ctx); requiresConfirmation(value, ctx); });
+  expected_scene_revision: z.number().int().nonnegative().optional(),
+  lease_id: z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character edit lease ID.').optional(),
+}).strict().superRefine((value, ctx) => { exactlyOneMaterialSelector(value, ctx); requiresConfirmation(value, ctx); });
 
 export const AnimationListClipsSchema = z.object({
   folder: ContentFolder.optional(),
@@ -144,9 +157,10 @@ async function materialAnimationCall(
   method: BridgeMethod,
   params: Record<string, unknown>,
   changes: unknown[] = [],
+  minimumBridgeVersion = 13,
 ): Promise<ToolResponse> {
   try {
-    const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion: 13 });
+    const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion });
     const result = response.data as { Warnings?: unknown } | undefined;
     const warnings = Array.isArray(result?.Warnings)
       ? result.Warnings.filter((warning): warning is string => typeof warning === 'string')
@@ -165,33 +179,43 @@ function selector(args: { asset_id?: string; path?: string }): Record<string, un
 export const handleMaterialGetParameters = (args: z.infer<typeof MaterialGetParametersSchema>, ctx: ProjectMeta) =>
   materialAnimationCall(ctx, 'material.get_parameters', { ...selector(args), IncludeNonPublic: args.include_non_public });
 
+function splitMaterialWriteValue(value: boolean | number | string): Record<string, unknown> {
+  if (typeof value === 'boolean') return { Bool: value };
+  if (typeof value === 'number') return { Number: value };
+  return { Text: value };
+}
+
 export const handleMaterialSetParameters = (args: z.infer<typeof MaterialSetParametersSchema>, ctx: ProjectMeta) =>
   materialAnimationCall(ctx, 'material.set_parameters', {
     ...selector(args),
-    Parameters: args.parameters.map(parameter => ({ ParameterId: parameter.parameter_id, Name: parameter.name, Value: parameter.value })),
+    Parameters: args.parameters.map(parameter => ({ Name: parameter.name, ...splitMaterialWriteValue(parameter.value) })),
     DryRun: args.dry_run,
     Confirm: args.confirm === true,
     IdempotencyKey: args.idempotency_key,
-  });
+  }, [], 29);
 
 export const handleMaterialCreateInstance = (args: z.infer<typeof MaterialCreateInstanceSchema>, ctx: ProjectMeta) =>
   materialAnimationCall(ctx, 'material.create_instance', {
-    ...selector(args),
-    DestinationPath: args.destination_path,
+    AssetId: args.base_id,
+    Path: args.base_path,
+    DestinationPath: args.destination,
     DryRun: args.dry_run,
     Confirm: args.confirm === true,
     IdempotencyKey: args.idempotency_key,
-  });
+  }, [], 29);
 
 export const handleMaterialAssignToActor = (args: z.infer<typeof MaterialAssignToActorSchema>, ctx: ProjectMeta) =>
   materialAnimationCall(ctx, 'material.assign_to_actor', {
-    ...selector(args),
+    AssetId: args.material_id,
+    Path: args.material_path,
     ActorId: args.actor_id,
     Slot: args.slot,
     DryRun: args.dry_run,
     Confirm: args.confirm === true,
     IdempotencyKey: args.idempotency_key,
-  });
+    ExpectedSceneRevision: args.expected_scene_revision,
+    LeaseId: args.lease_id,
+  }, [], 29);
 
 export const handleAnimationListClips = (args: z.infer<typeof AnimationListClipsSchema>, ctx: ProjectMeta) =>
   materialAnimationCall(ctx, 'animation.list_clips', { Folder: args.folder, Limit: args.limit, Cursor: args.cursor });

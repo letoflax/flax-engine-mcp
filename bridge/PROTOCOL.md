@@ -955,3 +955,103 @@ carries `Before`/`After` projections and, for actor targets, the updated
 `ActorDto`, so callers verify and undo without saving. Bogus script/actor
 IDs fail with `NOT_FOUND` via the existing `RequireScript`/`RequireActor`
 helpers.
+
+## Bridge v29: bounded material write/create/assign
+
+Bridge v29 keeps protocol v1 and the full v28 surface. It replaces the
+stable-unsupported material stubs (`material.set_parameters`,
+`material.create_instance`, `material.assign_to_actor`) with real
+edit-time-only implementations: headless editors fail with
+`INVALID_STATE` (editor ops) and play mode (or a requested play start)
+fails with `INVALID_STATE`, mirroring the v28 `RequireEditTime` gate.
+`status` flips `MaterialParameterWriteSupported`,
+`MaterialInstanceCreationSupported`, and `MaterialAssignmentSupported` to
+`true`. Node requires bridge v29 for all three tools and reports
+`material.setParameters`/`createInstance`/`assignToActor` in
+`get_server_capabilities`. Animation graph writes
+(`animation.set_graph_parameter`) stay a stable `UNSUPPORTED_FLAX_VERSION`
+capability.
+
+SDK truth (Flax 1.12, spot-verified against `Source/` headers plus the
+shipped `FlaxEngine.CSharp.xml`): `ModelInstanceActor.SetMaterial(entryIndex,
+material)` is `API_FUNCTION` public (`Source/Engine/Level/Actors/
+ModelInstanceActor.h:79`); slots are serializable (`Entries`) and persist
+via `SceneModule.MarkSceneEdited` + `Level.SaveScene`; there is NO
+dedicated slot undo action, so assignment composes the generic
+`Undo.RecordAction` path. `Content.CreateVirtualAsset<T>` is public
+(generic plus `Type` overloads) and `Asset.Save(path)` is public
+(`Source/Engine/Content/Asset.h:240`, "Must be specified when saving
+virtual asset"). `MaterialBase.SetParameterValue(name, value,
+warnIfMissing)` and `GetParameterValue(name)` are public
+(`Source/Engine/Content/Assets/MaterialBase.h:63-71`); durability goes
+through `Asset.Save`, and because the byte-level save path is
+headers-only in the SDK, every write proves durability by unloading the
+asset and reloading it from disk before reporting `Verified:true`.
+`MaterialParameterType` is an enum (`Bool`, `Integer`, `Float`,
+`Vector2/3/4`, `Color`, `Texture`, `CubeTexture`, `NormalMap`, plus
+unsupported `Matrix`/GPU/scene/global kinds); `MaterialInstance.
+BaseMaterial` is get/set.
+
+`material.set_parameters` takes `McpMaterialSetParametersRequest {
+AssetId, Path, Parameters[1..16] { Name, Bool?, Number?, Text },
+DryRun, Confirm, IdempotencyKey }`. The target must be a registry
+`FlaxEngine.Material` or `FlaxEngine.MaterialInstance`; names must exist
+(`GetParameter` miss fails `VALIDATION_FAILED` with up to 32 available
+names; duplicates fail too). Coercion is strict per `ParameterType`:
+Bool needs JSON bool; Integer needs an integral finite number in Int32
+range; Float needs a finite number in float range; Vector2/3/4 need
+`"x,y[,z[,w]]"` invariant floats (applied as `Float2/3/4`); Color needs
+`"#rrggbb[aa]"` or `"r,g,b[,a]"`; Texture/CubeTexture/NormalMap need a
+32-hex asset GUID that resolves in `Content.GetAssetInfo`. Anything else
+fails `VALIDATION_FAILED` — never a silent default. Values apply via
+`SetParameterValue(name, value, warnIfMissing:true)` with full in-memory
+revert on any failure (nothing is saved on the failure path), then a
+bridge-owned `McpMaterialParametersUndo` snapshot action is registered
+with `Undo.AddAction`, then `Asset.Save()`, then unload +
+`Content.Load` reload with per-value comparison (`Verified:true` only on
+a full match; epsilon 1e-6 for float/vector/color components, asset-ID
+comparison when a texture read projects the loaded `Asset` instead of
+its GUID). A save failure reverts memory and throws
+`ASSET_OPERATION_FAILED`; a reload mismatch throws
+`ASSET_OPERATION_FAILED` with `{ Verified:false }` details. Undo
+honesty: this is a generic snapshot action (values re-applied plus
+`Asset.Save`, failures logged never thrown), NOT the editor
+`MaterialInstanceWindow` action, which requires an open material window
+and is not bridge-usable — every result warning says so. Real writes
+need `confirm:true`; dry runs validate/coerce and preview without
+mutating, advancing no revision and never consuming an idempotency key.
+Asset-scoped writes take no scene lease (same precedent as v10 asset
+organization); retry safety comes from `IdempotencyKey` (ten-minute
+replay, `IDEMPOTENCY_KEY_REUSED` on key reuse with different input).
+
+`material.create_instance` takes `McpMaterialCreateInstanceRequest {
+AssetId, Path, DestinationPath, DryRun, Confirm, IdempotencyKey }`. The
+base must be exactly `FlaxEngine.Material` (instances as bases are
+rejected); the destination must be a `Content/.../*.flax` file path and
+is never overwritten — both `Content.GetAssetInfo(destination)` and
+on-disk presence fail with `FILE_EXISTS`. The write creates
+`Content.CreateVirtualAsset<MaterialInstance>()`, binds `BaseMaterial`,
+creates missing parent folders under Content, and persists with
+`Asset.Save(absoluteDestination)`, returning the new asset GUID. Like
+v10 asset organization there is no verified Editor undo record for
+creation; warnings direct callers to `asset_delete` (quarantine) for
+cleanup, and note the Content-database scan is asynchronous (one
+registry rebuild confirms the common case; otherwise the result carries
+a poll-`asset_get` warning).
+
+`material.assign_to_actor` takes `McpMaterialAssignRequest { AssetId,
+Path, ActorId, Slot 0..255, DryRun, Confirm, IdempotencyKey,
+ExpectedSceneRevision, LeaseId }`. The actor must cast to
+`FlaxEngine.ModelInstanceActor` (`StaticModel`, `AnimatedModel`,
+`SkinnedModel`, or another subtype — anything else fails
+`VALIDATION_FAILED` naming the actual `TypeName`); the slot is bounds-
+checked against `MaterialSlots.Length` (`VALIDATION_FAILED` reporting
+the valid `0..count-1` range). Scene-scoped `CheckSceneWrite` guards
+(revision + lease, like other scene writes) apply alongside idempotency.
+The write runs `SetMaterial(slot, material)` inside
+`Undo.RecordAction(actor, "Assign material", ...)` plus `MarkSceneEdited`
+(the composed generic path — no dedicated slot action exists), advances
+the scene revision, and verifies `GetMaterial(slot)` reports the assigned
+ID. The scene is marked edited, never saved (`scene_save` persists it);
+the result reports `SceneEdited`, both revisions, and before/after
+material metadata.
