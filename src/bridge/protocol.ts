@@ -24,6 +24,7 @@ export type ActorBridgeMethod =
   | 'actor.validate_create'
   | 'actor.create'
   | 'actor.update'
+  | 'actor.set_property'
   | 'actor.delete'
   | 'actor.duplicate'
   | 'actor.reparent';
@@ -32,7 +33,8 @@ export type ScriptBridgeMethod =
   | 'script.attach'
   | 'script.detach'
   | 'script.instance_get'
-  | 'script.instance_update';
+  | 'script.instance_update'
+  | 'script.instance_set_value';
 
 export type EditBridgeMethod =
   | 'edit.undo'

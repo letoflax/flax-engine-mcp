@@ -8,6 +8,7 @@ import {
   ActorFindSchema,
   ActorCreateSchema,
   ActorGetSchema,
+  ActorSetPropertySchema,
   ActorUpdateSchema,
   EditLeaseBeginSchema,
   EditLeaseGetSchema,
@@ -15,10 +16,12 @@ import {
   EditorSetSelectionSchema,
   SceneOpenSchema,
   ScriptInstanceGetSchema,
+  ScriptInstanceSetValueSchema,
   ScriptInstanceUpdateSchema,
   handleActorCreate,
   handleActorFind,
   handleActorGet,
+  handleActorSetProperty,
   handleActorUpdate,
   handleEditLeaseBegin,
   handleEditLeaseGet,
@@ -26,6 +29,7 @@ import {
   handleEditorSetSelection,
   handleSceneOpen,
   handleScriptInstanceGet,
+  handleScriptInstanceSetValue,
   handleScriptInstanceUpdate,
 } from './editorLive.js';
 
@@ -698,6 +702,103 @@ test('scene_open fails closed on a pre-v25 bridge before creating a request', as
     assert.equal(result.isError, true);
     assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
     assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('script_instance_set_value splits the value union and requires bridge v28', async () => {
+  assert.equal(ScriptInstanceSetValueSchema.safeParse({ script_id: ACTOR_ID, field: '9bad', value: 1 }).success, false);
+  assert.equal(ScriptInstanceSetValueSchema.safeParse({ script_id: ACTOR_ID, field: 'a'.repeat(129), value: 1 }).success, false);
+  assert.equal(ScriptInstanceSetValueSchema.safeParse({ script_id: ACTOR_ID, field: 'Speed', value: Number.NaN }).success, false);
+  assert.equal(ScriptInstanceSetValueSchema.safeParse({ script_id: ACTOR_ID, field: 'Speed', value: 2.5 }).success, true);
+  const f = await fixture(28);
+  try {
+    const pending = handleScriptInstanceSetValue(ScriptInstanceSetValueSchema.parse({
+      script_id: ACTOR_ID, field: 'Speed', value: 2.5,
+      expected_scene_revision: 4, lease_id: 'b'.repeat(32), idempotency_key: 'field-1',
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ ScriptId: ACTOR_ID, Field: 'Speed', DryRun: false, WouldChange: true }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'script.instance_set_value');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {
+      ScriptId: ACTOR_ID, Field: 'Speed', Number: 2.5, DryRun: false,
+      ExpectedSceneRevision: 4, LeaseId: 'b'.repeat(32), IdempotencyKey: 'field-1',
+    });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.WouldChange, true);
+    assert.deepEqual(envelope.changes, [{ kind: 'script.field_set', id: ACTOR_ID, field: 'Speed' }]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('script_instance_set_value dry-run previews without idempotency or changes', async () => {
+  const f = await fixture(28);
+  try {
+    const pending = handleScriptInstanceSetValue(ScriptInstanceSetValueSchema.parse({
+      script_id: ACTOR_ID, field: 'Title', value: 'Hi', dry_run: true, idempotency_key: 'field-dry-1',
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ ScriptId: ACTOR_ID, Field: 'Title', DryRun: true, WouldChange: false }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'script.instance_set_value');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {
+      ScriptId: ACTOR_ID, Field: 'Title', Text: 'Hi', DryRun: true,
+    });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.DryRun, true);
+    assert.deepEqual(envelope.changes, []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('v28 writes fail closed on a pre-v28 bridge before creating a request', async () => {
+  const f = await fixture(27);
+  try {
+    const field = await handleScriptInstanceSetValue(ScriptInstanceSetValueSchema.parse({
+      script_id: ACTOR_ID, field: 'Speed', value: 1,
+    }), f.ctx);
+    assert.equal(field.isError, true);
+    assert.equal((field.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+
+    const property = await handleActorSetProperty(ActorSetPropertySchema.parse({
+      target_id: ACTOR_ID, property: 'Camera.FieldOfView', value: 60,
+    }), f.ctx);
+    assert.equal(property.isError, true);
+    assert.equal((property.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('actor_set_property maps the allowlisted property and value in PascalCase', async () => {
+  const f = await fixture(28);
+  try {
+    const pending = handleActorSetProperty(ActorSetPropertySchema.parse({
+      target_id: ACTOR_ID, property: 'Camera.FieldOfView', value: 60,
+      expected_scene_revision: 4, lease_id: 'b'.repeat(32), idempotency_key: 'prop-1',
+    }), f.ctx);
+    const request = await respond(f, body => ({
+      id: body.id, ok: true,
+      resultJson: JSON.stringify({ ActorId: ACTOR_ID, Property: 'Camera.FieldOfView' }),
+      timestamp: Date.now(),
+    }));
+    assert.equal(request.method, 'actor.set_property');
+    assert.deepEqual(JSON.parse(String(request.paramsJson)), {
+      ActorId: ACTOR_ID, Property: 'Camera.FieldOfView', Number: 60,
+      ExpectedSceneRevision: 4, LeaseId: 'b'.repeat(32), IdempotencyKey: 'prop-1',
+    });
+    const envelope = (await pending).structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.Property, 'Camera.FieldOfView');
+    assert.deepEqual(envelope.changes, [{ kind: 'actor.property_set', id: ACTOR_ID, property: 'Camera.FieldOfView' }]);
   } finally {
     await f.cleanup();
   }

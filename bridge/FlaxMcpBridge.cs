@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 27
+// MCP-BRIDGE-VERSION: 28
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -6,6 +6,7 @@
 #if FLAX_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Reflection;
@@ -16,6 +17,7 @@ using FlaxEditor;
 using FlaxEditor.Content;
 using FlaxEditor.Content.Import;
 using FlaxEditor.SceneGraph;
+using FlaxEditor.Scripting;
 using FlaxEditor.Surface;
 using FlaxEngine.Tools;
 using FEditor = FlaxEditor.Editor;
@@ -26,12 +28,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 27; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 28; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 27; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; }
+    public class McpStatus { public int BridgeVersion = 28; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = false; public bool MaterialInstanceCreationSupported = false; public bool MaterialAssignmentSupported = false; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -70,6 +72,17 @@ namespace Game.MCP
     public class McpScriptAttach { public string ActorId; public string ScriptType; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptId { public string ScriptId; public bool IncludeValues; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpScriptUpdate { public string ScriptId; public bool? Enabled; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    // Bridge v28 bounded script-field write. Value is exactly one of
+    // Bool/Number/Text (Node splits its bool|number|string union); the bridge
+    // coerces it strictly to the field type and rejects anything else.
+    public class McpScriptFieldSet { public string ScriptId; public string Field; public bool? Bool; public double? Number; public string Text; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpScriptFieldSetResult { public string ScriptId; public string Field; public string Type; public bool DryRun; public bool WouldChange; public McpMaterialTypedValue Before; public McpMaterialTypedValue After; public long ProjectRevision; public long SceneRevision; }
+    // Bridge v28 bounded component-property write. Property is an exact
+    // allowlist entry (never a parsed dotted path); value uses the same
+    // exactly-one-of Bool/Number/Text shape. ActorId is an actor GUID for the
+    // component properties and a script GUID for Script.Enabled.
+    public class McpActorPropertySet { public string ActorId; public string Property; public bool? Bool; public double? Number; public string Text; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpActorPropertySetResult { public string ActorId; public string Property; public McpMaterialTypedValue Before; public McpMaterialTypedValue After; public McpActorDto Actor; public long ProjectRevision; public long SceneRevision; }
     public class McpSceneSave { public string SceneId; }
     // Bridge v25 canonical scene.open. Exactly one of AssetId/Path selects a
     // Content scene asset (FlaxEngine.SceneAsset only). AllowDirtyScenes
@@ -232,7 +245,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 27;
+        private const int BridgeVersion = 28;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -253,6 +266,7 @@ namespace Game.MCP
         // MaxResultBytes cap still bounds the total response.
         private const int MaxScriptValueFields = 64;
         private const int MaxScriptValueStringChars = 512;
+        private const int MaxScriptValueWriteChars = 4096;
         private const int MaxLogEntries = 2000;
         private const int MaxLogMessageChars = 8192;
         private const int MaxDiagnostics = 200;
@@ -359,7 +373,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                    Debug.Log("[Flax MCP] Bridge v27 listening at " + Root);
+                    Debug.Log("[Flax MCP] Bridge v28 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -497,6 +511,8 @@ namespace Game.MCP
                 case "script.detach": { var q = JsonSerializer.Deserialize<McpScriptId>(p); result = OnMain(() => ExecuteIdempotent("script.detach", q == null ? null : q.IdempotencyKey, q, () => DetachScript(q)), request.deadlineUnixMs); break; }
                 case "script.instance_get": { var q = JsonSerializer.Deserialize<McpScriptId>(p); result = OnMain(() => ScriptInfoWithValues(RequireScript(q == null ? null : q.ScriptId), q != null && q.IncludeValues), request.deadlineUnixMs); break; }
                 case "script.instance_update": { var q = JsonSerializer.Deserialize<McpScriptUpdate>(p); result = OnMain(() => ExecuteIdempotent("script.instance_update", q == null ? null : q.IdempotencyKey, q, () => UpdateScript(q)), request.deadlineUnixMs); break; }
+                case "script.instance_set_value": { var q = JsonSerializer.Deserialize<McpScriptFieldSet>(p); result = OnMain(() => ExecuteSetScriptField(q), request.deadlineUnixMs); break; }
+                case "actor.set_property": { var q = JsonSerializer.Deserialize<McpActorPropertySet>(p); result = OnMain(() => ExecuteIdempotent("actor.set_property", q == null ? null : q.IdempotencyKey, q, () => SetActorProperty(q)), request.deadlineUnixMs); break; }
                 case "edit.undo": result = OnMain(Undo, request.deadlineUnixMs); break;
                 case "edit.redo": result = OnMain(Redo, request.deadlineUnixMs); break;
                 case "edit.lease_begin": result = OnMain(() => BeginLease(JsonSerializer.Deserialize<McpLeaseBegin>(p)), request.deadlineUnixMs); break;
@@ -5565,8 +5581,8 @@ namespace Game.MCP
                 dto.ValuesIncluded = true;
                 dto.ValuesTruncated = truncated;
                 dto.Warnings = truncated
-                    ? new[] { "Script values are a bounded read-only projection of public script fields (max 64, alphabetical). Unsupported types are null with a reason; strings truncate at 512 characters. Script writes remain limited to Enabled." }
-                    : new[] { "Script values are a bounded read-only projection of public script fields. Unsupported types are null with a reason. Script writes remain limited to Enabled." };
+                    ? new[] { "Script values are a bounded read-only projection of public script fields (max 64, alphabetical). Unsupported types are null with a reason; strings truncate at 512 characters. Script writes are limited to Enabled plus bounded script_instance_set_value field writes." }
+                    : new[] { "Script values are a bounded read-only projection of public script fields. Unsupported types are null with a reason. Script writes are limited to Enabled plus bounded script_instance_set_value field writes." };
             }
             return dto;
         }
@@ -5703,6 +5719,466 @@ namespace Game.MCP
             if (actor != null) MarkEdited(actor);
             AdvanceSceneRevision(actor == null ? null : actor.Scene);
             return ScriptInfo(script);
+        }
+
+        // Bridge v28 edit-time gate. Scene/component/script writes are
+        // edit-time only: headless editors cannot apply them (editor ops) and
+        // play mode owns live state, so both fail with INVALID_STATE.
+        private static void RequireEditTime(string capability)
+        {
+            if (FEditor.Instance.IsHeadlessMode)
+                throw new McpProtocolException("INVALID_STATE", capability + " is unavailable in headless editor mode.");
+            if (FEditor.IsPlayMode || FEditor.Instance.Simulation.IsPlayModeRequested)
+                throw new McpProtocolException("INVALID_STATE", capability + " is an edit-time operation and is unavailable while the editor is in play mode or play was requested.");
+        }
+
+        private static bool IsScriptFieldName(string name)
+        {
+            for (var i = 0; i < name.Length; i++)
+            {
+                var c = name[i];
+                var ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' || (i > 0 && c >= '0' && c <= '9');
+                if (!ok) return false;
+            }
+            return name.Length > 0;
+        }
+
+        private static FieldInfo ResolveScriptField(Script script, string name)
+        {
+            // Same hierarchy walk as the P7 read surface: public instance
+            // fields, most-derived first, stopping at engine-declared types.
+            for (var type = script.GetType(); type != null && type != typeof(Script); type = type.BaseType)
+            {
+                if (type.FullName != null && type.FullName.StartsWith("FlaxEngine.", StringComparison.Ordinal)) break;
+                FieldInfo field = null;
+                try { field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly); }
+                catch { }
+                if (field != null) return field;
+            }
+            return null;
+        }
+
+        private static bool IsSupportedScriptFieldType(Type type)
+        {
+            if (type == typeof(bool) || type == typeof(string) || type == typeof(Guid)) return true;
+            if (type == typeof(float) || type == typeof(double)) return true;
+            if (type == typeof(sbyte) || type == typeof(byte) || type == typeof(short) || type == typeof(ushort)
+                || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong)) return true;
+            if (type.IsEnum) return true;
+            if (type == typeof(Vector2) || type == typeof(Float2)) return true;
+            if (type == typeof(Vector3) || type == typeof(Float3)) return true;
+            if (type == typeof(Vector4) || type == typeof(Float4)) return true;
+            if (type == typeof(Color)) return true;
+            return false;
+        }
+
+        private static float ParseStrictFloat(string text, string what)
+        {
+            float value;
+            if (!float.TryParse((text ?? "").Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value) || float.IsNaN(value) || float.IsInfinity(value))
+                throw new McpProtocolException("VALIDATION_FAILED", what + " must be a finite number.");
+            return value;
+        }
+
+        private static float[] ParseStrictFloatList(string text, int count, string what, string example)
+        {
+            var parts = (text ?? "").Split(',');
+            if (parts.Length != count)
+                throw new McpProtocolException("VALIDATION_FAILED", what + " requires exactly " + count + " comma-separated numbers (for example \"" + example + "\").");
+            var values = new float[count];
+            for (var i = 0; i < count; i++) values[i] = ParseStrictFloat(parts[i], what);
+            return values;
+        }
+
+        private static Color ParseStrictColor(string text, string what)
+        {
+            var t = (text ?? "").Trim();
+            if (t.StartsWith("#", StringComparison.Ordinal))
+            {
+                var hex = t.Substring(1);
+                if (hex.Length != 6 && hex.Length != 8)
+                    throw new McpProtocolException("VALIDATION_FAILED", what + " hex colors must be \"#rrggbb\" or \"#rrggbbaa\".");
+                try
+                {
+                    var r = Convert.ToByte(hex.Substring(0, 2), 16);
+                    var g = Convert.ToByte(hex.Substring(2, 2), 16);
+                    var b = Convert.ToByte(hex.Substring(4, 2), 16);
+                    var a = hex.Length == 8 ? Convert.ToByte(hex.Substring(6, 2), 16) : (byte)255;
+                    return new Color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+                }
+                catch
+                {
+                    throw new McpProtocolException("VALIDATION_FAILED", what + " hex colors must be \"#rrggbb\" or \"#rrggbbaa\".");
+                }
+            }
+            var parts = t.Split(',');
+            if (parts.Length != 3 && parts.Length != 4)
+                throw new McpProtocolException("VALIDATION_FAILED", what + " colors must be \"#rrggbb\" or \"r,g,b[,a]\" with finite 0-1 components.");
+            var values = new float[parts.Length];
+            for (var i = 0; i < parts.Length; i++) values[i] = ParseStrictFloat(parts[i], what);
+            return new Color(values[0], values[1], values[2], values.Length == 4 ? values[3] : 1.0f);
+        }
+
+        private static object CoerceScriptFieldValue(McpScriptFieldSet q, Type type, string fieldName)
+        {
+            var setCount = (q.Bool.HasValue ? 1 : 0) + (q.Number.HasValue ? 1 : 0) + (q.Text != null ? 1 : 0);
+            if (setCount != 1)
+                throw new McpProtocolException("VALIDATION_FAILED", "Field '" + fieldName + "' requires exactly one of Bool, Number, or Text.");
+            var need = "Field '" + fieldName + "' (" + (type.FullName ?? "unknown") + ") requires ";
+            if (type == typeof(bool))
+            {
+                if (!q.Bool.HasValue) throw new McpProtocolException("VALIDATION_FAILED", need + "a boolean value.");
+                return q.Bool.Value;
+            }
+            if (type == typeof(string))
+            {
+                if (q.Text == null) throw new McpProtocolException("VALIDATION_FAILED", need + "a string value.");
+                if (q.Text.Length > MaxScriptValueWriteChars)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Field '" + fieldName + "' exceeds " + MaxScriptValueWriteChars + " characters.");
+                return q.Text;
+            }
+            if (type == typeof(float) || type == typeof(double))
+            {
+                if (!q.Number.HasValue) throw new McpProtocolException("VALIDATION_FAILED", need + "a numeric value.");
+                var n = q.Number.Value;
+                if (double.IsNaN(n) || double.IsInfinity(n)) throw new McpProtocolException("VALIDATION_FAILED", need + "a finite numeric value.");
+                if (type == typeof(float))
+                {
+                    if (n < -(double)float.MaxValue || n > (double)float.MaxValue)
+                        throw new McpProtocolException("VALIDATION_FAILED", need + "a value within float range.");
+                    return (float)n;
+                }
+                return n;
+            }
+            if (type == typeof(sbyte) || type == typeof(byte) || type == typeof(short) || type == typeof(ushort)
+                || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong))
+            {
+                if (!q.Number.HasValue) throw new McpProtocolException("VALIDATION_FAILED", need + "an integral numeric value.");
+                var n = q.Number.Value;
+                if (double.IsNaN(n) || double.IsInfinity(n) || Math.Truncate(n) != n)
+                    throw new McpProtocolException("VALIDATION_FAILED", need + "an integral numeric value.");
+                try
+                {
+                    if (type == typeof(ulong))
+                    {
+                        var u = Convert.ToUInt64(n);
+                        if ((double)u != n) throw new McpProtocolException("VALIDATION_FAILED", need + "an integral numeric value without precision loss.");
+                        return u;
+                    }
+                    double min, max;
+                    if (type == typeof(sbyte)) { min = sbyte.MinValue; max = sbyte.MaxValue; }
+                    else if (type == typeof(byte)) { min = byte.MinValue; max = byte.MaxValue; }
+                    else if (type == typeof(short)) { min = short.MinValue; max = short.MaxValue; }
+                    else if (type == typeof(ushort)) { min = ushort.MinValue; max = ushort.MaxValue; }
+                    else if (type == typeof(int)) { min = int.MinValue; max = int.MaxValue; }
+                    else if (type == typeof(uint)) { min = uint.MinValue; max = uint.MaxValue; }
+                    else { min = long.MinValue; max = long.MaxValue; }
+                    if (n < min || n > max) throw new McpProtocolException("VALIDATION_FAILED", need + "a value within " + type.Name + " range.");
+                    return Convert.ChangeType(Convert.ToInt64(n), type, CultureInfo.InvariantCulture);
+                }
+                catch (McpProtocolException) { throw; }
+                catch { throw new McpProtocolException("VALIDATION_FAILED", need + "an integral numeric value within " + type.Name + " range."); }
+            }
+            if (type.IsEnum)
+            {
+                if (q.Number.HasValue)
+                {
+                    var n = q.Number.Value;
+                    if (double.IsNaN(n) || double.IsInfinity(n) || Math.Truncate(n) != n)
+                        throw new McpProtocolException("VALIDATION_FAILED", need + "an enum name or a defined numeric value.");
+                    try
+                    {
+                        var value = Enum.ToObject(type, Convert.ToInt64(n));
+                        if (!Enum.IsDefined(type, value))
+                            throw new McpProtocolException("VALIDATION_FAILED", "Value " + n + " is not a defined " + (type.FullName ?? "enum") + " value.");
+                        return value;
+                    }
+                    catch (McpProtocolException) { throw; }
+                    catch { throw new McpProtocolException("VALIDATION_FAILED", "Value " + n + " is not a defined " + (type.FullName ?? "enum") + " value."); }
+                }
+                if (q.Text == null) throw new McpProtocolException("VALIDATION_FAILED", need + "an enum name or a defined numeric value.");
+                try { return Enum.Parse(type, q.Text, true); }
+                catch { throw new McpProtocolException("VALIDATION_FAILED", "Value '" + LimitForLog(q.Text, 128) + "' is not a defined " + (type.FullName ?? "enum") + " value."); }
+            }
+            if (type == typeof(Guid))
+            {
+                if (q.Text == null) throw new McpProtocolException("VALIDATION_FAILED", need + "a 32-character hex GUID string.");
+                Guid guid;
+                if (!Guid.TryParseExact(q.Text, "N", out guid))
+                    throw new McpProtocolException("VALIDATION_FAILED", need + "a 32-character hex GUID string.");
+                return guid;
+            }
+            if (type == typeof(Vector2) || type == typeof(Float2))
+            {
+                if (q.Text == null) throw new McpProtocolException("VALIDATION_FAILED", need + "an \"x,y\" string.");
+                var v = ParseStrictFloatList(q.Text, 2, need + "an \"x,y\" string", "x,y");
+                return type == typeof(Vector2) ? (object)new Vector2(v[0], v[1]) : new Float2(v[0], v[1]);
+            }
+            if (type == typeof(Vector3) || type == typeof(Float3))
+            {
+                if (q.Text == null) throw new McpProtocolException("VALIDATION_FAILED", need + "an \"x,y,z\" string.");
+                var v = ParseStrictFloatList(q.Text, 3, need + "an \"x,y,z\" string", "x,y,z");
+                return type == typeof(Vector3) ? (object)new Vector3(v[0], v[1], v[2]) : new Float3(v[0], v[1], v[2]);
+            }
+            if (type == typeof(Vector4) || type == typeof(Float4))
+            {
+                if (q.Text == null) throw new McpProtocolException("VALIDATION_FAILED", need + "an \"x,y,z,w\" string.");
+                var v = ParseStrictFloatList(q.Text, 4, need + "an \"x,y,z,w\" string", "x,y,z,w");
+                return type == typeof(Vector4) ? (object)new Vector4(v[0], v[1], v[2], v[3]) : new Float4(v[0], v[1], v[2], v[3]);
+            }
+            if (type == typeof(Color))
+            {
+                if (q.Text == null) throw new McpProtocolException("VALIDATION_FAILED", need + "a \"#rrggbb\" or \"r,g,b[,a]\" string.");
+                return ParseStrictColor(q.Text, need + "a color");
+            }
+            throw new McpProtocolException("VALIDATION_FAILED", "Unsupported type " + (type.FullName ?? "unknown") + " for field '" + fieldName + "'.");
+        }
+
+        private static bool ScriptFieldValuesEqual(object before, object after)
+        {
+            if (before == null || after == null) return before == null && after == null;
+            return before.Equals(after);
+        }
+
+        private static McpMaterialTypedValue ProjectScriptWriteValue(object raw, Type type)
+        {
+            if (raw == null) return new McpMaterialTypedValue { Kind = "null" };
+            if (raw is string text)
+                return new McpMaterialTypedValue
+                {
+                    Kind = "string",
+                    Text = text.Length <= MaxScriptValueStringChars ? text : text.Substring(0, MaxScriptValueStringChars) + " [truncated]",
+                };
+            if (type != null && type.IsEnum)
+            {
+                long numeric = 0;
+                var hasNumeric = true;
+                try { numeric = Convert.ToInt64(raw); }
+                catch { hasNumeric = false; }
+                return new McpMaterialTypedValue
+                {
+                    Kind = "enum",
+                    Integer = hasNumeric ? (long?)numeric : null,
+                    Text = LimitForLog(raw.ToString(), MaxScriptValueStringChars),
+                    TypeName = LimitForLog(type.FullName, 256),
+                };
+            }
+            return SafeMaterialAnimationValue(raw);
+        }
+
+        private object ExecuteSetScriptField(McpScriptFieldSet q)
+        {
+            // Dry-run previews never consume idempotency keys: a preview filed
+            // under the same key as a later real write would collide on the
+            // request fingerprint (IDEMPOTENCY_KEY_REUSED).
+            if (q != null && q.DryRun) return SetScriptField(q);
+            return ExecuteIdempotent("script.instance_set_value", q == null ? null : q.IdempotencyKey, q, () => SetScriptField(q));
+        }
+
+        private McpScriptFieldSetResult SetScriptField(McpScriptFieldSet q)
+        {
+            if (q == null) throw new McpProtocolException("INVALID_REQUEST", "Script field parameters are required.");
+            if (string.IsNullOrEmpty(q.Field) || q.Field.Length > 128 || !IsScriptFieldName(q.Field))
+                throw new McpProtocolException("VALIDATION_FAILED", "Field must match ^[A-Za-z_][A-Za-z0-9_]*$ and be 1-128 characters.");
+            RequireEditTime("script.instance_set_value");
+            var script = RequireScript(q.ScriptId);
+            var actor = script.Actor;
+            CheckSceneWrite(actor == null ? null : actor.Scene, q.ExpectedSceneRevision, q.LeaseId);
+            var field = ResolveScriptField(script, q.Field);
+            if (field == null)
+                throw new McpProtocolException("VALIDATION_FAILED", "Field '" + q.Field + "' was not found among public instance fields of " + (script.GetType().FullName ?? "unknown") + ".");
+            // ALLOWLIST (v28 contract): the ONLY reflection-backed setter on
+            // game objects in this bridge is ScriptMemberInfo.SetValue below —
+            // the exact wrapper the Editor property grid uses via
+            // ValueContainer. No raw reflection setter is ever invoked on game
+            // objects (field resolution reuses the P7 read-surface GetField
+            // walk, which never writes).
+            var member = new ScriptMemberInfo(field);
+            if (field.IsStatic || !member.HasSet || field.IsInitOnly || field.IsLiteral)
+                throw new McpProtocolException("VALIDATION_FAILED", "Field '" + q.Field + "' has no setter (static, read-only, or constant fields cannot be written).");
+            // ValueType is a ScriptType wrapper; unwrap to the CLR type with a
+            // reflection fallback so the whitelist check always runs on a type.
+            var memberType = member.ValueType;
+            var fieldType = (memberType && memberType.Type != null) ? memberType.Type : field.FieldType;
+            if (!IsSupportedScriptFieldType(fieldType))
+                throw new McpProtocolException("VALIDATION_FAILED", "Unsupported type " + (fieldType.FullName ?? "unknown") + " for field '" + q.Field + "'. Supported: bool/int/float/string/enum/Guid/Vector2/Vector3/Vector4/Color.");
+            var coerced = CoerceScriptFieldValue(q, fieldType, q.Field);
+            object beforeRaw;
+            try { beforeRaw = member.GetValue(script); }
+            catch (Exception ex) { throw new McpProtocolException("VALIDATION_FAILED", "Field '" + q.Field + "' read failed: " + ex.GetType().FullName + "."); }
+            var wouldChange = !ScriptFieldValuesEqual(beforeRaw, coerced);
+            if (q.DryRun)
+            {
+                var preview = CurrentRevision(actor == null ? null : actor.Scene);
+                return new McpScriptFieldSetResult
+                {
+                    ScriptId = script.ID.ToString("N"), Field = field.Name, Type = fieldType.FullName,
+                    DryRun = true, WouldChange = wouldChange,
+                    Before = ProjectScriptWriteValue(beforeRaw, fieldType), After = ProjectScriptWriteValue(coerced, fieldType),
+                    ProjectRevision = preview.ProjectRevision, SceneRevision = preview.SceneRevision,
+                };
+            }
+            var action = new McpScriptFieldUndo(script, field.Name, beforeRaw, coerced);
+            try { action.Do(); }
+            catch (Exception ex) { throw new McpProtocolException("VALIDATION_FAILED", "Field '" + q.Field + "' write failed: " + ex.GetType().FullName + "."); }
+            FEditor.Instance.Undo.AddAction(action);
+            MarkEdited(actor);
+            var revision = AdvanceSceneRevision(actor == null ? null : actor.Scene);
+            object afterRaw;
+            try { afterRaw = member.GetValue(script); }
+            catch { afterRaw = coerced; }
+            return new McpScriptFieldSetResult
+            {
+                ScriptId = script.ID.ToString("N"), Field = field.Name, Type = fieldType.FullName,
+                DryRun = false, WouldChange = wouldChange,
+                Before = ProjectScriptWriteValue(beforeRaw, fieldType), After = ProjectScriptWriteValue(afterRaw, fieldType),
+                ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision,
+            };
+        }
+
+        private const string ActorPropertyAllowlist = "Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, Script.Enabled";
+
+        private static bool IsAllowedActorProperty(string property)
+        {
+            return string.Equals(property, "Light.Color", StringComparison.Ordinal)
+                || string.Equals(property, "Light.Brightness", StringComparison.Ordinal)
+                || string.Equals(property, "Camera.FieldOfView", StringComparison.Ordinal)
+                || string.Equals(property, "StaticModel.Model", StringComparison.Ordinal)
+                || string.Equals(property, "Script.Enabled", StringComparison.Ordinal);
+        }
+
+        private static void RequireSinglePropertyValue(McpActorPropertySet q, string property)
+        {
+            var setCount = (q.Bool.HasValue ? 1 : 0) + (q.Number.HasValue ? 1 : 0) + (q.Text != null ? 1 : 0);
+            if (setCount != 1)
+                throw new McpProtocolException("VALIDATION_FAILED", "Property '" + property + "' requires exactly one of Bool, Number, or Text.");
+        }
+
+        private static double RequirePropertyNumber(McpActorPropertySet q, string property)
+        {
+            RequireSinglePropertyValue(q, property);
+            if (!q.Number.HasValue) throw new McpProtocolException("VALIDATION_FAILED", "Property '" + property + "' requires a numeric value.");
+            var n = q.Number.Value;
+            if (double.IsNaN(n) || double.IsInfinity(n)) throw new McpProtocolException("VALIDATION_FAILED", "Property '" + property + "' requires a finite numeric value.");
+            return n;
+        }
+
+        private static string RequirePropertyText(McpActorPropertySet q, string property, string shape)
+        {
+            RequireSinglePropertyValue(q, property);
+            if (q.Text == null) throw new McpProtocolException("VALIDATION_FAILED", "Property '" + property + "' requires " + shape + ".");
+            return q.Text;
+        }
+
+        private McpActorPropertySetResult SetActorProperty(McpActorPropertySet q)
+        {
+            if (q == null) throw new McpProtocolException("INVALID_REQUEST", "Actor property parameters are required.");
+            if (!IsAllowedActorProperty(q.Property))
+                throw new McpProtocolException("VALIDATION_FAILED", "Unknown actor property '" + (q.Property ?? "") + "'. Supported: " + ActorPropertyAllowlist + ".");
+            RequireEditTime("actor.set_property");
+            // Script.Enabled addresses a script instance (script GUID), not an
+            // actor; the write itself is the same direct typed setter the
+            // script_instance_update path uses.
+            if (string.Equals(q.Property, "Script.Enabled", StringComparison.Ordinal))
+                return SetScriptEnabledProperty(q);
+            var actor = RequireActor(q.ActorId);
+            CheckSceneWrite(actor.Scene, q.ExpectedSceneRevision, q.LeaseId);
+            if (string.Equals(q.Property, "Light.Color", StringComparison.Ordinal))
+            {
+                var light = actor as Light;
+                if (light == null) throw new McpProtocolException("VALIDATION_FAILED", "Property 'Light.Color' requires a FlaxEngine.Light actor, got " + (actor.TypeName ?? "unknown") + ".");
+                var color = ParseStrictColor(RequirePropertyText(q, q.Property, "a \"#rrggbb\" or \"r,g,b[,a]\" string"), "Property 'Light.Color'");
+                var before = light.Color;
+                // Direct typed setter inside editor undo (same pattern as
+                // UpdateActor); no arbitrary dotted paths are accepted.
+                FEditor.Instance.Undo.RecordAction(actor, "Set actor property", () =>
+                {
+                    light.Color = color;
+                    MarkEdited(actor);
+                });
+                AdvanceSceneRevision(actor.Scene);
+                return ActorPropertyResult(actor, q.Property, ProjectScriptWriteValue(before, typeof(Color)), ProjectScriptWriteValue(light.Color, typeof(Color)));
+            }
+            if (string.Equals(q.Property, "Light.Brightness", StringComparison.Ordinal))
+            {
+                var light = actor as Light;
+                if (light == null) throw new McpProtocolException("VALIDATION_FAILED", "Property 'Light.Brightness' requires a FlaxEngine.Light actor, got " + (actor.TypeName ?? "unknown") + ".");
+                var n = RequirePropertyNumber(q, q.Property);
+                if (n < 0.0 || (float)n < 0.0f) throw new McpProtocolException("VALIDATION_FAILED", "Property 'Light.Brightness' must be >= 0.");
+                var brightness = (float)n;
+                var before = light.Brightness;
+                FEditor.Instance.Undo.RecordAction(actor, "Set actor property", () =>
+                {
+                    light.Brightness = brightness;
+                    MarkEdited(actor);
+                });
+                AdvanceSceneRevision(actor.Scene);
+                return ActorPropertyResult(actor, q.Property, ProjectScriptWriteValue(before, typeof(float)), ProjectScriptWriteValue(light.Brightness, typeof(float)));
+            }
+            if (string.Equals(q.Property, "Camera.FieldOfView", StringComparison.Ordinal))
+            {
+                var camera = actor as Camera;
+                if (camera == null) throw new McpProtocolException("VALIDATION_FAILED", "Property 'Camera.FieldOfView' requires a FlaxEngine.Camera actor, got " + (actor.TypeName ?? "unknown") + ".");
+                var n = RequirePropertyNumber(q, q.Property);
+                if (!(n > 0.0) || !(n < 180.0)) throw new McpProtocolException("VALIDATION_FAILED", "Property 'Camera.FieldOfView' must be between 0 and 180 degrees (exclusive).");
+                var fov = (float)n;
+                var before = camera.FieldOfView;
+                FEditor.Instance.Undo.RecordAction(actor, "Set actor property", () =>
+                {
+                    camera.FieldOfView = fov;
+                    MarkEdited(actor);
+                });
+                AdvanceSceneRevision(actor.Scene);
+                return ActorPropertyResult(actor, q.Property, ProjectScriptWriteValue(before, typeof(float)), ProjectScriptWriteValue(camera.FieldOfView, typeof(float)));
+            }
+            // StaticModel.Model by asset GUID only (no path variant): the
+            // loader verifies the registry/file ID match like actor.update.
+            var staticModel = actor as StaticModel;
+            if (staticModel == null) throw new McpProtocolException("VALIDATION_FAILED", "Property 'StaticModel.Model' requires a FlaxEngine.StaticModel actor, got " + (actor.TypeName ?? "unknown") + ".");
+            var assetText = RequirePropertyText(q, q.Property, "a 32-character model asset GUID");
+            if (!IsGuidN(assetText)) throw new McpProtocolException("VALIDATION_FAILED", "Property 'StaticModel.Model' requires a 32-character model asset GUID.");
+            var model = LoadActorModelAsset(assetText, null);
+            var beforeModel = staticModel.Model;
+            FEditor.Instance.Undo.RecordAction(actor, "Set actor property", () =>
+            {
+                staticModel.Model = model;
+                MarkEdited(actor);
+            });
+            AdvanceSceneRevision(actor.Scene);
+            return ActorPropertyResult(actor, q.Property, ProjectScriptWriteValue(beforeModel, beforeModel == null ? null : beforeModel.GetType()), ProjectScriptWriteValue(staticModel.Model, typeof(Model)));
+        }
+
+        private McpActorPropertySetResult ActorPropertyResult(Actor actor, string property, McpMaterialTypedValue before, McpMaterialTypedValue after)
+        {
+            var revision = CurrentRevision(actor.Scene);
+            return new McpActorPropertySetResult
+            {
+                ActorId = actor.ID.ToString("N"), Property = property,
+                Before = before, After = after, Actor = ActorDto(actor, false),
+                ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision,
+            };
+        }
+
+        private McpActorPropertySetResult SetScriptEnabledProperty(McpActorPropertySet q)
+        {
+            RequireSinglePropertyValue(q, q.Property);
+            if (!q.Bool.HasValue) throw new McpProtocolException("VALIDATION_FAILED", "Property 'Script.Enabled' requires a boolean value.");
+            var script = RequireScript(q.ActorId);
+            var actor = script.Actor;
+            CheckSceneWrite(actor == null ? null : actor.Scene, q.ExpectedSceneRevision, q.LeaseId);
+            var before = script.Enabled;
+            var action = new McpScriptEnabledUndo(script, before, q.Bool.Value);
+            action.Do();
+            FEditor.Instance.Undo.AddAction(action);
+            if (actor != null) MarkEdited(actor);
+            var revision = AdvanceSceneRevision(actor == null ? null : actor.Scene);
+            return new McpActorPropertySetResult
+            {
+                ActorId = script.ID.ToString("N"), Property = "Script.Enabled",
+                Before = ProjectScriptWriteValue(before, typeof(bool)), After = ProjectScriptWriteValue(script.Enabled, typeof(bool)),
+                Actor = null,
+                ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision,
+            };
         }
 
         private McpActorDto ActorDto(Actor actor, bool recursive)
@@ -6875,6 +7351,50 @@ namespace Game.MCP
             var script = FObject.TryFind<Script>(ref id);
             if (script == null) return;
             script.Enabled = enabled;
+            if (script.Actor != null && script.Actor.Scene != null)
+                FEditor.Instance.Scene.MarkSceneEdited(script.Actor.Scene);
+        }
+    }
+
+    internal sealed class McpScriptFieldUndo : IUndoAction
+    {
+        private Guid _scriptId;
+        private readonly string _fieldName;
+        private readonly object _before;
+        private readonly object _after;
+
+        public string ActionString { get { return "Set script field"; } }
+
+        public McpScriptFieldUndo(Script script, string fieldName, object before, object after)
+        {
+            _scriptId = script.ID;
+            _fieldName = fieldName;
+            _before = before;
+            _after = after;
+        }
+
+        public void Do() { Apply(_after); }
+        public void Undo() { Apply(_before); }
+        public void Dispose() { }
+
+        private void Apply(object value)
+        {
+            var id = _scriptId;
+            var script = FObject.TryFind<Script>(ref id);
+            if (script == null) return;
+            FieldInfo field = null;
+            for (var type = script.GetType(); type != null && type != typeof(Script); type = type.BaseType)
+            {
+                if (type.FullName != null && type.FullName.StartsWith("FlaxEngine.", StringComparison.Ordinal)) break;
+                try { field = type.GetField(_fieldName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly); }
+                catch { }
+                if (field != null) break;
+            }
+            if (field == null) return;
+            // Same reviewed wrapper as the live write path (see
+            // SetScriptField): ScriptMemberInfo.SetValue is the only
+            // reflection-backed setter used on game objects in this bridge.
+            new ScriptMemberInfo(field).SetValue(script, value);
             if (script.Actor != null && script.Actor.Scene != null)
                 FEditor.Instance.Scene.MarkSceneEdited(script.Actor.Scene);
         }

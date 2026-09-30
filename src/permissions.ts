@@ -38,9 +38,9 @@ const TOOL_FAMILIES = {
     'apply_script_patch', 'generate_script',
   ],
   scene: [
-    'scene_save', 'scene_open', 'project_save_all', 'actor_create', 'actor_update', 'actor_delete',
+    'scene_save', 'scene_open', 'project_save_all', 'actor_create', 'actor_update', 'actor_set_property', 'actor_delete',
     'actor_duplicate', 'actor_reparent', 'script_attach', 'script_detach',
-    'script_instance_update', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'editor_set_selection', 'create_actor', 'modify_actor',
+    'script_instance_update', 'script_instance_set_value', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'editor_set_selection', 'create_actor', 'modify_actor',
     'prefab_instantiate', 'prefab_revert_overrides', 'prefab_break_link', 'material_assign_to_actor', 'animation_set_graph_parameter', 'graph_undo', 'mm_apply_preset',
   ],
   asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete', 'prefab_create_from_actor', 'prefab_apply_overrides', 'material_set_parameters', 'material_create_instance', 'graph_set_default_parameter', 'graph_add_parameter', 'animgraph_add_state', 'animgraph_add_transition', 'graph_remove_node', 'graph_disconnect', 'graph_set_node_values', 'graph_move_node', 'graph_set_model', 'animgraph_set_state_clip'],

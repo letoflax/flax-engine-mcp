@@ -154,10 +154,12 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `project_save_all` | Ask Flax Editor to save all edited project content |
 | `actor_get` / `actor_find` | Read or search live actors; v7 snapshots include bounded hierarchy, local/world-transform, tags, and layer metadata |
 | `actor_create` / `actor_update` | Create or patch allowlisted actor fields with dry-run support |
+| `actor_set_property` | Set one allowlisted component property (`Light.Color`, `Light.Brightness`, `Camera.FieldOfView`, `StaticModel.Model` by asset GUID, `Script.Enabled`) via a direct typed setter with editor undo; unknown properties fail listing the allowlist (bridge v28) |
 | `actor_delete` / `actor_duplicate` | Delete or duplicate an actor with editor undo support |
 | `actor_reparent` | Reparent an actor while preserving its world transform by default |
 | `script_attach` / `script_detach` | Attach or detach a script with editor undo support |
 | `script_instance_get` / `script_instance_update` | Read a script instance or patch its enabled state (arbitrary serialized script properties are deferred). `script_instance_get` accepts opt-in `include_values` for a bounded read-only projection of whitelisted public field values (bool/int/float/string/enum/Guid/Vector2-4/Color; max 64 fields alphabetically, strings capped at 512 chars, unsupported types are null with a reason; never mutates the script) |
+| `script_instance_set_value` | Write one whitelisted public script field (same type whitelist) through the Editor property-grid wrapper with editor undo; Guid/Vector/Color values are strict strings; `dry_run` previews coercion with `would_change` plus before/after (bridge v28) |
 | `edit_undo` / `edit_redo` | Execute the Flax Editor undo/redo stack |
 | `editor_get_selection` / `editor_set_selection` | Read the editor actor selection (bounded IDs, names, parent scene IDs; empty is an empty list) or replace it with 1–200 actor IDs; optional `focus_viewport` frames the EditWin viewport on the new selection (bridge v24) |
 | `edit_begin_lease` / `edit_get_lease` | Acquire or inspect a bounded v7 scene edit lease |

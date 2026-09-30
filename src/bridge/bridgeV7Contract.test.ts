@@ -17,8 +17,8 @@ test('bridge v20 keeps read-only sub-context inspection with navigate-and-restor
 
 test('bridge v21 binds AnimationGraph BaseModel plus the v20 clip/value/move surface', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*27/);
-  assert.match(source, /BridgeVersion\s*=\s*27/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
+  assert.match(source, /BridgeVersion\s*=\s*28/);
   assert.match(source, /case "graph\.set_model"/);
   assert.match(source, /McpGraphSetModelRequest/);
   assert.match(source, /SetGraphBaseModel/);
@@ -57,8 +57,8 @@ test('bridge refuses scene saves while scripts compile and keeps asset swaps ins
 
 test('bridge v21 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*27/);
-  assert.match(source, /BridgeVersion\s*=\s*27/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
+  assert.match(source, /BridgeVersion\s*=\s*28/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -258,7 +258,7 @@ test('bridge v17 exposes the window-backed Visject graph surface with bounded An
 
 test('bridge v22 captures game and editor viewports through verified Screenshot paths', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*27/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
   assert.match(source, /EditorViewportCaptureSupported = true/);
   assert.match(source, /Viewport must be 'game' or 'editor'/);
   assert.match(source, /EditWin\.Viewport\.Task/);
@@ -271,8 +271,8 @@ test('bridge v22 captures game and editor viewports through verified Screenshot 
 
 test('bridge v23 controls play time scale through verified Time.TimeScale', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*27/);
-  assert.match(source, /BridgeVersion\s*=\s*27/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
+  assert.match(source, /BridgeVersion\s*=\s*28/);
   assert.match(source, /PlayTimeScaleSupported = true/);
   assert.match(source, /McpTimeScaleRequest/);
   assert.match(source, /case "play\.set_time_scale"/);
@@ -284,8 +284,8 @@ test('bridge v23 controls play time scale through verified Time.TimeScale', asyn
 
 test('bridge v24 reads and replaces editor selection through verified SceneEditing APIs', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*27/);
-  assert.match(source, /BridgeVersion\s*=\s*27/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
+  assert.match(source, /BridgeVersion\s*=\s*28/);
   assert.match(source, /EditorSelectionSupported = true/);
   assert.match(source, /McpSelectionRequest/);
   assert.match(source, /McpSelectionEntry/);
@@ -304,8 +304,8 @@ test('bridge v24 reads and replaces editor selection through verified SceneEditi
 
 test('bridge v25 opens canonical Content scenes through verified Level.LoadSceneAsync', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*27/);
-  assert.match(source, /BridgeVersion\s*=\s*27/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
+  assert.match(source, /BridgeVersion\s*=\s*28/);
   assert.match(source, /SceneOpenSupported = true/);
   assert.match(source, /McpSceneOpen\b/);
   assert.match(source, /McpSceneOpenResult/);
@@ -321,7 +321,7 @@ test('bridge v25 opens canonical Content scenes through verified Level.LoadScene
   assert.match(source, /McpSceneOpenTypeDetails/);
   assert.match(source, /ScriptsBuilder\.IsCompiling \|\| !ScriptsBuilder\.IsReady/);
   assert.match(source, /Scene open is unavailable while the editor is in play mode/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v27 listening/);
+  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v28 listening/);
 });
 
 test('bridge v15 keeps domain mutations unsupported while exposing bounded public queries', async () => {
@@ -345,8 +345,8 @@ test('bridge v15 keeps domain mutations unsupported while exposing bounded publi
 
 test('bridge v26 gates play-mode input simulation to managed Flax APIs only', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*27/);
-  assert.match(source, /BridgeVersion\s*=\s*27/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
+  assert.match(source, /BridgeVersion\s*=\s*28/);
   assert.match(source, /InputSimulationSupported = true/);
   assert.match(source, /McpKeyPress/);
   assert.match(source, /McpMouseClick/);
@@ -363,7 +363,7 @@ test('bridge v26 gates play-mode input simulation to managed Flax APIs only', as
   assert.match(source, /Capability = "input_mouse_click"/);
   assert.match(source, /KeyboardKeys\.None/);
   assert.match(source, /KeyboardKeys\.MAX/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v27 listening/);
+  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v28 listening/);
   assert.doesNotMatch(source, /\[\s*DllImport/);
   assert.doesNotMatch(source, /user32\.dll/i);
   assert.doesNotMatch(source, /SendInput\s*\(/);
@@ -373,8 +373,8 @@ test('bridge v26 gates play-mode input simulation to managed Flax APIs only', as
 
 test('bridge v27 reads one instantaneous engine performance snapshot without allocation storms', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*27/);
-  assert.match(source, /BridgeVersion\s*=\s*27/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
+  assert.match(source, /BridgeVersion\s*=\s*28/);
   assert.match(source, /PerfSnapshotSupported = true/);
   assert.match(source, /McpPerfSnapshot/);
   assert.match(source, /case "perf\.snapshot"/);
@@ -390,6 +390,47 @@ test('bridge v27 reads one instantaneous engine performance snapshot without all
   assert.match(source, /device\.RendererType/);
   assert.match(source, /adapter\.Description/);
   assert.match(source, /FEditor\.Instance\.IsHeadlessMode/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v27 listening/);
+  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v28 listening/);
   assert.doesNotMatch(source, /Thread\.Sleep\s*\(/);
+});
+
+test('bridge v28 writes bounded script fields and component properties through reviewed setters', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*28/);
+  assert.match(source, /BridgeVersion\s*=\s*28/);
+  assert.match(source, /ScriptFieldWriteSupported = true/);
+  assert.match(source, /ActorPropertyWriteSupported = true/);
+  assert.match(source, /case "script\.instance_set_value"/);
+  assert.match(source, /case "actor\.set_property"/);
+  assert.match(source, /McpScriptFieldSet\b/);
+  assert.match(source, /McpScriptFieldSetResult/);
+  assert.match(source, /McpActorPropertySet\b/);
+  assert.match(source, /McpActorPropertySetResult/);
+  assert.match(source, /SetScriptField\(/);
+  assert.match(source, /SetActorProperty\(/);
+  assert.match(source, /RequireEditTime\(/);
+  assert.match(source, /is an edit-time operation and is unavailable while the editor is in play mode/);
+  assert.match(source, /is unavailable in headless editor mode/);
+  // The ONLY reflection-backed setter on game objects is the Editor
+  // property-grid wrapper ScriptMemberInfo.SetValue; raw
+  // PropertyInfo.SetValue is never used on game objects.
+  assert.match(source, /ONLY reflection-backed setter/);
+  assert.match(source, /new ScriptMemberInfo\(field\)/);
+  assert.match(source, /\.SetValue\(script, value\)/);
+  assert.match(source, /McpScriptFieldUndo/);
+  assert.match(source, /FEditor\.Instance\.Undo\.AddAction\(action\)/);
+  assert.match(source, /HasSet/);
+  assert.match(source, /IsSupportedScriptFieldType/);
+  assert.match(source, /Unknown actor property/);
+  assert.match(source, /Light\.Color, Light\.Brightness, Camera\.FieldOfView, StaticModel\.Model, Script\.Enabled/);
+  assert.match(source, /light\.Color = color/);
+  assert.match(source, /light\.Brightness = brightness/);
+  assert.match(source, /camera\.FieldOfView = fov/);
+  assert.match(source, /staticModel\.Model = model/);
+  assert.match(source, /WouldChange/);
+  assert.match(source, /MarkSceneEdited/);
+  assert.match(source, /ExecuteIdempotent\("script\.instance_set_value"/);
+  assert.match(source, /ExecuteIdempotent\("actor\.set_property"/);
+  assert.doesNotMatch(source, /PropertyInfo\.SetValue/);
+  assert.doesNotMatch(source, /field\.SetValue\(/);
 });

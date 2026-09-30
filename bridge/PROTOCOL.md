@@ -115,9 +115,10 @@ edits or arbitrary third-party plugin changes: Flax 1.12 has no verified event
 used by this bridge for that detection. A caller must read again after any
 out-of-band change it knows about.
 
-The live write DTOs (`actor.create`, `actor.update`, `actor.delete`,
-`actor.duplicate`, `actor.reparent`, `script.attach`, `script.detach`, and
-`script.instance_update`) accept optional PascalCase `ExpectedSceneRevision` and
+The live write DTOs (`actor.create`, `actor.update`, `actor.set_property`,
+`actor.delete`, `actor.duplicate`, `actor.reparent`, `script.attach`,
+`script.detach`, `script.instance_update`, and `script.instance_set_value`)
+accept optional PascalCase `ExpectedSceneRevision` and
 `LeaseId`. When a target scene can be identified before the mutation, a mismatched
 revision fails with `SCENE_REVISION_CONFLICT`; `errorDetails` includes
 `SceneId`, `ExpectedSceneRevision`, `CurrentSceneRevision`, and `ProjectRevision`.
@@ -162,8 +163,9 @@ false, so default reads stay wire-identical to older bridges). With
 `IncludeValues:true` the result adds a bounded read-only projection of the
 script's public instance fields: `Values` (alphabetical, at most 64 entries),
 `ValuesIncluded:true`, `ValuesTruncated` (true when fields were dropped), and a
-`Warnings` note that values are a bounded projection and script writes remain
-limited to `Enabled`. With the flag absent or false, `Values` is null and
+`Warnings` note that values are a bounded projection and script writes are
+limited to `Enabled` plus bounded `script.instance_set_value` field writes
+(bridge v28). With the flag absent or false, `Values` is null and
 `ValuesIncluded` is false.
 
 Each entry carries `Name`, `Type` (full type name), `Value` (a v13
@@ -174,7 +176,9 @@ references, unsupported runtime types, and unreadable fields are a null `Value`
 with a `Reason`. Strings truncate at 512 characters. Field reads never mutate
 the script, and the global 512 KiB `MaxResultBytes` cap still bounds the total
 response (`RESPONSE_TOO_LARGE` on overflow). `script.instance_update` still
-accepts only `Enabled`; arbitrary serialized script writes remain unexposed.
+accepts only `Enabled`; bounded field writes go through
+`script.instance_set_value` (bridge v28) and arbitrary serialized script
+writes remain unexposed.
 
 ## Bridge v8: public asset registry and reference graph
 
@@ -868,3 +872,86 @@ different capability sets. Canonical v25+ ships `scene.open` (`scene_open`
 in Node); older canonical installers answer that method with
 `METHOD_NOT_ALLOWED`. The canonical installer does not ship the row above,
 so a stock editor answers that method with `METHOD_NOT_ALLOWED`.
+
+## Bridge v28: bounded script/component property write
+
+Bridge v28 keeps protocol v1 and the full v27 surface. It adds
+`script.instance_set_value` and `actor.set_property`, both edit-time only:
+headless editors fail with `INVALID_STATE` (editor ops) and play mode (or
+a requested play start) fails with `INVALID_STATE`, mirroring the
+`scene.open` gate shape. Both accept the v7 `ExpectedSceneRevision` and
+`LeaseId` guards via `CheckSceneWrite` plus `IdempotencyKey` (ten-minute
+replay, `IDEMPOTENCY_KEY_REUSED` on key reuse with different input).
+`status` adds `ScriptFieldWriteSupported:true` and
+`ActorPropertyWriteSupported:true`. Node exposes `script_instance_set_value`
+and `actor_set_property` (scene family), requires bridge v28 for both, and
+reports `scriptFieldWrite`/`actorPropertyWrite` in
+`get_server_capabilities`. `arbitrarySerializedScriptProperties` stays
+`false`: every write below is allowlisted or strictly coerced, never an
+arbitrary serialized blob.
+
+The `ScriptMemberInfo` decision (verified, not inferred): arbitrary
+script-field write has exactly one public setter — the reflection-backed
+`FlaxEditor.Scripting.ScriptMemberInfo.SetValue(obj, value)`
+(`M:FlaxEditor.Scripting.ScriptMemberInfo.SetValue(System.Object,
+System.Object)`), the exact wrapper the Editor property grid uses via
+`ValueContainer`. There is no typed `SetBool`/`SetFloat`/… overload.
+The bridge therefore resolves the field with the same hierarchy walk as
+the P7 read surface (`GetField(name, Public|Instance|DeclaredOnly)`,
+most-derived first), wraps it in `new ScriptMemberInfo(field)`, and reads
+via `GetValue` / writes via `SetValue`. The v9 contract test asserting no
+raw `PropertyInfo.SetValue` is kept (still no raw reflection on game
+objects); the v28 contract test allowlists `ScriptMemberInfo.SetValue` as
+the ONLY reflection-backed setter call in the bridge. Spot-verified SDK
+surface (`FlaxEngine.CSharp.xml`): `ScriptMemberInfo(MemberInfo)`,
+`GetValue`/`SetValue`, `HasSet`, `ValueType` (a `ScriptType` unwrapped via
+`.Type`), `ScriptType.GetField(name, flags)`; `Undo.RecordAction`,
+`Undo.AddAction`, `IUndoAction`; `SceneModule.MarkSceneEdited` (already
+used as `FEditor.Instance.Scene.MarkSceneEdited`); direct typed setters
+`Light.Color`, `Light.Brightness`, `Camera.FieldOfView`,
+`StaticModel.Model`, `Script.Enabled`. Probe correction: Flax 1.12
+`Light` has no `Intensity` property, so the allowlist carries
+`Light.Brightness` instead.
+
+`script.instance_set_value` takes `McpScriptFieldSet { ScriptId, Field,
+Bool?, Number?, Text, DryRun, ExpectedSceneRevision, LeaseId,
+IdempotencyKey }` (Node splits its `bool|number|string` union into
+exactly one of `Bool`/`Number`/`Text`). `Field` is 1–128 chars matching
+`^[A-Za-z_][A-Za-z0-9_]*$`. Static, non-public, no-setter
+(`!HasSet`, init-only, literal), and unsupported-type fields fail with
+`VALIDATION_FAILED` carrying a reason in the `script_instance_get` reason
+style. The whitelist is bool/int/float/string/enum/Guid/Vector2/Vector3/
+Vector4/Color (both `Vector*` and `Float*` spellings coerce to the field's
+actual type). Coercion is strict: bool needs JSON bool; int needs an
+integral finite number in target range; float needs a finite number in
+range; string needs a string (max 4096 chars); enum needs a name
+(case-insensitive `Enum.Parse`) or a defined numeric value; Guid needs a
+32-hex string; vectors need `"x,y[,z[,w]]"` with finite invariant floats;
+Color needs `"#rrggbb[aa]"` or `"r,g,b[,a]"`. Anything else fails with
+`VALIDATION_FAILED` — never a silent default. `DryRun:true` reads the
+current value via `GetValue` first and returns `WouldChange` plus
+`Before`/`After` projections without writing, advancing no revision, and
+never consuming an idempotency key. A real write applies through
+`McpScriptFieldUndo` (an `IUndoAction` mirroring `McpScriptEnabledUndo`:
+script re-resolved by ID, field re-resolved by name, `MarkSceneEdited` on
+apply), registered with `Undo.AddAction`, then `MarkSceneEdited` and a
+scene-revision advance. The result echoes `Before`/`After` plus both
+revisions, so callers verify without saving.
+
+`actor.set_property` takes `McpActorPropertySet { ActorId, Property,
+Bool?, Number?, Text, ExpectedSceneRevision, LeaseId, IdempotencyKey }`.
+`Property` must exactly equal one allowlist entry — `Light.Color`,
+`Light.Brightness`, `Camera.FieldOfView`, `StaticModel.Model`,
+`Script.Enabled` — with no dotted-path parsing; anything else fails with
+`VALIDATION_FAILED` listing the allowlist. Each entry runs a direct typed
+setter inside `Undo.RecordAction` (the `UpdateActor` pattern) plus
+`MarkSceneEdited`: `Light.Color` (actor must be `FlaxEngine.Light`,
+Text color), `Light.Brightness` (number >= 0), `Camera.FieldOfView`
+(number in 0–180 exclusive), `StaticModel.Model` (32-hex model asset GUID
+only, loaded and registry/file-ID-verified like `actor.update`),
+`Script.Enabled` (a script GUID, same typed setter and
+`McpScriptEnabledUndo` path as `script.instance_update`). The result
+carries `Before`/`After` projections and, for actor targets, the updated
+`ActorDto`, so callers verify and undo without saving. Bogus script/actor
+IDs fail with `NOT_FOUND` via the existing `RequireScript`/`RequireActor`
+helpers.

@@ -211,6 +211,8 @@ export async function handleGetServerCapabilities(
     const sceneOpen = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 25;
     const inputSimulation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 26;
     const perfSnapshot = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 27;
+    const scriptFieldWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 28;
+    const actorPropertyWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 28;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -239,6 +241,8 @@ export async function handleGetServerCapabilities(
         safeActorSurface: phase3,
         arbitraryActorProperties: false,
         scriptInstanceEnabledPatch: editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 5,
+        scriptFieldWrite,
+        actorPropertyWrite,
         arbitrarySerializedScriptProperties: false,
         assetSearch: phase4Assets,
         assetRegistryMetadata: phase4Assets,

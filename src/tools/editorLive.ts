@@ -134,6 +134,24 @@ export const ScriptInstanceUpdateSchema = z.object({
   dry_run: z.boolean().optional().default(false),
   ...RevisionedLiveWrite,
 });
+export const ScriptInstanceSetValueSchema = z.object({
+  script_id: FlaxId,
+  field: z.string().min(1).max(128).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Field must be a C# identifier.')
+    .describe('Public instance field name on the script (C# identifier, 1-128 chars). Static, non-public, read-only, and unsupported-type fields are rejected.'),
+  value: z.union([z.boolean(), z.number().finite(), z.string()])
+    .describe('New value coerced strictly to the field type: bool for bool fields, a finite number for int/float/enum fields, a string for string fields, and strings for Guid ("32-hex"), Vector2/3/4 ("x,y[,z[,w]]"), and Color ("#rrggbb[aa]" or "r,g,b[,a]") fields.'),
+  dry_run: z.boolean().optional().default(false)
+    .describe('Preview the coercion and report would_change plus before/after without writing. Requires bridge v28.'),
+  ...RevisionedLiveWrite,
+});
+export const ActorSetPropertySchema = z.object({
+  target_id: FlaxId.describe('Actor GUID for component properties (Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model) or script GUID for Script.Enabled.'),
+  property: z.string().min(1).max(128)
+    .describe('Exactly one allowlisted property: Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, or Script.Enabled. Unknown properties fail with VALIDATION_FAILED listing the allowlist.'),
+  value: z.union([z.boolean(), z.number().finite(), z.string()])
+    .describe('New value: Text color ("#rrggbb[aa]" or "r,g,b[,a]") for Light.Color, finite number for Light.Brightness (>= 0) and Camera.FieldOfView (0-180 exclusive), 32-hex model asset GUID for StaticModel.Model, boolean for Script.Enabled.'),
+  ...RevisionedLiveWrite,
+});
 export const EditUndoSchema = z.object({});
 export const EditRedoSchema = z.object({});
 export const EditLeaseBeginSchema = z.object({
@@ -393,6 +411,58 @@ export async function handleScriptInstanceUpdate(
   const params = { ScriptId: args.script_id, Enabled: args.enabled, ExpectedSceneRevision: args.expected_scene_revision, LeaseId: args.lease_id, IdempotencyKey: args.idempotency_key };
   if (args.dry_run) return dryRunLookup(ctx, 'script.instance_get', { ScriptId: args.script_id }, params);
   return liveCall(ctx, 'script.instance_update', params, [{ kind: 'script.updated', id: args.script_id }]);
+}
+
+function splitScalarValue(value: boolean | number | string): { Bool?: boolean; Number?: number; Text?: string } {
+  if (typeof value === 'boolean') return { Bool: value };
+  if (typeof value === 'number') return { Number: value };
+  return { Text: value };
+}
+
+export async function handleScriptInstanceSetValue(
+  args: z.infer<typeof ScriptInstanceSetValueSchema>,
+  ctx: ProjectMeta,
+): Promise<ToolResponse> {
+  // Bridge-native dry-run: the coercion needs the live field type, so the
+  // preview runs bridge-side (graph.set_default_parameter precedent) rather
+  // than as a client-side read. Dry runs never consume idempotency keys.
+  const params = {
+    ScriptId: args.script_id,
+    Field: args.field,
+    ...splitScalarValue(args.value),
+    DryRun: args.dry_run,
+    ExpectedSceneRevision: args.expected_scene_revision,
+    LeaseId: args.lease_id,
+    IdempotencyKey: args.dry_run ? undefined : args.idempotency_key,
+  };
+  return liveCall(
+    ctx,
+    'script.instance_set_value',
+    params,
+    args.dry_run ? [] : [{ kind: 'script.field_set', id: args.script_id, field: args.field }],
+    28,
+  );
+}
+
+export async function handleActorSetProperty(
+  args: z.infer<typeof ActorSetPropertySchema>,
+  ctx: ProjectMeta,
+): Promise<ToolResponse> {
+  const params = {
+    ActorId: args.target_id,
+    Property: args.property,
+    ...splitScalarValue(args.value),
+    ExpectedSceneRevision: args.expected_scene_revision,
+    LeaseId: args.lease_id,
+    IdempotencyKey: args.idempotency_key,
+  };
+  return liveCall(
+    ctx,
+    'actor.set_property',
+    params,
+    [{ kind: 'actor.property_set', id: args.target_id, property: args.property }],
+    28,
+  );
 }
 
 export const handleEditUndo = (_: unknown, ctx: ProjectMeta) =>
