@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 30
+// MCP-BRIDGE-VERSION: 31
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -10,6 +10,7 @@ using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,12 +29,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 30; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 31; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 30; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = true; public bool PrefabApplyOverridesSupported = true; public bool PrefabRevertOverridesSupported = true; public bool PrefabBreakLinkSupported = true; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; }
+    public class McpStatus { public int BridgeVersion = 31; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = true; public bool PrefabApplyOverridesSupported = true; public bool PrefabRevertOverridesSupported = true; public bool PrefabBreakLinkSupported = true; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = true; public bool LightingBakeSupported = true; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; public bool TerrainPaintSupported = false; public bool FoliageInstanceWriteSupported = true; public bool EnvironmentProbeBakeSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -185,6 +186,20 @@ namespace Game.MCP
     public class McpPhysicsOverlapRequest { public McpVector3 Center; public float Radius = 1.0f; public uint LayerMask = UInt32.MaxValue; public bool IncludeTriggers = true; public int Limit = 50; }
     public class McpNavigationPathRequest { public McpVector3 Start; public McpVector3 End; public int MaxPoints = 128; }
     public class McpDomainListRequest { public int Limit = 100; }
+    // Bridge v31 terrain/foliage/navmesh/bake/probe writes. Results use named
+    // field DTOs (never anonymous types): FlaxEngine.Json drops
+    // anonymous-type properties to "{}", so every nested shape is explicit.
+    public class McpFoliageInstanceSpec { public McpVector3 Position; public McpVector3 Rotation; public double Scale = 1.0; }
+    public class McpFoliageAddRequest { public string FoliageId; public int TypeIndex; public McpFoliageInstanceSpec[] Instances; }
+    public class McpFoliageAddResult { public string FoliageId; public int TypeIndex; public int AddedCount; public int InstancesCount; public bool UndoRegistered; public bool SceneEdited; public long ProjectRevision; public long SceneRevision; public string[] Warnings; }
+    public class McpFoliageRemoveRequest { public string FoliageId; public int[] InstanceIndices; }
+    public class McpFoliageRemoveResult { public string FoliageId; public int[] RemovedIndices; public int RemovedCount; public int InstancesCount; public bool UndoRegistered; public bool SceneEdited; public long ProjectRevision; public long SceneRevision; public string[] Warnings; }
+    public class McpNavigationBuildRequest { public string SceneId; public McpVector3 Min; public McpVector3 Max; public int TimeoutMs = 15000; }
+    public class McpNavigationBuildResult { public string Phase; public float Progress; public bool WholeScene; public string SceneId; public string[] Warnings; }
+    public class McpLightingBakeRequest { public string Action; }
+    public class McpLightingBakeResult { public string Phase; public bool IsBaking; public string Step; public float StepProgress; public float TotalProgress; public bool HasLastResult; public bool LastFailed; public string[] Warnings; }
+    public class McpProbeBakeRequest { public string ActorId; public int TimeoutMs = 10000; }
+    public class McpProbeBakeResult { public string Phase; public string ActorId; public string Kind; public string[] Warnings; }
     public class McpPrefabCreateFromActor { public string ActorId; public string DestinationPath; public bool AutoLink; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpPrefabInstantiate { public string AssetId; public string Path; public string ParentId; public string Name; public McpVector3 Position; public McpVector3 Scale; public McpVector3 EulerAngles; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
     public class McpPrefabGetInstances { public string AssetId; public string Path; public string SceneId; public int Limit = 50; public string Cursor; }
@@ -265,7 +280,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 30;
+        private const int BridgeVersion = 31;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -338,6 +353,17 @@ namespace Game.MCP
         private McpGenerateProjectState _generate = new McpGenerateProjectState { Phase = "idle" };
         private readonly Dictionary<string, McpCaptureStatus> _captures = new Dictionary<string, McpCaptureStatus>();
         private ILogHandler _logHandler;
+        // Bridge v31 lightmap bake lifecycle. Editor.BakeLightmapsOrCancel is
+        // a toggle (start when idle, cancel when running), so the bridge
+        // tracks IsBaking through the LightmapsBakeStart/Progress/End events
+        // and never toggles blindly: start while baking is a no-op report,
+        // cancel while idle never starts a bake.
+        private bool _lightBakeActive;
+        private string _lightBakeStep;
+        private float _lightBakeStepProgress;
+        private float _lightBakeTotalProgress;
+        private bool _lightBakeHasLastResult;
+        private bool _lightBakeLastFailed;
         private string _playState = "stopped";
         private string _playSessionId;
         private string _playMode;
@@ -393,7 +419,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                    Debug.Log("[Flax MCP] Bridge v30 listening at " + Root);
+                    Debug.Log("[Flax MCP] Bridge v31 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -561,16 +587,19 @@ namespace Game.MCP
                 case "physics.raycast": result = OnMain(() => PhysicsRaycast(JsonSerializer.Deserialize<McpPhysicsRayRequest>(p)), request.deadlineUnixMs); break;
                 case "physics.get_layer_matrix": result = OnMain(PhysicsLayerMatrix, request.deadlineUnixMs); break;
                 case "physics.find_overlaps": result = OnMain(() => PhysicsFindOverlaps(JsonSerializer.Deserialize<McpPhysicsOverlapRequest>(p)), request.deadlineUnixMs); break;
-                case "navigation.build": result = OnMain(() => UnsupportedDomainMutation("navigation_build", "Flax 1.12 navigation building has no reviewed cancellation, undo, or bridge-owned completion contract."), request.deadlineUnixMs); break;
+                case "navigation.build": result = BuildNavMesh(JsonSerializer.Deserialize<McpNavigationBuildRequest>(p), request.deadlineUnixMs); break;
                 case "navigation.get_status": result = OnMain(NavigationStatus, request.deadlineUnixMs); break;
                 case "navigation.validate_agents": result = OnMain(ValidateNavigationAgents, request.deadlineUnixMs); break;
                 case "navigation.query_path": result = OnMain(() => NavigationQueryPath(JsonSerializer.Deserialize<McpNavigationPathRequest>(p)), request.deadlineUnixMs); break;
-                case "lighting.bake": result = OnMain(() => UnsupportedDomainMutation("lighting_bake", "Flax 1.12 lightmap baking has no reviewed bridge-owned cancellation and result contract."), request.deadlineUnixMs); break;
+                case "lighting.bake": result = BakeLightmaps(JsonSerializer.Deserialize<McpLightingBakeRequest>(p), request.deadlineUnixMs); break;
                 case "lighting.get_status": result = OnMain(LightingStatus, request.deadlineUnixMs); break;
                 case "lighting.validate": result = OnMain(LightingValidate, request.deadlineUnixMs); break;
-                case "environment_probe.bake": result = OnMain(() => UnsupportedDomainMutation("environment_probe_bake", "Flax 1.12 probe baking has no reviewed bridge-owned cancellation and result contract."), request.deadlineUnixMs); break;
+                case "environment_probe.bake": result = BakeProbe(JsonSerializer.Deserialize<McpProbeBakeRequest>(p), request.deadlineUnixMs); break;
                 case "terrain.get_summary": result = OnMain(() => TerrainSummary(JsonSerializer.Deserialize<McpDomainListRequest>(p)), request.deadlineUnixMs); break;
                 case "foliage.get_summary": result = OnMain(() => FoliageSummary(JsonSerializer.Deserialize<McpDomainListRequest>(p)), request.deadlineUnixMs); break;
+                case "terrain.paint": result = OnMain(() => TerrainPaintBlocked(), request.deadlineUnixMs); break;
+                case "foliage.add_instances": result = OnMain(() => AddFoliageInstances(JsonSerializer.Deserialize<McpFoliageAddRequest>(p)), request.deadlineUnixMs); break;
+                case "foliage.remove_instances": result = OnMain(() => RemoveFoliageInstances(JsonSerializer.Deserialize<McpFoliageRemoveRequest>(p)), request.deadlineUnixMs); break;
                 case "play.status": result = OnMain(PlayStatus, request.deadlineUnixMs); break;
                 case "play.start_scenes": result = OnMain(() => StartPlayScenes(JsonSerializer.Deserialize<McpPlayStart>(p)), request.deadlineUnixMs); break;
                 case "play.start_game": result = OnMain(() => StartPlayGame(JsonSerializer.Deserialize<McpPlayStart>(p)), request.deadlineUnixMs); break;
@@ -5146,7 +5175,7 @@ namespace Game.MCP
 
         private object NavigationStatus()
         {
-            return new { IsBuilding = Navigation.IsBuildingNavMesh, Progress = Navigation.NavMeshBuildingProgress, BuildSupported = false, CancellationSupported = false, Scope = "global-navigation-runtime" };
+            return new { IsBuilding = Navigation.IsBuildingNavMesh, Progress = Navigation.NavMeshBuildingProgress, BuildSupported = true, CancellationSupported = false, Scope = "global-navigation-runtime", Warning = "Flax 1.12 exposes no navmesh cancel API (verified 0 cancel hits in Source/Engine/Navigation/Navigation.h); a timed-out navigation.build keeps building in the background." };
         }
 
         private object ValidateNavigationAgents()
@@ -5177,7 +5206,10 @@ namespace Game.MCP
 
         private object LightingStatus()
         {
-            return new { Phase = "unsupported", BakeSupported = false, CancellationSupported = false, Warning = "No bridge-owned lightmap or probe bake operation is active. Flax public bake APIs lack a reviewed bounded lifecycle contract here." };
+            lock (_stateLock)
+            {
+                return new { Phase = _lightBakeActive ? "baking" : "idle", IsBaking = _lightBakeActive, BakeSupported = true, CancellationSupported = true, HasLastResult = _lightBakeHasLastResult, LastFailed = _lightBakeLastFailed, Warning = "LightmapsBakeEnd(failed:true) conflates bake failure and cancellation; poll lighting.bake status for step progress." };
+            }
         }
 
         private object LightingValidate()
@@ -5198,7 +5230,7 @@ namespace Game.MCP
             var limit = request == null ? 100 : Math.Max(1, Math.Min(request.Limit, 100));
             var actors = Level.GetActors(typeof(Terrain), false); var entries = new List<object>();
             foreach (var actor in actors) { var terrain = actor as Terrain; if (terrain == null) continue; entries.Add(new { ActorId = terrain.ID.ToString("N"), SceneId = terrain.Scene == null ? null : terrain.Scene.ID.ToString("N"), Name = LimitForLog(terrain.Name, 128), terrain.LODCount, terrain.ChunkSize, terrain.HeightmapSize, terrain.PatchSize, terrain.PatchesCount, terrain.CollisionLOD, Active = terrain.IsActiveInHierarchy }); if (entries.Count == limit) break; }
-            return new { Entries = entries.ToArray(), Truncated = actors.Length > entries.Count, Scope = "loaded-terrain-actors-only", MutationsSupported = false };
+            return new { Entries = entries.ToArray(), Truncated = actors.Length > entries.Count, Scope = "loaded-terrain-actors-only", MutationsSupported = false, Mutation = "terrain.paint is a stable UNSUPPORTED_FLAX_VERSION stub: Flax 1.12 terrain data accessors return raw pointers and the EditTerrain* undo actions are internal with no public factory." };
         }
 
         private object FoliageSummary(McpDomainListRequest request)
@@ -5206,7 +5238,332 @@ namespace Game.MCP
             var limit = request == null ? 100 : Math.Max(1, Math.Min(request.Limit, 100));
             var actors = Level.GetActors(typeof(Foliage), false); var entries = new List<object>();
             foreach (var actor in actors) { var foliage = actor as Foliage; if (foliage == null) continue; entries.Add(new { ActorId = foliage.ID.ToString("N"), SceneId = foliage.Scene == null ? null : foliage.Scene.ID.ToString("N"), Name = LimitForLog(foliage.Name, 128), foliage.InstancesCount, foliage.FoliageTypesCount, GlobalDensityScale = Foliage.GlobalDensityScale, Active = foliage.IsActiveInHierarchy }); if (entries.Count == limit) break; }
-            return new { Entries = entries.ToArray(), Truncated = actors.Length > entries.Count, Scope = "loaded-foliage-actors-only", MutationsSupported = false, Warning = "Foliage painting, instance edits, and cluster rebuild are intentionally unavailable because they are wide scene mutations without a reviewed preview/undo contract." };
+            return new { Entries = entries.ToArray(), Truncated = actors.Length > entries.Count, Scope = "loaded-foliage-actors-only", MutationsSupported = true, Mutation = "foliage.add_instances / foliage.remove_instances (capped batches with editor undo plus one RebuildClusters; persists via scene save)", Warning = "RebuildClusters has no progress or cancel API; batches are capped at 200 instances per call." };
+        }
+
+        // Bridge v31 foliage/navmesh/bake/probe writes plus the honest
+        // terrain.paint stub (see bridge/PROTOCOL.md "Bridge v31"). The four
+        // real write/start ops are edit-time only (RequireEditTime: headless
+        // INVALID_STATE because the paths are GPU/editor-ops dependent,
+        // play-mode INVALID_STATE), mirroring the v28 actor_update gate.
+        // Navmesh building is CPU work but keeps the same gate for
+        // consistency. Scenes are marked edited, never saved: callers persist
+        // with scene_save. Results use the named v31 field DTOs, never
+        // anonymous types.
+        private const int MaxFoliageBatch = 200;
+
+        private static Foliage RequireFoliage(string id)
+        {
+            var actor = RequireActor(id);
+            var foliage = actor as Foliage;
+            if (foliage == null) throw new McpProtocolException("VALIDATION_FAILED", "Actor " + id + " is not a FlaxEngine.Foliage (actual: " + actor.TypeName + ").");
+            return foliage;
+        }
+
+        // Bridge v31 terrain.paint is intentionally a stable unsupported stub.
+        // Spot-verification against the Flax 1.12 SDK (compile-probed, no live
+        // editor) showed the task's assumed write path is not callable from
+        // safe managed bridge code: TerrainTools.GetHeightmapData/
+        // GetHolesMaskData/GetSplatMapData return raw float*/byte*/Color32*
+        // (CS0214 without an unsafe context, which Flax script compilation is
+        // not verified to allow), and EditTerrainHeightMapAction/
+        // EditTerrainHolesMapAction/EditTerrainSplatMapAction are internal
+        // editor types with no public factory (CS0122; only non-public
+        // reflection could reach them). Node still validates the full
+        // terrain_paint contract and maps this to UNSUPPORTED_FLAX_VERSION.
+        private object TerrainPaintBlocked()
+        {
+            RequireEditTime("terrain.paint");
+            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "terrain.paint has no verified managed write path in Flax 1.12: terrain data accessors return raw pointers (unsafe context required, not verified for Flax script compilation) and the EditTerrain* undo actions are internal editor types with no public factory. Rect validation still applies; live-editor verification is required before a real implementation.", new { Capability = "terrain_paint", BridgeVersion = BridgeVersion });
+        }
+
+
+        private McpFoliageAddResult AddFoliageInstances(McpFoliageAddRequest request)
+        {
+            RequireEditTime("foliage.add_instances");
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Foliage add parameters are required.");
+            var foliage = RequireFoliage(request.FoliageId);
+            CheckSceneWrite(foliage.Scene, null, null);
+            if (request.TypeIndex < 0 || request.TypeIndex >= foliage.FoliageTypesCount)
+                throw new McpProtocolException("VALIDATION_FAILED", "TypeIndex must be between 0 and " + (foliage.FoliageTypesCount - 1) + " (foliage has " + foliage.FoliageTypesCount + " types).");
+            var specs = request.Instances ?? new McpFoliageInstanceSpec[0];
+            if (specs.Length < 1 || specs.Length > MaxFoliageBatch)
+                throw new McpProtocolException("VALIDATION_FAILED", "Instances must contain between 1 and 200 entries, got " + specs.Length + ".");
+            // Validate and build every transform before touching undo or foliage.
+            var transforms = new Transform[specs.Length];
+            for (var i = 0; i < specs.Length; i++)
+            {
+                var spec = specs[i];
+                if (spec == null || spec.Position == null)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Instance " + i + " requires a position.");
+                ValidateDomainVector(spec.Position, "Instance " + i + " position");
+                var euler = spec.Rotation ?? new McpVector3();
+                ValidateDomainVector(euler, "Instance " + i + " rotation");
+                if (double.IsNaN(spec.Scale) || double.IsInfinity(spec.Scale) || spec.Scale <= 0 || spec.Scale > 10000)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Instance " + i + " scale must be a finite number in (0, 10000].");
+                transforms[i] = new Transform(ToVector3(spec.Position), Quaternion.Euler(euler.X, euler.Y, euler.Z), new Float3((float)spec.Scale));
+            }
+            var action = new FlaxEditor.Tools.Foliage.Undo.EditFoliageAction(foliage);
+            for (var i = 0; i < specs.Length; i++)
+            {
+                // FoliageInstance.Transform is local-space relative to the
+                // foliage actor; bounds/random are recalculated by the engine.
+                var instance = new FoliageInstance { Transform = transforms[i], Type = request.TypeIndex };
+                foliage.AddInstance(ref instance);
+            }
+            action.RecordEnd();
+            action.Do();
+            FEditor.Instance.Undo.AddAction(action);
+            foliage.RebuildClusters();
+            foliage.UpdateCullDistance();
+            MarkEdited(foliage);
+            var revision = AdvanceSceneRevision(foliage.Scene);
+            return new McpFoliageAddResult
+            {
+                FoliageId = request.FoliageId,
+                TypeIndex = request.TypeIndex,
+                AddedCount = specs.Length,
+                InstancesCount = foliage.InstancesCount,
+                UndoRegistered = true,
+                SceneEdited = true,
+                ProjectRevision = revision.ProjectRevision,
+                SceneRevision = revision.SceneRevision,
+                Warnings = new[]
+                {
+                    "Instance positions are local-space relative to the foliage actor (FoliageInstance.Transform); rotation is pitch/yaw/roll degrees via Quaternion.Euler and scale is uniform.",
+                    "One RebuildClusters plus UpdateCullDistance ran after the batch; RebuildClusters has no progress or cancel API, so batches are capped at 200 instances per call.",
+                    "The scene is marked edited, never saved (persist with scene_save).",
+                },
+            };
+        }
+
+        private McpFoliageRemoveResult RemoveFoliageInstances(McpFoliageRemoveRequest request)
+        {
+            RequireEditTime("foliage.remove_instances");
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Foliage remove parameters are required.");
+            var foliage = RequireFoliage(request.FoliageId);
+            CheckSceneWrite(foliage.Scene, null, null);
+            var indices = request.InstanceIndices ?? new int[0];
+            if (indices.Length < 1 || indices.Length > MaxFoliageBatch)
+                throw new McpProtocolException("VALIDATION_FAILED", "InstanceIndices must contain between 1 and 200 entries, got " + indices.Length + ".");
+            var live = foliage.InstancesCount;
+            var seen = new HashSet<int>();
+            for (var i = 0; i < indices.Length; i++)
+            {
+                if (indices[i] < 0 || indices[i] >= live)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Instance index " + indices[i] + " is out of range (0.." + (live - 1) + ", " + live + " live instances).");
+                if (!seen.Add(indices[i]))
+                    throw new McpProtocolException("VALIDATION_FAILED", "Duplicate instance index " + indices[i] + ".");
+            }
+            // Remove highest-first so earlier removals never shift later targets.
+            var ordered = (int[])indices.Clone();
+            Array.Sort(ordered);
+            Array.Reverse(ordered);
+            var action = new FlaxEditor.Tools.Foliage.Undo.EditFoliageAction(foliage);
+            foreach (var index in ordered) foliage.RemoveInstance(index);
+            action.RecordEnd();
+            action.Do();
+            FEditor.Instance.Undo.AddAction(action);
+            foliage.RebuildClusters();
+            foliage.UpdateCullDistance();
+            MarkEdited(foliage);
+            var revision = AdvanceSceneRevision(foliage.Scene);
+            return new McpFoliageRemoveResult
+            {
+                FoliageId = request.FoliageId,
+                RemovedIndices = ordered,
+                RemovedCount = ordered.Length,
+                InstancesCount = foliage.InstancesCount,
+                UndoRegistered = true,
+                SceneEdited = true,
+                ProjectRevision = revision.ProjectRevision,
+                SceneRevision = revision.SceneRevision,
+                Warnings = new[]
+                {
+                    "Indices were removed highest-first against " + live + " live instances; one RebuildClusters plus UpdateCullDistance ran after the batch (no progress/cancel API; capped at 200 per call).",
+                    "The scene is marked edited, never saved (persist with scene_save).",
+                },
+            };
+        }
+
+        private sealed class McpNavmeshPoll { public bool IsBuilding; public float Progress; }
+
+        private McpNavigationBuildResult BuildNavMesh(McpNavigationBuildRequest request, long deadlineUnixMs)
+        {
+            RequireEditTime("navigation.build");
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Navigation build parameters are required.");
+            var timeoutMs = request.TimeoutMs <= 0 ? 15000 : request.TimeoutMs;
+            if (timeoutMs < 500 || timeoutMs > 60000)
+                throw new McpProtocolException("VALIDATION_FAILED", "TimeoutMs must be between 500 and 60000.");
+            Scene scene = null;
+            if (!string.IsNullOrEmpty(request.SceneId))
+            {
+                scene = RequireScene(request.SceneId);
+                CheckSceneWrite(scene, null, null);
+            }
+            else
+            {
+                var scenes = Level.Scenes;
+                if (scenes != null && scenes.Length > 0) scene = scenes[0];
+            }
+            var hasBounds = request.Min != null || request.Max != null;
+            BoundingBox bounds = new BoundingBox();
+            if (hasBounds)
+            {
+                if (request.Min == null || request.Max == null)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Bounds requires both Min and Max.");
+                ValidateDomainVector(request.Min, "Min");
+                ValidateDomainVector(request.Max, "Max");
+                if (request.Min.X > request.Max.X || request.Min.Y > request.Max.Y || request.Min.Z > request.Max.Z)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Bounds Min must not exceed Max on any axis.");
+                bounds = new BoundingBox(ToVector3(request.Min), ToVector3(request.Max));
+            }
+            // Start the build on the main thread, then poll from this
+            // background request thread so the editor stays responsive. The
+            // request enqueues until the next game-scripts update and the
+            // build itself runs on ThreadPool tasks.
+            var sceneForCall = scene;
+            var timeoutForCall = (float)timeoutMs;
+            if (hasBounds) OnMain(() => { Navigation.BuildNavMesh(bounds, sceneForCall, timeoutForCall); return 0; }, deadlineUnixMs);
+            else OnMain(() => { Navigation.BuildNavMesh(sceneForCall, timeoutForCall); return 0; }, deadlineUnixMs);
+            var start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var progress = 0.0f;
+            var building = true;
+            while (true)
+            {
+                var snapshot = OnMain(() => new McpNavmeshPoll { IsBuilding = Navigation.IsBuildingNavMesh, Progress = Navigation.NavMeshBuildingProgress }, deadlineUnixMs);
+                building = snapshot.IsBuilding;
+                progress = snapshot.Progress;
+                if (!building) break;
+                if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start >= timeoutMs) break;
+                Thread.Sleep(100);
+            }
+            var wholeScene = !hasBounds;
+            var warnings = new List<string>();
+            if (wholeScene) warnings.Add("Whole-scene build discards all tiles of the target scene(s) and may take a while; prefer bounds for iterative work.");
+            if (building) warnings.Add("Timeout reached before the navmesh finished; the build continues in the background (Flax 1.12 exposes no navmesh cancel API). Poll navigation.get_status for progress.");
+            else warnings.Add("Navmesh output persists via scene save by the user; the bridge performs no save (no public NavMesh save API is used).");
+            warnings.Add("BuildNavMesh requests enqueue until the next game-scripts update; in a quiet edit-time editor the build may stay queued briefly before IsBuildingNavMesh observes it.");
+            return new McpNavigationBuildResult
+            {
+                Phase = building ? "timeout" : "completed",
+                Progress = progress,
+                WholeScene = wholeScene,
+                SceneId = scene == null ? null : scene.ID.ToString("N"),
+                Warnings = warnings.ToArray(),
+            };
+        }
+
+        private void OnLightmapsBakeStart()
+        {
+            lock (_stateLock) { _lightBakeActive = true; _lightBakeStep = "started"; _lightBakeStepProgress = 0; _lightBakeTotalProgress = 0; }
+        }
+
+        private void OnLightmapsBakeProgress(FlaxEditor.Editor.LightmapsBakeSteps step, float stepProgress, float totalProgress)
+        {
+            lock (_stateLock) { _lightBakeActive = true; _lightBakeStep = step.ToString(); _lightBakeStepProgress = stepProgress; _lightBakeTotalProgress = totalProgress; }
+        }
+
+        private void OnLightmapsBakeEnd(bool failed)
+        {
+            lock (_stateLock) { _lightBakeActive = false; _lightBakeHasLastResult = true; _lightBakeLastFailed = failed; }
+        }
+
+        private McpLightingBakeResult LightBakeSnapshotLocked(string phase, string[] warnings)
+        {
+            return new McpLightingBakeResult
+            {
+                Phase = phase,
+                IsBaking = _lightBakeActive,
+                Step = _lightBakeStep,
+                StepProgress = _lightBakeStepProgress,
+                TotalProgress = _lightBakeTotalProgress,
+                HasLastResult = _lightBakeHasLastResult,
+                LastFailed = _lightBakeLastFailed,
+                Warnings = warnings ?? new string[0],
+            };
+        }
+
+        private McpLightingBakeResult BakeLightmaps(McpLightingBakeRequest request, long deadlineUnixMs)
+        {
+            if (request == null || string.IsNullOrEmpty(request.Action))
+                throw new McpProtocolException("INVALID_REQUEST", "Action is required (start, cancel, or status).");
+            var action = request.Action.Trim().ToLowerInvariant();
+            if (action == "status")
+            {
+                lock (_stateLock)
+                {
+                    var warnings = new List<string>();
+                    if (_lightBakeHasLastResult && !_lightBakeActive)
+                        warnings.Add("Last bake ended with Failed=" + _lightBakeLastFailed + "; LightmapsBakeEnd(failed:true) conflates bake failure and cancellation.");
+                    return LightBakeSnapshotLocked(_lightBakeActive ? "baking" : "idle", warnings.ToArray());
+                }
+            }
+            RequireEditTime("lighting.bake");
+            if (action == "start")
+            {
+                lock (_stateLock)
+                {
+                    if (_lightBakeActive)
+                        return LightBakeSnapshotLocked("baking", new[] { "A lightmap bake is already running; start is a no-op report (the BakeLightmapsOrCancel toggle was not invoked, so the running bake was not cancelled)." });
+                }
+                OnMain(() => { FEditor.Instance.BakeLightmapsOrCancel(); return 0; }, deadlineUnixMs);
+                lock (_stateLock)
+                {
+                    _lightBakeActive = true;
+                    if (string.IsNullOrEmpty(_lightBakeStep)) _lightBakeStep = "started";
+                    return LightBakeSnapshotLocked("baking", new[] { "Bake started; the caller polls lighting.bake status for step progress and the LightmapsBakeEnd event for completion." });
+                }
+            }
+            if (action == "cancel")
+            {
+                lock (_stateLock)
+                {
+                    if (!_lightBakeActive)
+                        return LightBakeSnapshotLocked("idle", new[] { "No lightmap bake is running; cancel did not invoke the BakeLightmapsOrCancel toggle, so no bake was started." });
+                }
+                OnMain(() => { FEditor.Instance.BakeLightmapsOrCancel(); return 0; }, deadlineUnixMs);
+                lock (_stateLock)
+                {
+                    return LightBakeSnapshotLocked("cancel_requested", new[] { "Cancel was requested via BakeLightmapsOrCancel; LightmapsBakeEnd(failed:true) conflates failure and cancellation, so poll status until idle." });
+                }
+            }
+            throw new McpProtocolException("VALIDATION_FAILED", "Action must be start, cancel, or status.");
+        }
+
+        private McpProbeBakeResult BakeProbe(McpProbeBakeRequest request, long deadlineUnixMs)
+        {
+            RequireEditTime("environment_probe.bake");
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Probe bake parameters are required.");
+            var actor = RequireActor(request.ActorId);
+            var probe = actor as EnvironmentProbe;
+            var sky = actor as SkyLight;
+            if (probe == null && sky == null)
+                throw new McpProtocolException("VALIDATION_FAILED", "Actor " + request.ActorId + " is not a FlaxEngine.EnvironmentProbe or FlaxEngine.SkyLight (actual: " + actor.TypeName + ").");
+            CheckSceneWrite(actor.Scene, null, null);
+            var timeoutMs = request.TimeoutMs <= 0 ? 10000 : request.TimeoutMs;
+            if (timeoutMs < 1000 || timeoutMs > 60000)
+                throw new McpProtocolException("VALIDATION_FAILED", "TimeoutMs must be between 1000 and 60000.");
+            // Bake takes seconds ("startup time" allowance); the bridge poll
+            // budget below is TimeoutMs milliseconds.
+            var timeoutSeconds = (float)timeoutMs / 1000.0f;
+            var kind = probe != null ? "EnvironmentProbe" : "SkyLight";
+            var actorForCall = actor;
+            OnMain(() => { if (probe != null) probe.Bake(timeoutSeconds); else sky.Bake(timeoutSeconds); return 0; }, deadlineUnixMs);
+            var start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var loaded = false;
+            while (true)
+            {
+                loaded = OnMain(() => actorForCall.HasContentLoaded, deadlineUnixMs);
+                if (loaded) break;
+                if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start >= timeoutMs) break;
+                Thread.Sleep(100);
+            }
+            var warnings = new List<string>();
+            warnings.Add("Probe baking runs as an async graphics task with no percent progress and no cancel API; completion is observed via Actor.HasContentLoaded, which cannot distinguish a fresh bake from previously baked content.");
+            if (loaded) warnings.Add("Baked probes persist via scene save by the user; the bridge performs no save.");
+            else warnings.Add("Timeout reached before content loaded; the bake may still complete in the background. Baked output persists via scene save by the user.");
+            return new McpProbeBakeResult { Phase = loaded ? "completed" : "timeout", ActorId = request.ActorId, Kind = kind, Warnings = warnings.ToArray() };
         }
 
         private static Vector3 ToVector3(McpVector3 value) { return new Vector3(value.X, value.Y, value.Z); }
@@ -7563,6 +7920,9 @@ namespace Game.MCP
             FEditor.Instance.ContentImporting.ImportFileEnd += OnAssetImportFileEnd;
             GameCooker.Event += OnGameCookerEvent;
             GameCooker.Progress += OnGameCookerProgress;
+            FEditor.LightmapsBakeStart += OnLightmapsBakeStart;
+            FEditor.LightmapsBakeProgress += OnLightmapsBakeProgress;
+            FEditor.LightmapsBakeEnd += OnLightmapsBakeEnd;
             _logHandler = Debug.Logger == null ? null : Debug.Logger.LogHandler;
             if (_logHandler != null)
             {
@@ -7590,6 +7950,9 @@ namespace Game.MCP
             }
             GameCooker.Event -= OnGameCookerEvent;
             GameCooker.Progress -= OnGameCookerProgress;
+            FEditor.LightmapsBakeStart -= OnLightmapsBakeStart;
+            FEditor.LightmapsBakeProgress -= OnLightmapsBakeProgress;
+            FEditor.LightmapsBakeEnd -= OnLightmapsBakeEnd;
             if (_logHandler != null)
             {
                 _logHandler.SendLog -= OnSendLog;

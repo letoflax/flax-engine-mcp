@@ -468,12 +468,12 @@ agent validation, and path query methods; lighting status/validation; plus
 `terrain.get_summary` and `foliage.get_summary`. All query only public Flax
 1.12 runtime state and cap caller-controlled result counts.
 
-`navigation.build`, `lighting.bake`, and `environment_probe.bake` are present
-as stable `UNSUPPORTED_FLAX_VERSION` capabilities. Although parts of their
-underlying APIs are public, no reviewed bridge-owned completion, cancellation,
-undo, and result lifecycle is available. Terrain and foliage are deliberately
-metadata-only; painting, height/splat edits, foliage instance changes, and
-cluster rebuilds remain unavailable.
+`navigation.build`, `lighting.bake`, and `environment_probe.bake` shipped as
+stable `UNSUPPORTED_FLAX_VERSION` capabilities (bridge v31 replaced all three
+stubs with real implementations — see "Bridge v31" below). Terrain and foliage
+shipped metadata-only; bridge v31 adds real foliage instance writes while
+`terrain.paint` remains a validated stub with no verified managed write path
+(see "Bridge v31").
 ## Bridge v27: engine-side performance snapshot
 
 Bridge v27 keeps protocol v1 and the full v26 surface. It adds
@@ -1127,3 +1127,101 @@ replay) with dry-run previews that never consume a key, honor
 play mode, script compilation, and reload via the v12
 `EnsurePrefabEditorReady` gate (headless reads/writes stay allowed, as
 with the rest of the prefab surface).
+
+## Bridge v31: foliage/navmesh/bake/probe writes (terrain stays a stub)
+Bridge v31 keeps protocol v1 and the full v30 surface. It replaces the
+stable-unsupported `navigation.build`, `lighting.bake`, and
+`environment_probe.bake` stubs with real implementations (tool names
+unchanged) and adds three tools — `terrain_paint`,
+`foliage_add_instances`, `foliage_remove_instances` — for a 150-tool
+contract. `status` flips `NavigationBuildSupported`,
+`LightingBakeSupported`, `FoliageInstanceWriteSupported`, and
+`EnvironmentProbeBakeSupported` to `true` and adds explicit
+`TerrainPaintSupported:false`. Node requires bridge v31 for all six
+tools and reports `navigationBuild`/`lightingBake`/
+`environmentProbeBake`/`foliageInstanceWrite` (plus hard-`false`
+`terrainPaint`) in `get_server_capabilities`. The three renamed stubs
+stay in the runtime permission family; the three new tools are in the
+scene family (scene-edit profile).
+
+SDK truth (Flax 1.12, spot-verified against `Source/` headers plus the
+shipped `FlaxEngine.CSharp.xml`; every new call site is additionally
+compile-probed by `test/flax-api-smoke/BridgeCompileSmoke.csproj`):
+
+- Foliage: `Foliage.AddInstance(ref FoliageInstance)` is `API_FUNCTION`
+  (`Source/Engine/Foliage/Foliage.h:98`), with `RemoveInstance` (:104),
+  `RebuildClusters` (:131), and `UpdateCullDistance` (:136).
+  `FoliageInstance.Transform` is local-space relative to the foliage
+  actor; bounds/random are recalculated by the engine. Undo uses the
+  public `FlaxEditor.Tools.Foliage.Undo.EditFoliageAction(Foliage)` plus
+  `RecordEnd()` — direct construction, no reflection. Rotations are
+  pitch/yaw/roll degrees via `Quaternion.Euler`.
+- Navmesh: `Navigation.BuildNavMesh` overloads (`Navigation.h:104,113`)
+  are public async ThreadPool work; `IsBuildingNavMesh` (:91) and
+  `NavMeshBuildingProgress` (:96) are the poll pair; `Navigation.h`
+  contains zero cancel hits. Requests enqueue until the next
+  game-scripts update. No `SaveNavMesh` member exists anywhere in the
+  XML, so no save is claimed or performed.
+- Lightmaps: `Editor.BakeLightmapsOrCancel` is a parameterless toggle
+  (start when idle, cancel when running); progress arrives as
+  `LightmapsBakeProgress(step, stepProgress, totalProgress)` and
+  completion as `LightmapsBakeEnd(failed)`, where `failed:true`
+  conflates bake failure and cancellation.
+- Probes: `EnvironmentProbe.Bake(float)` (`EnvironmentProbe.h:134`) and
+  `SkyLight.Bake(float)` (`SkyLight.h:92`) run as async graphics tasks;
+  the float is a seconds "startup time" allowance, not a bake duration.
+  Completion is observed via `Actor.HasContentLoaded`; no percent
+  progress and no cancel API exist.
+- Terrain (blocked): `TerrainPatch.ModifyHeightMap/ModifyHolesMask/
+  ModifySplatMap` are sync `API_FUNCTION`
+  (`TerrainPatch.h:287,296,306`) and `TerrainTools` exposes
+  `Modify*`/`Get*Data` wrappers — but every data accessor returns a raw
+  `float*`/`byte*`/`Color32*`, which safe managed bridge code cannot
+  touch (CS0214 without an `unsafe` context, and Flax script compilation
+  is not verified to allow `unsafe`), and
+  `EditTerrainHeightMapAction/EditTerrainHolesMapAction/
+  EditTerrainSplatMapAction` are internal editor types with no public
+  factory (CS0122; only non-public reflection could reach them, beyond
+  this repo's public-factory precedent). `terrain.paint` therefore keeps
+  its name, enforces the full rect contract Node-side, passes the
+  edit-time gate, and reports stable `UNSUPPORTED_FLAX_VERSION`.
+  Unblocking needs a live editor: either verify `unsafe` survives Flax
+  script compilation, or bind a managed path and prove the undo restore.
+
+Honesty notes (also repeated in result warnings):
+
+- Foliage batches are capped at 200 instances per call with no
+  progress/cancel on `RebuildClusters` — one `RebuildClusters` plus
+  `UpdateCullDistance` runs after each batch. Adds validate every
+  transform before touching undo; removes validate against the live
+  count, reject duplicates, and remove highest-first. Each call is one
+  `EditFoliageAction` undo step plus `MarkSceneEdited` (revertible with
+  `edit_undo`); scenes are never saved. Positions are local-space, which
+  callers must account for.
+- Navmesh `navigation.build` starts the build on the main thread, then
+  polls from the background request thread so the editor stays
+  responsive. `Phase:completed` returns progress; `Phase:timeout`
+  surfaces as a Node `TIMEOUT` error with the last progress while the
+  build continues in the background. Whole-scene builds (the default)
+  discard all tiles and warn they may take a while. No revision is
+  advanced and nothing is saved; navmesh output persists via scene save
+  by the user.
+- Lightmap `lighting.bake start` returns `{Phase:baking}` and the caller
+  polls `status` (`{IsBaking, Step, StepProgress, TotalProgress}` plus
+  the last `Failed` outcome). Start-while-baking and cancel-while-idle
+  are no-op reports that never touch the toggle, so a status check can
+  never accidentally start or stop a bake. Bakes refuse headless
+  (`INVALID_STATE`) and play mode, like all v31 writes.
+- Probe `environment_probe.bake` rejects non-probe actors with
+  `VALIDATION_FAILED`, converts `timeout_ms` to the seconds `Bake`
+  expects, and polls `HasContentLoaded`, which cannot distinguish a
+  fresh bake from previously baked content. Timeout surfaces as Node
+  `TIMEOUT`; the bake may still complete in the background.
+- All five write/start ops (including the terrain stub) require
+  edit-time via `RequireEditTime`: headless fails `INVALID_STATE`
+  (GPU/editor-ops dependent; navmesh is CPU work but keeps the gate for
+  consistency) and play mode fails `INVALID_STATE`, mirroring
+  `actor_update`. The status polls (`navigation.get_status`,
+  `lighting.bake status`) are read-only and ungated. Scene writes honor
+  foreign edit leases fail-closed via `CheckSceneWrite`; v31 schemas
+  carry no `IdempotencyKey`, so retries are caller-driven.

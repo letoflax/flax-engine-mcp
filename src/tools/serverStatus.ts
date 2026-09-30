@@ -217,6 +217,10 @@ export async function handleGetServerCapabilities(
     const materialParameterWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
     const materialInstanceCreation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
     const materialAssignment = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
+    const terrainFoliageWrites = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
+    const navigationBuild = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
+    const lightingBake = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
+    const environmentProbeBake = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -312,11 +316,16 @@ export async function handleGetServerCapabilities(
           available: domainQueries,
           physicsQueries: domainQueries,
           navigationQueries: domainQueries,
-          navigationBuild: false,
+          navigationBuild,
           lightingValidation: domainQueries,
-          lightingBake: false,
-          environmentProbeBake: false,
+          lightingBake,
+          environmentProbeBake,
           terrainFoliageRead: domainQueries,
+          // terrain.paint is a validated v31 stub (no verified managed write
+          // path), so paint stays false even on v31 bridges; foliage instance
+          // writes are real.
+          terrainPaint: false,
+          foliageInstanceWrite: terrainFoliageWrites,
         },
       },
       permissions: permissionSummary(ctx.permissionPolicy ?? {

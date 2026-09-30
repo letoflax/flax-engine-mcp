@@ -149,12 +149,13 @@ export type AnimgraphBridgeMethod =
   | 'animgraph.add_transition'
   | 'animgraph.set_state_clip';
 
-/** Bridge v14 bounded physics/navigation/lighting/terrain domain queries. */
+/** Bridge v14 bounded physics/navigation/lighting/terrain domain queries. Bridge v31 adds the real terrain/foliage/navmesh/bake/probe writes (terrain.paint stays a validated stub). */
 export type DomainBridgeMethod =
   | 'physics.validate_colliders' | 'physics.raycast' | 'physics.get_layer_matrix' | 'physics.find_overlaps'
   | 'navigation.build' | 'navigation.get_status' | 'navigation.validate_agents' | 'navigation.query_path'
   | 'lighting.bake' | 'lighting.get_status' | 'lighting.validate' | 'environment_probe.bake'
-  | 'terrain.get_summary' | 'foliage.get_summary';
+  | 'terrain.get_summary' | 'foliage.get_summary'
+  | 'terrain.paint' | 'foliage.add_instances' | 'foliage.remove_instances';
 
 export type BridgeMethod =
   | 'status'

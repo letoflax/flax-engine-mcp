@@ -244,12 +244,22 @@ both. The name excludes the extension, which remains the source extension.
 `physics_validate_colliders`, `physics_raycast`, `physics_get_layer_matrix`,
 and `physics_find_overlaps` require bridge v14 and use bounded public Physics
 queries. `navigation_get_status`, `navigation_validate_agents`, and
-`navigation_query_path` are also read-only. `navigation_build`, `lighting_bake`,
-and `environment_probe_bake` intentionally return a stable unsupported
-capability until their async lifecycle and cancellation semantics are reviewed.
-`terrain_get_summary` and `foliage_get_summary` are the first bounded release
-surface: loaded-actor metadata only; terrain edits, foliage painting/instances,
-and cluster rebuilding are not exposed.
+`navigation_query_path` are also read-only. `navigation_build` (bridge v31)
+starts a navmesh build for one scene with optional bounds and polls to
+completion or `timeout_ms` (a timeout reports `TIMEOUT` while the build
+continues — Flax exposes no navmesh cancel API). `lighting_bake` (bridge v31)
+starts, cancels, or polls lightmap baking via the `BakeLightmapsOrCancel`
+toggle (`End(failed:true)` conflates failure and cancellation).
+`environment_probe_bake` (bridge v31) bakes one `EnvironmentProbe`/`SkyLight`
+and polls `HasContentLoaded` (no progress or cancel API).
+`terrain_get_summary` and `foliage_get_summary` are bounded read-only actor
+metadata; `foliage_add_instances`/`foliage_remove_instances` (bridge v31)
+write capped 1-200 batches with one editor undo step, one
+`RebuildClusters` plus `UpdateCullDistance`, and mark the scene edited without
+saving. `terrain_paint` (bridge v31) is a validated stub: Flax 1.12 terrain
+data accessors return raw pointers and the `EditTerrain*` undo actions are
+internal with no public factory, so it reports `UNSUPPORTED_FLAX_VERSION`
+after full contract validation.
 
 ### Project Health
 | Tool | What it does |
@@ -283,6 +293,8 @@ Teams can drop project-local workflow guides in `<project>/mcp-prompts/*.md`. Fi
 
 - **Safe prefab workflows** -- `prefab_create_from_actor`, `prefab_instantiate`, and `prefab_get_instances` require bridge v12. They use only the public Flax 1.12 `PrefabManager.CreatePrefab`, `PrefabManager.SpawnPrefab`, `Actor.IsPrefabRoot`, and `SceneObject.PrefabID` APIs. Creation accepts only a new project-relative `Content/.../*.prefab` path and never overwrites; it defaults `auto_link:false`. Instantiation requires a loaded `parent_id`, so the bridge can check the target scene revision/lease before it writes; top-level placement is deliberately deferred because Flax's unparented spawn selects its first loaded scene. Instance results are limited to currently loaded scenes, capped at 10,000 scanned actors and 200 entries/page; cursors expire after ten minutes. The bridge does not inspect or edit prefab files, use reflection, or claim unloaded-scene coverage.
 - **Prefab override workflows** -- `prefab_get_overrides`, `prefab_revert_overrides`, `prefab_apply_overrides`, and `prefab_break_link` require bridge v30. The diff is bridge-synthesized (live subtree vs `Prefab.GetDefaultInstance()` defaults, 200 actors/entries cap, `Name`/`IsActive`/local transform/`Layer` only — not the engine diff window) because Flax 1.12 exposes no `ApplySingle`, `GetPrefabObjectIds`, or per-property diff/revert enumerator. Revert copies defaults into 1-32 listed actors (no cascade, no per-property revert) with editor undo; apply is whole-instance `PrefabManager.ApplyAll` with `confirm:true` plus a manual before-snapshot, and its prefab-asset save cannot be undone by `edit_undo`; break uses the reviewed `BreakPrefabLinkAction` undo path with `confirm:true`. No prefab open-stage tool is exposed (`PrefabsModule.OpenPrefab` is window-backed with no verified headless-safe stage API).
+
+- **Foliage, navmesh, bake, and probe workflows** -- `foliage_add_instances`, `foliage_remove_instances`, `navigation_build`, `lighting_bake`, and `environment_probe_bake` require bridge v31 (all edit-time only: headless and play mode fail `INVALID_STATE`). Foliage batches are capped at 200 instances per call with one editor undo step, one `RebuildClusters` plus `UpdateCullDistance` (no progress/cancel API), local-space positions, and scene-edited-without-save semantics. Navmesh builds poll `IsBuildingNavMesh`/`NavMeshBuildingProgress` to completion or `timeout_ms` (`TIMEOUT` while the build continues; no cancel API; output persists via scene save by the user). Lightmap baking toggles via `BakeLightmapsOrCancel` with start-while-baking/cancel-while-idle no-op safety and `End(failed:true)` conflating failure with cancellation. Probe baking polls `HasContentLoaded`, which cannot distinguish a fresh bake from previously baked content. `terrain_paint` requires bridge v31 but stays a validated `UNSUPPORTED_FLAX_VERSION` stub: Flax 1.12 terrain data accessors return raw pointers (unsafe context not verified for Flax script compilation) and the `EditTerrain*` undo actions are internal editor types with no public factory.
 
 - **Bounded build/cook workflows** -- `build_list_targets`, `build_validate`, `build_cook`, `build_get_status`, `build_get_result`, and `build_cancel` require bridge v13. They invoke only public Flax 1.12 `GameCooker.Build`, `GameCooker.Cancel`, event, and progress APIs. Output must be a non-empty project-relative directory below `Builds/`; non-empty destinations, arbitrary command lines, presets, package settings, and paths outside the project are rejected. Validation is deliberately preflight-only because Flax does not expose a reviewed managed API for toolchain availability. Build cancellation is asynchronous: acknowledgement means the request reached GameCooker, while a terminal cancellation requires later polling.
 
