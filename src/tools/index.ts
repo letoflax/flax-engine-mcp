@@ -134,6 +134,7 @@ import {
   handleServerGetMetrics,
   handleServerGetRecentErrors,
 } from './serverObservability.js';
+import { SearchToolsSchema, handleSearchTools } from './toolSearch.js';
 import {
   GetEditorBridgeInstallationSchema,
   InstallEditorBridgeSchema,
@@ -273,6 +274,7 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   server_get_health: ServerGetHealthSchema,
   server_get_metrics: ServerGetMetricsSchema,
   server_get_recent_errors: ServerGetRecentErrorsSchema,
+  search_tools: SearchToolsSchema,
   get_editor_bridge_installation: GetEditorBridgeInstallationSchema,
   install_editor_bridge: InstallEditorBridgeSchema,
   scene_list_loaded: SceneListLoadedSchema,
@@ -550,6 +552,12 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Returns up to 100 recent redacted process-local tool and IPC errors.',
       inputSchema: zodToJsonSchema(ServerGetRecentErrorsSchema),
       handler: (a, c) => handleServerGetRecentErrors(a as Parameters<typeof handleServerGetRecentErrors>[0], c),
+    },
+    {
+      name: 'search_tools',
+      description: 'Keyword search over the permission-filtered tool registry by name and description. Returns matching tool names, descriptions, and read-only hints.',
+      inputSchema: zodToJsonSchema(SearchToolsSchema),
+      handler: (a, c) => handleSearchTools(a as Parameters<typeof handleSearchTools>[0], c),
     },
     {
       name: 'get_editor_bridge_installation',

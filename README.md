@@ -76,6 +76,7 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `server_get_health` | Process-local health and bridge availability without secrets or cloud telemetry |
 | `server_get_metrics` | Bounded in-process tool timing, error, and IPC-failure metrics |
 | `server_get_recent_errors` | Up to 100 recent redacted in-process tool and IPC errors |
+| `search_tools` | Keyword search over the permission-filtered tool registry by name and description |
 | `get_editor_bridge_installation` | Compare bundled and installed Editor Bridge versions and hashes |
 | `install_editor_bridge` | Preview or safely install the bridge into the editor target's detected game module; accepts `module` when targets are ambiguous |
 | `get_project_info` | Project config from `.flaxproj` — name, version, default scene, directory layout |
