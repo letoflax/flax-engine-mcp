@@ -1225,3 +1225,68 @@ Honesty notes (also repeated in result warnings):
   `lighting.bake status`) are read-only and ungated. Scene writes honor
   foreign edit leases fail-closed via `CheckSceneWrite`; v31 schemas
   carry no `IdempotencyKey`, so retries are caller-driven.
+
+## Bridge v32: asset import-settings get/set (152-tool contract)
+Bridge v32 keeps protocol v1 and the full v31 surface and adds two tools
+— `asset_get_import_settings` (read family, no import root needed) and
+`asset_set_import_settings` (asset family, same full-profile plus
+`--asset-import-root` gating as `asset_reimport`) — for a 152-tool
+contract. `status` flips `AssetImportSettingsSupported` to `true` and
+Node reports version-gated `assetImportSettings` / `assetImport.settings`
+in `get_server_capabilities` (both require bridge v32).
+
+SDK truth (Flax 1.12, spot-verified against the shipped
+`FlaxEngine.CSharp.xml` plus a reflection dump of the real editor DLL;
+every new call site is additionally compile-probed by
+`test/flax-api-smoke/BridgeCompileSmoke.csproj`):
+
+- Typed overloads exist: `FlaxEditor.Editor.Import(string, string,
+  TextureTool.Options | ModelTool.Options | AudioTool.Options)`
+  (`FlaxEngine.CSharp.xml:78954,78971,78988`);
+  `ContentImportingModule.Reimport(BinaryAssetItem, Object settings,
+  bool skipSettingsDialog)` (:97732) and `Import(..., Object)`
+  (:97748,:97757); `Editor.CanImport` gate (:79433).
+- Read path: `Editor.TryRestoreImportOptions(ref TextureTool.Options |
+  ModelTool.Options | AudioTool.Options, assetPath)`
+  (:78963,:78980,:78997) with `Options.Default` fallback; source path via
+  `BinaryAssetItem.GetImportPath` (:75226) / `BinaryAsset.ImportPath`.
+- `Options` structs are public value types with scalar fields (verified
+  by reflection against `FlaxEngine.CSharp.dll`): texture `sRGB`,
+  `Compress`, `MaxSize`, `Scale`, `GenerateMipMaps`, `NeverStream` (plus
+  read-only `Type`: `FlaxEngine.TextureFormatType` =
+  `Unknown,ColorRGB,ColorRGBA,NormalMap,GrayScale,HdrRGBA,HdrRGB`); model
+  `Scale`, smoothing-angle floats, `CalculateNormals/FlipNormals/
+  CalculateTangents/ReverseWindingOrder/OptimizeMeshes/MergeMeshes/
+  ImportLODs/ImportVertexColors`, `BaseLOD`/`LODCount` ints; audio
+  `Format` (`FlaxEngine.AudioFormat` = `Raw,Vorbis`), `Quality`,
+  `DisableStreaming`, `Is3D`, `BitDepth` (`_8,_16,_24,_32`).
+- `FlaxEditor.Content.Import.{Texture,Model,Audio}ImportSettings` are
+  classes with a public `Settings` field; the typed settings object is
+  passed straight to `Reimport`. `AudioClipItem` is internal to the
+  editor assembly (CS0122), so audio assets are classified by registry
+  type name `FlaxEngine.AudioClip` while texture/model use the public
+  `TextureAssetItem` / `ModelItem` / `SkinnedModeItem` subclasses.
+
+Wire shape: settings travel as explicit key/scalar entries with exact C#
+option field names (bool/integer/number/string exactly-one-of), never
+anonymous types. `asset.get_import_settings` returns `{asset, type:
+texture|model|audio, restored, settings}` with a bounded read-only
+projection; unknown asset types fail `VALIDATION_FAILED`.
+`asset.set_import_settings` clones the current options, mutates the
+allowlist only (strict ranges: texture `MaxSize` 1-16384, `Scale`
+(0,8]; model `Scale` 0.001-1000, smoothing angles 0-180, `BaseLOD`
+0-16, `LODCount` 1-16; audio `Quality` 0-1; enums exact-match:
+`Format` is `Raw|Vorbis`, `BitDepth` is `_8|_16|_24|_32`), rejects
+unknown/duplicate keys with `VALIDATION_FAILED`, and applies through
+`ContentImporting.Reimport(item, settings, skipSettingsDialog:true)` on
+the shared `"reimport"` operation records, so `asset_reimport_status`
+polls settings writes like ordinary reimports. `dry_run` returns
+`{would_change, before, after}` without touching the importer; a
+no-change write finishes `succeeded` without reimporting.
+
+Explicitly missing (not claimed): dry-run validate-only import (no
+`PreviewImport`/`ValidateOptions` in the managed API); standalone
+metadata write without reimport; direct conversion outside (re)import.
+The bridge never returns importer source paths; the set path revalidates
+the source against the configured import roots and the `Editor.CanImport`
+gate before mutating.

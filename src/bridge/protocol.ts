@@ -82,6 +82,8 @@ export type AssetBridgeMethod =
   | 'asset.import_status'
   | 'asset.reimport_start'
   | 'asset.reimport_status'
+  | 'asset.get_import_settings'
+  | 'asset.set_import_settings'
   | 'asset.move'
   | 'asset.rename'
   | 'asset.duplicate'

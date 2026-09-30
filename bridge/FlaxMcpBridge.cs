@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 31
+// MCP-BRIDGE-VERSION: 32
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -29,12 +29,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 31; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 32; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 31; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = true; public bool PrefabApplyOverridesSupported = true; public bool PrefabRevertOverridesSupported = true; public bool PrefabBreakLinkSupported = true; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = true; public bool LightingBakeSupported = true; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; public bool TerrainPaintSupported = false; public bool FoliageInstanceWriteSupported = true; public bool EnvironmentProbeBakeSupported = true; }
+    public class McpStatus { public int BridgeVersion = 32; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = true; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = true; public bool PrefabApplyOverridesSupported = true; public bool PrefabRevertOverridesSupported = true; public bool PrefabBreakLinkSupported = true; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = true; public bool LightingBakeSupported = true; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; public bool TerrainPaintSupported = false; public bool FoliageInstanceWriteSupported = true; public bool EnvironmentProbeBakeSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -146,13 +146,26 @@ namespace Game.MCP
     public class McpAssetDependenciesResult { public McpAssetDto Root; public McpAssetDependency[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
     public class McpAssetReference { public McpAssetDto Asset; public string Kind; }
     public class McpAssetReferencesResult { public McpAssetDto Root; public McpAssetReference[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
-    // Import settings deliberately remain absent. Flax exposes typed options, but
-    // accepting arbitrary serialized settings would require a larger reviewed
-    // allowlist; v9 therefore uses the verified default importer settings only.
+    // Import settings are exposed only through the bounded v32
+    // asset.get_import_settings / asset.set_import_settings surface below:
+    // texture/model/audio allowlists over the typed Options structs, restored
+    // via Editor.TryRestoreImportOptions and applied via
+    // ContentImporting.Reimport(item, settings, skipSettingsDialog:true).
     public class McpAssetImportStart { public string OperationId; public string IdempotencyKey; public string SourcePath; public long SourceSizeBytes; public long SourceLastWriteUnixMs; public string DestinationPath; public string CollisionPolicy = "error"; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; public string ModelImportType; }
     public class McpAssetReimportStart { public string OperationId; public string IdempotencyKey; public string AssetId; public string Path; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; public string ModelImportType; }
     public class McpAssetOperationStatusRequest { public string OperationId; }
     public class McpAssetOperation { public string OperationId; public string Kind; public string Phase; public float Progress; public long StartedUnixMs; public long FinishedUnixMs; public string ResultPath; public string ResultAssetId; public bool Renamed; public bool DryRun; public string ErrorCode; public string Error; }
+    // Bridge v32 asset import-settings get/set. Settings travel as explicit
+    // key/scalar entries with exact C# option field names (never anonymous
+    // types: FlaxEngine.Json drops anonymous-type properties to "{}", so
+    // every nested shape is an explicit named DTO). Only texture, model, and
+    // audio binary assets are supported.
+    public class McpImportSettingsValue { public bool? Boolean; public long? Integer; public double? Number; public string Text; }
+    public class McpImportSettingsEntry { public string Key; public McpImportSettingsValue Value; }
+    public class McpAssetImportSettingsGet { public string AssetId; public string Path; }
+    public class McpAssetImportSettingsResult { public McpAssetMetadata Asset; public string Type; public bool Restored; public McpImportSettingsEntry[] Settings; }
+    public class McpAssetImportSettingsSet { public string OperationId; public string IdempotencyKey; public string AssetId; public string Path; public McpImportSettingsEntry[] Settings; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; }
+    public class McpAssetImportSettingsSetResult { public McpAssetOperation Operation; public bool WouldChange; public McpAssetImportSettingsResult Before; public McpAssetImportSettingsResult After; }
     // v10 asset organization stays intentionally narrow: each request selects a
     // registry asset, provides a Content-relative existing folder and/or a
     // filename-without-extension, and invokes one public Flax Content API.
@@ -280,7 +293,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 31;
+        private const int BridgeVersion = 32;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -419,7 +432,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                    Debug.Log("[Flax MCP] Bridge v31 listening at " + Root);
+                    Debug.Log("[Flax MCP] Bridge v32 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -623,6 +636,8 @@ namespace Game.MCP
                 case "asset.import_status": result = OnMain(() => GetAssetImportOperation(JsonSerializer.Deserialize<McpAssetOperationStatusRequest>(p), "import"), request.deadlineUnixMs); break;
                 case "asset.reimport_start": { var q = JsonSerializer.Deserialize<McpAssetReimportStart>(p); result = OnMain(() => ExecuteIdempotent("asset.reimport_start", q == null ? null : q.IdempotencyKey, AssetReimportFingerprintInput(q), () => StartAssetReimport(q)), request.deadlineUnixMs); break; }
                 case "asset.reimport_status": result = OnMain(() => GetAssetImportOperation(JsonSerializer.Deserialize<McpAssetOperationStatusRequest>(p), "reimport"), request.deadlineUnixMs); break;
+                case "asset.get_import_settings": result = OnMain(() => GetAssetImportSettings(JsonSerializer.Deserialize<McpAssetImportSettingsGet>(p)), request.deadlineUnixMs); break;
+                case "asset.set_import_settings": { var q = JsonSerializer.Deserialize<McpAssetImportSettingsSet>(p); result = OnMain(() => ExecuteIdempotent("asset.set_import_settings", q == null ? null : q.IdempotencyKey, AssetImportSettingsFingerprintInput(q), () => SetAssetImportSettings(q)), request.deadlineUnixMs); break; }
                 case "asset.move": { var q = JsonSerializer.Deserialize<McpAssetOrganizeRequest>(p); result = OnMain(() => ExecuteIdempotent("asset.move", q == null ? null : q.IdempotencyKey, q, () => MoveAsset(q)), request.deadlineUnixMs); break; }
                 case "asset.rename": { var q = JsonSerializer.Deserialize<McpAssetOrganizeRequest>(p); result = OnMain(() => ExecuteIdempotent("asset.rename", q == null ? null : q.IdempotencyKey, q, () => RenameAsset(q)), request.deadlineUnixMs); break; }
                 case "asset.duplicate": { var q = JsonSerializer.Deserialize<McpAssetOrganizeRequest>(p); result = OnMain(() => ExecuteIdempotent("asset.duplicate", q == null ? null : q.IdempotencyKey, q, () => DuplicateAsset(q)), request.deadlineUnixMs); break; }
@@ -1237,6 +1252,451 @@ namespace Game.MCP
                 case "prefab": return ModelTool.ModelType.Prefab;
                 default:
                     throw new McpProtocolException("VALIDATION_FAILED", "Unsupported ModelImportType. Use Model, SkinnedModel, Animation, or Prefab.");
+            }
+        }
+
+        // Bridge v32 asset import-settings get/set. Reads restore the typed
+        // Options via Editor.TryRestoreImportOptions and fall back to
+        // Options.Default (Restored:false); writes clone the current options,
+        // mutate the reviewed allowlist only, and apply through
+        // ContentImporting.Reimport(item, settings, skipSettingsDialog:true)
+        // on the shared "reimport" operation records, so
+        // asset.reimport_status polls settings writes. There is no dry-run
+        // validate-only import, no metadata write without reimport, and no
+        // direct conversion outside (re)import in the Flax 1.12 managed API.
+        private static object AssetImportSettingsFingerprintInput(McpAssetImportSettingsSet request)
+        {
+            if (request == null) return new { Missing = true };
+            return new { request.AssetId, request.Path, request.Settings, request.DryRun, request.AllowedImportRoots, request.MaxSourceBytes };
+        }
+
+        // The editor assembly's audio item subclass is internal (CS0122 if
+        // named), so audio is classified by registry type name while
+        // texture/model use the public BinaryAssetItem subclasses.
+        private static string ClassifyImportSettingsAsset(BinaryAssetItem item, McpAssetRecord record)
+        {
+            if (item is TextureAssetItem) return "texture";
+            if (item is ModelItem || item is SkinnedModeItem) return "model";
+            if (record != null && string.Equals(record.Info.TypeName, "FlaxEngine.AudioClip", StringComparison.Ordinal)) return "audio";
+            throw new McpProtocolException("VALIDATION_FAILED", "Import settings are only supported for texture, model, and audio assets.");
+        }
+
+        private static bool TryRestoreTextureSettings(BinaryAssetItem item, out TextureTool.Options options)
+        {
+            var wrapper = new TextureImportSettings();
+            bool restored;
+            try { restored = FEditor.TryRestoreImportOptions(ref wrapper.Settings, item.Path); }
+            catch { restored = false; }
+            options = restored ? wrapper.Settings : TextureTool.Options.Default;
+            return restored;
+        }
+
+        private static bool TryRestoreModelSettings(BinaryAssetItem item, out ModelTool.Options options)
+        {
+            var wrapper = new ModelImportSettings();
+            bool restored;
+            try { restored = FEditor.TryRestoreImportOptions(ref wrapper.Settings, item.Path); }
+            catch { restored = false; }
+            options = restored ? wrapper.Settings : ModelTool.Options.Default;
+            return restored;
+        }
+
+        private static bool TryRestoreAudioSettings(BinaryAssetItem item, out AudioTool.Options options)
+        {
+            var wrapper = new AudioImportSettings();
+            bool restored;
+            try { restored = FEditor.TryRestoreImportOptions(ref wrapper.Settings, item.Path); }
+            catch { restored = false; }
+            options = restored ? wrapper.Settings : AudioTool.Options.Default;
+            return restored;
+        }
+
+        private static McpImportSettingsEntry BoolEntry(string key, bool value)
+        {
+            return new McpImportSettingsEntry { Key = key, Value = new McpImportSettingsValue { Boolean = value } };
+        }
+
+        private static McpImportSettingsEntry IntEntry(string key, long value)
+        {
+            return new McpImportSettingsEntry { Key = key, Value = new McpImportSettingsValue { Integer = value } };
+        }
+
+        private static McpImportSettingsEntry NumEntry(string key, double value)
+        {
+            return new McpImportSettingsEntry { Key = key, Value = new McpImportSettingsValue { Number = value } };
+        }
+
+        private static McpImportSettingsEntry TextEntry(string key, string value)
+        {
+            return new McpImportSettingsEntry { Key = key, Value = new McpImportSettingsValue { Text = value } };
+        }
+
+        private static McpImportSettingsEntry[] ProjectTextureSettings(TextureTool.Options options)
+        {
+            return new[]
+            {
+                TextEntry("Type", options.Type.ToString()),
+                BoolEntry("sRGB", options.sRGB),
+                BoolEntry("Compress", options.Compress),
+                IntEntry("MaxSize", options.MaxSize),
+                NumEntry("Scale", options.Scale),
+                BoolEntry("GenerateMipMaps", options.GenerateMipMaps),
+                BoolEntry("NeverStream", options.NeverStream),
+            };
+        }
+
+        private static McpImportSettingsEntry[] ProjectModelSettings(ModelTool.Options options)
+        {
+            return new[]
+            {
+                TextEntry("Type", options.Type.ToString()),
+                NumEntry("Scale", options.Scale),
+                BoolEntry("CalculateNormals", options.CalculateNormals),
+                NumEntry("SmoothingNormalsAngle", options.SmoothingNormalsAngle),
+                BoolEntry("FlipNormals", options.FlipNormals),
+                BoolEntry("CalculateTangents", options.CalculateTangents),
+                NumEntry("SmoothingTangentsAngle", options.SmoothingTangentsAngle),
+                BoolEntry("ReverseWindingOrder", options.ReverseWindingOrder),
+                BoolEntry("OptimizeMeshes", options.OptimizeMeshes),
+                BoolEntry("MergeMeshes", options.MergeMeshes),
+                BoolEntry("ImportLODs", options.ImportLODs),
+                BoolEntry("ImportVertexColors", options.ImportVertexColors),
+                IntEntry("BaseLOD", options.BaseLOD),
+                IntEntry("LODCount", options.LODCount),
+            };
+        }
+
+        private static McpImportSettingsEntry[] ProjectAudioSettings(AudioTool.Options options)
+        {
+            return new[]
+            {
+                TextEntry("Format", options.Format.ToString()),
+                NumEntry("Quality", options.Quality),
+                BoolEntry("DisableStreaming", options.DisableStreaming),
+                BoolEntry("Is3D", options.Is3D),
+                TextEntry("BitDepth", options.BitDepth.ToString()),
+            };
+        }
+
+        private static McpAssetImportSettingsResult ReadImportSettings(McpAssetRecord record, BinaryAssetItem item, string kind)
+        {
+            if (string.Equals(kind, "texture", StringComparison.Ordinal))
+            {
+                TextureTool.Options options;
+                var restored = TryRestoreTextureSettings(item, out options);
+                return new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = "texture", Restored = restored, Settings = ProjectTextureSettings(options) };
+            }
+            if (string.Equals(kind, "model", StringComparison.Ordinal))
+            {
+                ModelTool.Options options;
+                var restored = TryRestoreModelSettings(item, out options);
+                return new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = "model", Restored = restored, Settings = ProjectModelSettings(options) };
+            }
+            if (string.Equals(kind, "audio", StringComparison.Ordinal))
+            {
+                AudioTool.Options options;
+                var restored = TryRestoreAudioSettings(item, out options);
+                return new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = "audio", Restored = restored, Settings = ProjectAudioSettings(options) };
+            }
+            throw new McpProtocolException("VALIDATION_FAILED", "Import settings are only supported for texture, model, and audio assets.");
+        }
+
+        private McpAssetImportSettingsResult GetAssetImportSettings(McpAssetImportSettingsGet request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset import-settings parameters are required.");
+            var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, BuildAssetRegistry());
+            var item = FEditor.Instance.ContentDatabase.FindAsset(record.Id) as BinaryAssetItem;
+            if (item == null) throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not a binary asset with restorable import options.");
+            return ReadImportSettings(record, item, ClassifyImportSettingsAsset(item, record));
+        }
+
+        private static bool RequireSettingBool(McpImportSettingsEntry entry)
+        {
+            if (entry.Value == null || !entry.Value.Boolean.HasValue || entry.Value.Integer.HasValue || entry.Value.Number.HasValue || entry.Value.Text != null)
+                throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be a boolean.");
+            return entry.Value.Boolean.Value;
+        }
+
+        private static long RequireSettingInt(McpImportSettingsEntry entry)
+        {
+            if (entry.Value == null || !entry.Value.Integer.HasValue || entry.Value.Boolean.HasValue || entry.Value.Number.HasValue || entry.Value.Text != null)
+                throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be an integer.");
+            return entry.Value.Integer.Value;
+        }
+
+        private static double RequireSettingFloat(McpImportSettingsEntry entry)
+        {
+            if (entry.Value == null || entry.Value.Boolean.HasValue || entry.Value.Text != null)
+                throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be a number.");
+            if (entry.Value.Number.HasValue) return entry.Value.Number.Value;
+            if (entry.Value.Integer.HasValue) return entry.Value.Integer.Value;
+            throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be a number.");
+        }
+
+        private static string RequireSettingEnum(McpImportSettingsEntry entry)
+        {
+            if (entry.Value == null || entry.Value.Boolean.HasValue || entry.Value.Integer.HasValue || entry.Value.Number.HasValue || entry.Value.Text == null)
+                throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be a string.");
+            return entry.Value.Text;
+        }
+
+        private static AudioFormat ParseAudioFormat(string value)
+        {
+            if (string.Equals(value, "Raw", StringComparison.Ordinal)) return AudioFormat.Raw;
+            if (string.Equals(value, "Vorbis", StringComparison.Ordinal)) return AudioFormat.Vorbis;
+            throw new McpProtocolException("VALIDATION_FAILED", "Format must be Raw or Vorbis.");
+        }
+
+        private static AudioTool.BitDepth ParseAudioBitDepth(string value)
+        {
+            if (string.Equals(value, "_8", StringComparison.Ordinal)) return AudioTool.BitDepth._8;
+            if (string.Equals(value, "_16", StringComparison.Ordinal)) return AudioTool.BitDepth._16;
+            if (string.Equals(value, "_24", StringComparison.Ordinal)) return AudioTool.BitDepth._24;
+            if (string.Equals(value, "_32", StringComparison.Ordinal)) return AudioTool.BitDepth._32;
+            throw new McpProtocolException("VALIDATION_FAILED", "BitDepth must be _8, _16, _24, or _32.");
+        }
+
+        private static TextureTool.Options MutateTextureSettings(TextureTool.Options current, McpImportSettingsEntry[] entries)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in entries)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.Key) || !seen.Add(entry.Key))
+                    throw new McpProtocolException("VALIDATION_FAILED", "Duplicate or missing import setting key.");
+                switch (entry.Key)
+                {
+                    case "sRGB": current.sRGB = RequireSettingBool(entry); break;
+                    case "Compress": current.Compress = RequireSettingBool(entry); break;
+                    case "MaxSize":
+                        {
+                            var maxSize = RequireSettingInt(entry);
+                            if (maxSize < 1 || maxSize > 16384) throw new McpProtocolException("VALIDATION_FAILED", "MaxSize must be between 1 and 16384.");
+                            current.MaxSize = (int)maxSize;
+                            break;
+                        }
+                    case "Scale":
+                        {
+                            var scale = RequireSettingFloat(entry);
+                            if (!(scale > 0.0) || scale > 8.0) throw new McpProtocolException("VALIDATION_FAILED", "Scale must be greater than 0 and at most 8.");
+                            current.Scale = (float)scale;
+                            break;
+                        }
+                    case "GenerateMipMaps": current.GenerateMipMaps = RequireSettingBool(entry); break;
+                    case "NeverStream": current.NeverStream = RequireSettingBool(entry); break;
+                    default:
+                        throw new McpProtocolException("VALIDATION_FAILED", "Unknown texture import setting '" + entry.Key + "'. Allowed: sRGB, Compress, MaxSize, Scale, GenerateMipMaps, NeverStream.");
+                }
+            }
+            return current;
+        }
+
+        private static ModelTool.Options MutateModelSettings(ModelTool.Options current, McpImportSettingsEntry[] entries)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in entries)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.Key) || !seen.Add(entry.Key))
+                    throw new McpProtocolException("VALIDATION_FAILED", "Duplicate or missing import setting key.");
+                switch (entry.Key)
+                {
+                    case "Scale":
+                        {
+                            var scale = RequireSettingFloat(entry);
+                            if (scale < 0.001 || scale > 1000.0) throw new McpProtocolException("VALIDATION_FAILED", "Scale must be between 0.001 and 1000.");
+                            current.Scale = (float)scale;
+                            break;
+                        }
+                    case "CalculateNormals": current.CalculateNormals = RequireSettingBool(entry); break;
+                    case "SmoothingNormalsAngle":
+                        {
+                            var angle = RequireSettingFloat(entry);
+                            if (angle < 0.0 || angle > 180.0) throw new McpProtocolException("VALIDATION_FAILED", "SmoothingNormalsAngle must be between 0 and 180.");
+                            current.SmoothingNormalsAngle = (float)angle;
+                            break;
+                        }
+                    case "FlipNormals": current.FlipNormals = RequireSettingBool(entry); break;
+                    case "CalculateTangents": current.CalculateTangents = RequireSettingBool(entry); break;
+                    case "SmoothingTangentsAngle":
+                        {
+                            var angle = RequireSettingFloat(entry);
+                            if (angle < 0.0 || angle > 180.0) throw new McpProtocolException("VALIDATION_FAILED", "SmoothingTangentsAngle must be between 0 and 180.");
+                            current.SmoothingTangentsAngle = (float)angle;
+                            break;
+                        }
+                    case "ReverseWindingOrder": current.ReverseWindingOrder = RequireSettingBool(entry); break;
+                    case "OptimizeMeshes": current.OptimizeMeshes = RequireSettingBool(entry); break;
+                    case "MergeMeshes": current.MergeMeshes = RequireSettingBool(entry); break;
+                    case "ImportLODs": current.ImportLODs = RequireSettingBool(entry); break;
+                    case "ImportVertexColors": current.ImportVertexColors = RequireSettingBool(entry); break;
+                    case "BaseLOD":
+                        {
+                            var baseLod = RequireSettingInt(entry);
+                            if (baseLod < 0 || baseLod > 16) throw new McpProtocolException("VALIDATION_FAILED", "BaseLOD must be between 0 and 16.");
+                            current.BaseLOD = (int)baseLod;
+                            break;
+                        }
+                    case "LODCount":
+                        {
+                            var lodCount = RequireSettingInt(entry);
+                            if (lodCount < 1 || lodCount > 16) throw new McpProtocolException("VALIDATION_FAILED", "LODCount must be between 1 and 16.");
+                            current.LODCount = (int)lodCount;
+                            break;
+                        }
+                    default:
+                        throw new McpProtocolException("VALIDATION_FAILED", "Unknown model import setting '" + entry.Key + "'. Allowed: Scale, CalculateNormals, SmoothingNormalsAngle, FlipNormals, CalculateTangents, SmoothingTangentsAngle, ReverseWindingOrder, OptimizeMeshes, MergeMeshes, ImportLODs, ImportVertexColors, BaseLOD, LODCount.");
+                }
+            }
+            // Repair options that would collapse the import the way the
+            // model-type reimport path already guards (see
+            // BuildModelReimportSettings).
+            if (!(current.Scale >= 0.001f)) current.Scale = 1.0f;
+            if (current.Rotation.LengthSquared < 0.5f) current.Rotation = Quaternion.Identity;
+            return current;
+        }
+
+        private static AudioTool.Options MutateAudioSettings(AudioTool.Options current, McpImportSettingsEntry[] entries)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in entries)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.Key) || !seen.Add(entry.Key))
+                    throw new McpProtocolException("VALIDATION_FAILED", "Duplicate or missing import setting key.");
+                switch (entry.Key)
+                {
+                    case "Format": current.Format = ParseAudioFormat(RequireSettingEnum(entry)); break;
+                    case "Quality":
+                        {
+                            var quality = RequireSettingFloat(entry);
+                            if (quality < 0.0 || quality > 1.0) throw new McpProtocolException("VALIDATION_FAILED", "Quality must be between 0 and 1.");
+                            current.Quality = (float)quality;
+                            break;
+                        }
+                    case "DisableStreaming": current.DisableStreaming = RequireSettingBool(entry); break;
+                    case "Is3D": current.Is3D = RequireSettingBool(entry); break;
+                    case "BitDepth": current.BitDepth = ParseAudioBitDepth(RequireSettingEnum(entry)); break;
+                    default:
+                        throw new McpProtocolException("VALIDATION_FAILED", "Unknown audio import setting '" + entry.Key + "'. Allowed: Format, Quality, DisableStreaming, Is3D, BitDepth.");
+                }
+            }
+            return current;
+        }
+
+        private static bool ImportSettingsEntriesDiffer(McpImportSettingsEntry[] before, McpImportSettingsEntry[] after)
+        {
+            if (before == null || after == null || before.Length != after.Length) return true;
+            for (var i = 0; i < before.Length; i++)
+            {
+                if (!string.Equals(before[i].Key, after[i].Key, StringComparison.Ordinal)) return true;
+                var left = before[i].Value;
+                var right = after[i].Value;
+                if (left == null || right == null) return true;
+                if (left.Boolean != right.Boolean || left.Integer != right.Integer || left.Text != right.Text) return true;
+                if (left.Number.HasValue != right.Number.HasValue) return true;
+                if (left.Number.HasValue && !left.Number.Value.Equals(right.Number.Value)) return true;
+            }
+            return false;
+        }
+
+        private McpAssetImportSettingsSetResult SetAssetImportSettings(McpAssetImportSettingsSet request)
+        {
+            if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset import-settings parameters are required.");
+            if (request.Settings == null || request.Settings.Length < 1 || request.Settings.Length > 16)
+                throw new McpProtocolException("VALIDATION_FAILED", "Settings must contain between 1 and 16 entries.");
+            var fingerprint = Fingerprint(JsonSerializer.Serialize(AssetImportSettingsFingerprintInput(request), false));
+            bool adopted;
+            var operation = BeginAssetImportOperation(request.OperationId, "reimport", fingerprint, request.DryRun, out adopted);
+            if (adopted) return new McpAssetImportSettingsSetResult { Operation = operation, WouldChange = false, Before = null, After = null };
+            try
+            {
+                EnsureAssetImportEditorReady();
+                if (request.AllowedImportRoots == null || request.AllowedImportRoots.Length == 0)
+                    throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Asset import-settings changes require at least one configured import root.");
+                var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, BuildAssetRegistry());
+                Asset loaded = null;
+                try { loaded = Content.Load(record.Id, AssetLoadTimeoutMs); } catch { }
+                var binary = loaded as BinaryAsset;
+                if (binary == null || binary.LastLoadFailed)
+                    throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not a loadable binary asset.");
+                var importPath = binary.ImportPath;
+                if (string.IsNullOrEmpty(importPath))
+                    throw new McpProtocolException("IMPORT_FAILED", "The selected asset has no Flax importer source metadata.");
+                var sourcePath = Path.IsPathRooted(importPath) ? importPath : Path.Combine(Globals.ProjectFolder, importPath);
+                var canonicalSource = ValidateAssetImportSource(sourcePath, request.AllowedImportRoots, request.MaxSourceBytes, 0, 0);
+                string outputExtension;
+                if (!FEditor.CanImport(Path.GetExtension(canonicalSource), out outputExtension))
+                    throw new McpProtocolException("IMPORT_FAILED", "Flax reports the asset source extension is not importable.");
+                var item = FEditor.Instance.ContentDatabase.FindAsset(record.Id) as BinaryAssetItem;
+                if (item == null) throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not available to the Editor content database.");
+                var kind = ClassifyImportSettingsAsset(item, record);
+                var before = ReadImportSettings(record, item, kind);
+                object settingsObject;
+                McpImportSettingsEntry[] afterEntries;
+                if (string.Equals(kind, "texture", StringComparison.Ordinal))
+                {
+                    TextureTool.Options current;
+                    TryRestoreTextureSettings(item, out current);
+                    current = MutateTextureSettings(current, request.Settings);
+                    afterEntries = ProjectTextureSettings(current);
+                    var wrapper = new TextureImportSettings();
+                    wrapper.Settings = current;
+                    settingsObject = wrapper;
+                }
+                else if (string.Equals(kind, "model", StringComparison.Ordinal))
+                {
+                    ModelTool.Options current;
+                    TryRestoreModelSettings(item, out current);
+                    current = MutateModelSettings(current, request.Settings);
+                    afterEntries = ProjectModelSettings(current);
+                    var wrapper = new ModelImportSettings();
+                    wrapper.Settings = current;
+                    settingsObject = wrapper;
+                }
+                else
+                {
+                    AudioTool.Options current;
+                    TryRestoreAudioSettings(item, out current);
+                    current = MutateAudioSettings(current, request.Settings);
+                    afterEntries = ProjectAudioSettings(current);
+                    var wrapper = new AudioImportSettings();
+                    wrapper.Settings = current;
+                    settingsObject = wrapper;
+                }
+                var after = new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = kind, Restored = before.Restored, Settings = afterEntries };
+                operation.ResultPath = record.Path;
+                operation.ResultAssetId = record.Id.ToString("N");
+                var wouldChange = ImportSettingsEntriesDiffer(before.Settings, after.Settings);
+                if (request.DryRun)
+                {
+                    FinishAssetImportOperation(operation, "dry_run", null, null);
+                    return new McpAssetImportSettingsSetResult { Operation = CopyAssetImportOperation(operation), WouldChange = wouldChange, Before = before, After = after };
+                }
+                if (!wouldChange)
+                {
+                    FinishAssetImportOperation(operation, "succeeded", null, null);
+                    return new McpAssetImportSettingsSetResult { Operation = CopyAssetImportOperation(operation), WouldChange = false, Before = before, After = after };
+                }
+                // The write shares the "reimport" operation records and the
+                // pending-reimport completion map, so asset.reimport_status
+                // polls settings writes like ordinary reimports.
+                lock (_stateLock)
+                {
+                    var itemPath = Path.IsPathRooted(item.Path) ? item.Path : Path.Combine(Globals.ProjectFolder, item.Path);
+                    _pendingReimportsByOutputPath[Path.GetFullPath(itemPath)] = operation.OperationId;
+                    operation.Phase = "running";
+                    operation.Progress = 0.0f;
+                }
+                FEditor.Instance.ContentImporting.Reimport(item, settingsObject, true);
+                return new McpAssetImportSettingsSetResult { Operation = CopyAssetImportOperation(operation), WouldChange = true, Before = before, After = after };
+            }
+            catch (McpProtocolException ex)
+            {
+                FinishAssetImportOperation(operation, "failed", ex.Code, LimitForLog(ex.Message, 512));
+                throw;
+            }
+            catch (Exception)
+            {
+                FinishAssetImportOperation(operation, "failed", "IMPORT_FAILED", "Flax Editor failed to apply the requested import settings.");
+                throw new McpProtocolException("IMPORT_FAILED", "Flax Editor failed to apply the requested import settings.");
             }
         }
 

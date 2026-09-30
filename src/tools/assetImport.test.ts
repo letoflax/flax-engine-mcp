@@ -8,13 +8,17 @@ import { createProjectContext, type ProjectMeta } from '../projectContext.js';
 import { handleGetServerCapabilities } from './serverStatus.js';
 import { handleReimportAsset, ReimportAssetSchema } from './assetInfo.js';
 import {
+  AssetGetImportSettingsSchema,
   AssetImportSchema,
   AssetOperationStatusSchema,
   AssetReimportSchema,
+  AssetSetImportSettingsSchema,
+  handleAssetGetImportSettings,
   handleAssetImport,
   handleAssetImportStatus,
   handleAssetReimport,
   handleAssetReimportStatus,
+  handleAssetSetImportSettings,
 } from './assetImport.js';
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE';
@@ -208,4 +212,151 @@ test('v9 gating, capability reporting, and reimport compatibility alias never la
     assert.equal(legacy.isError, undefined);
     assert.match(legacy.content[0]?.type === 'text' ? legacy.content[0].text : '', /never launches OS editor processes/);
   } finally { await offline.cleanup(); }
+});
+
+function textureSettingsResult(restored: boolean): Record<string, unknown> {
+  return {
+    Asset: { Id: ASSET_ID, Path: 'Content/Imported/Texture.flax', TypeName: 'FlaxEngine.Texture', Extension: '.flax', Folder: 'Content/Imported' },
+    Type: 'texture',
+    Restored: restored,
+    Settings: [
+      { Key: 'Type', Value: { Text: 'ColorRGBA' } },
+      { Key: 'sRGB', Value: { Boolean: true } },
+      { Key: 'Compress', Value: { Boolean: true } },
+      { Key: 'MaxSize', Value: { Integer: 2048 } },
+      { Key: 'Scale', Value: { Number: 1 } },
+      { Key: 'GenerateMipMaps', Value: { Boolean: true } },
+      { Key: 'NeverStream', Value: { Boolean: false } },
+    ],
+  };
+}
+
+test('asset_get_import_settings maps to a strict v32 RPC and projects snake_case scalars', async () => {
+  const f = await fixture(32);
+  try {
+    const pending = handleAssetGetImportSettings(AssetGetImportSettingsSchema.parse({ path: 'Content/Imported/Texture.flax' }), f.ctx);
+    const request = await nextRequest(f);
+    assert.equal(request.body.method, 'asset.get_import_settings');
+    assert.deepEqual(JSON.parse(String(request.body.paramsJson)), { Path: 'Content/Imported/Texture.flax' });
+    await reply(f, request, { ok: true, resultJson: JSON.stringify(textureSettingsResult(true)) });
+    const result = await pending;
+    const data = envelope(result).data;
+    assert.equal(envelope(result).ok, true);
+    assert.equal(data.type, 'texture');
+    assert.equal(data.restored, true);
+    assert.deepEqual(data.settings, { type: 'ColorRGBA', srgb: true, compress: true, max_size: 2048, scale: 1, generate_mipmaps: true, never_stream: false });
+    assert.equal(data.asset.Path, 'Content/Imported/Texture.flax');
+  } finally { await f.cleanup(); }
+});
+
+test('asset import-settings tools require bridge v32 and exactly one selector before any RPC', async () => {
+  const old = await fixture(31);
+  try {
+    const deniedGet = await handleAssetGetImportSettings(AssetGetImportSettingsSchema.parse({ path: 'Content/Imported/Texture.flax' }), old.ctx);
+    assert.equal((deniedGet.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    const deniedSet = await handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+      path: 'Content/Imported/Texture.flax', settings: { max_size: 1024 }, dry_run: true,
+    }), old.ctx);
+    assert.equal((deniedSet.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(old.requests), []);
+    const capabilities = await handleGetServerCapabilities({}, old.ctx);
+    const data = (capabilities.structuredContent as Record<string, any>).data;
+    assert.equal(data.features.assetImportSettings, false);
+    assert.equal(data.features.assetImport.settings, false);
+  } finally { await old.cleanup(); }
+
+  const current = await fixture(32);
+  try {
+    const capabilities = await handleGetServerCapabilities({}, current.ctx);
+    const data = (capabilities.structuredContent as Record<string, any>).data;
+    assert.equal(data.features.assetImportSettings, true);
+    assert.equal(data.features.assetImport.settings, true);
+    assert.throws(() => AssetGetImportSettingsSchema.parse({}), /exactly one of asset_id or path/);
+    assert.throws(() => AssetGetImportSettingsSchema.parse({ asset_id: ASSET_ID, path: 'Content/Existing.flax' }), /exactly one of asset_id or path/);
+    assert.throws(() => AssetSetImportSettingsSchema.parse({ path: 'Content/Existing.flax', settings: { max_size: 1 }, unknown_extra: true }), /unrecognized/i);
+  } finally { await current.cleanup(); }
+});
+
+test('asset_set_import_settings rejects unknown keys and missing roots without any RPC', async () => {
+  const f = await fixture(32);
+  try {
+    const unknown = await handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+      path: 'Content/Existing.flax', settings: { max_size: 1024, bogus_key: true }, dry_run: true,
+    }), f.ctx);
+    assert.equal((unknown.structuredContent as Record<string, any>).error.code, 'VALIDATION_FAILED');
+    assert.match(JSON.stringify((unknown.structuredContent as Record<string, any>).error), /bogus_key/);
+    const nested = await handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+      path: 'Content/Existing.flax', settings: { type: 'ColorRGBA' }, dry_run: true,
+    }), f.ctx);
+    assert.equal((nested.structuredContent as Record<string, any>).error.code, 'VALIDATION_FAILED');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+
+    const noRoots = await fixture(32);
+    try {
+      noRoots.ctx.assetImportPolicy = { roots: [], extensions: [], maxSourceBytes: 1 };
+      const gated = await handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+        path: 'Content/Existing.flax', settings: { max_size: 1024 }, dry_run: true,
+      }), noRoots.ctx);
+      assert.equal((gated.structuredContent as Record<string, any>).error.code, 'IMPORT_SOURCE_NOT_ALLOWED');
+      assert.deepEqual(await fs.readdir(noRoots.requests), []);
+    } finally { await noRoots.cleanup(); }
+  } finally { await f.cleanup(); }
+});
+
+test('asset_set_import_settings dry_run returns would_change with before/after projections', async () => {
+  const f = await fixture(32);
+  try {
+    const after = textureSettingsResult(true);
+    (after.Settings as Array<Record<string, unknown>>).find(entry => entry.Key === 'MaxSize')!.Value = { Integer: 1024 };
+    const pending = handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+      path: 'Content/Imported/Texture.flax', settings: { max_size: 1024 }, dry_run: true, operation_id: 'a'.repeat(32), idempotency_key: 'settings-test',
+    }), f.ctx);
+    const request = await nextRequest(f);
+    assert.equal(request.body.method, 'asset.set_import_settings');
+    const params = JSON.parse(String(request.body.paramsJson));
+    assert.deepEqual(Object.keys(params).sort(), ['AllowedImportRoots', 'DryRun', 'IdempotencyKey', 'MaxSourceBytes', 'OperationId', 'Path', 'Settings'].sort());
+    assert.deepEqual(params.Settings, [{ Key: 'MaxSize', Value: { Integer: 1024 } }]);
+    assert.equal(params.DryRun, true);
+    assert.equal(params.OperationId, 'a'.repeat(32));
+    await reply(f, request, { ok: true, resultJson: JSON.stringify({
+      Operation: { OperationId: 'a'.repeat(32), Kind: 'reimport', Phase: 'dry_run', Progress: 1, DryRun: true },
+      WouldChange: true, Before: textureSettingsResult(true), After: after,
+    }) });
+    const result = await pending;
+    const data = envelope(result).data;
+    assert.equal(envelope(result).ok, true);
+    assert.equal(data.would_change, true);
+    assert.equal(data.before.settings.max_size, 2048);
+    assert.equal(data.after.settings.max_size, 1024);
+  } finally { await f.cleanup(); }
+});
+
+test('asset_set_import_settings writes reuse reimport operation tracking for status polling', async () => {
+  const f = await fixture(32);
+  try {
+    const pending = handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+      path: 'Content/Imported/Texture.flax', settings: { compress: false }, operation_id: 'b'.repeat(32), wait: true, timeout_ms: 1_000,
+    }), f.ctx);
+    const start = await nextRequest(f);
+    assert.equal(start.body.method, 'asset.set_import_settings');
+    const params = JSON.parse(String(start.body.paramsJson));
+    assert.deepEqual(params.Settings, [{ Key: 'Compress', Value: { Boolean: false } }]);
+    await reply(f, start, { ok: true, resultJson: JSON.stringify({
+      Operation: { OperationId: 'b'.repeat(32), Kind: 'reimport', Phase: 'running', Progress: 0 },
+      WouldChange: true, Before: textureSettingsResult(true), After: textureSettingsResult(true),
+    }) });
+    await requestGone(f, start.name);
+    const poll = await nextRequest(f);
+    assert.equal(poll.body.method, 'asset.reimport_status');
+    assert.deepEqual(JSON.parse(String(poll.body.paramsJson)), { OperationId: 'b'.repeat(32) });
+    await reply(f, poll, { ok: true, resultJson: JSON.stringify({ OperationId: 'b'.repeat(32), Kind: 'reimport', Phase: 'succeeded', Progress: 1, ResultPath: 'Content/Imported/Texture.flax' }) });
+    const result = await pending;
+    assert.equal(envelope(result).data.operation.Phase, 'succeeded');
+
+    const statusPending = handleAssetReimportStatus(AssetOperationStatusSchema.parse({ operation_id: 'b'.repeat(32) }), f.ctx);
+    const status = await nextRequest(f);
+    assert.equal(status.body.method, 'asset.reimport_status');
+    await reply(f, status, { ok: true, resultJson: JSON.stringify({ OperationId: 'b'.repeat(32), Kind: 'reimport', Phase: 'succeeded', Progress: 1 }) });
+    assert.equal(envelope(await statusPending).data.operation.Phase, 'succeeded');
+  } finally { await f.cleanup(); }
 });

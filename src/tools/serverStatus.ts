@@ -218,6 +218,7 @@ export async function handleGetServerCapabilities(
     const materialInstanceCreation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
     const materialAssignment = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
     const terrainFoliageWrites = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
+    const assetImportSettings = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 32;
     const navigationBuild = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
     const lightingBake = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
     const environmentProbeBake = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
@@ -256,7 +257,7 @@ export async function handleGetServerCapabilities(
         assetRegistryMetadata: phase4Assets,
         assetDependencyGraph: phase4Assets,
         assetReverseReferences: phase4Assets,
-        assetImportSettings: false,
+        assetImportSettings,
         assetReferenceLocations: false,
         assetImport: {
           available: phase5AssetImport,
@@ -264,7 +265,7 @@ export async function handleGetServerCapabilities(
           configuredRootCount: assetImportPolicy.roots.length,
           maxSourceBytes: assetImportPolicy.maxSourceBytes,
           allowedExtensionCount: assetImportPolicy.extensions.length,
-          settings: false,
+          settings: assetImportSettings,
         },
         assetOrganization: {
           available: phase6AssetOrganization,

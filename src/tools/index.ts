@@ -36,13 +36,17 @@ import {
   handleListAssetsCompatibility,
 } from './assetLive.js';
 import {
+  AssetGetImportSettingsSchema,
   AssetImportSchema,
   AssetOperationStatusSchema,
   AssetReimportSchema,
+  AssetSetImportSettingsSchema,
+  handleAssetGetImportSettings,
   handleAssetImport,
   handleAssetImportStatus,
   handleAssetReimport,
   handleAssetReimportStatus,
+  handleAssetSetImportSettings,
 } from './assetImport.js';
 import {
   AssetDeleteSchema,
@@ -384,6 +388,8 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   asset_import_status: AssetOperationStatusSchema,
   asset_reimport: AssetReimportSchema,
   asset_reimport_status: AssetOperationStatusSchema,
+  asset_get_import_settings: AssetGetImportSettingsSchema,
+  asset_set_import_settings: AssetSetImportSettingsSchema,
   asset_move: AssetMoveSchema,
   asset_rename: AssetRenameSchema,
   asset_duplicate: AssetDuplicateSchema,
@@ -451,6 +457,7 @@ const WRITE_TOOL_NAMES = new Set([
   'reimport_asset',
   'asset_import',
   'asset_reimport',
+  'asset_set_import_settings',
   'asset_move',
   'asset_rename',
   'asset_duplicate',
@@ -1125,6 +1132,18 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Gets the bounded status for one asset_reimport operation. Requires bridge v9.',
       inputSchema: zodToJsonSchema(AssetOperationStatusSchema),
       handler: (a, c) => handleAssetReimportStatus(a as Parameters<typeof handleAssetReimportStatus>[0], c),
+    },
+    {
+      name: 'asset_get_import_settings',
+      description: 'Reads the bounded import options for one texture, model, or audio Content asset: restored metadata (restored:true) or engine defaults (restored:false). Other asset types fail VALIDATION_FAILED. Requires bridge v32.',
+      inputSchema: zodToJsonSchema(AssetGetImportSettingsSchema),
+      handler: (a, c) => handleAssetGetImportSettings(a as Parameters<typeof handleAssetGetImportSettings>[0], c),
+    },
+    {
+      name: 'asset_set_import_settings',
+      description: 'Previews (dry_run) or applies allowlisted import-option scalars for one texture, model, or audio asset via ContentImporting.Reimport with skipDialog:true; polls via asset_reimport_status. Unknown keys, out-of-range values, and non-exact enum names fail VALIDATION_FAILED. Requires bridge v32 and --asset-import-root.',
+      inputSchema: zodToJsonSchema(AssetSetImportSettingsSchema),
+      handler: (a, c) => handleAssetSetImportSettings(a as Parameters<typeof handleAssetSetImportSettings>[0], c),
     },
     {
       name: 'asset_move',

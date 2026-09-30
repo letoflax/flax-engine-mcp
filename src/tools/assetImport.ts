@@ -52,6 +52,60 @@ export const AssetReimportSchema = z.object({
 
 export const AssetOperationStatusSchema = z.object({ operation_id: OperationId }).strict();
 
+export const AssetGetImportSettingsSchema = z.object({
+  ...AssetSelectorShape,
+}).strict().superRefine(exactlyOneSelector);
+
+const TEXTURE_SETTING_KEYS = ['srgb', 'compress', 'max_size', 'scale', 'generate_mipmaps', 'never_stream'] as const;
+const MODEL_SETTING_KEYS = [
+  'scale', 'calculate_normals', 'smoothing_normals_angle', 'flip_normals', 'calculate_tangents',
+  'smoothing_tangents_angle', 'reverse_winding_order', 'optimize_meshes', 'merge_meshes',
+  'import_lods', 'import_vertex_colors', 'base_lod', 'lod_count',
+] as const;
+const AUDIO_SETTING_KEYS = ['format', 'quality', 'disable_streaming', 'is_3d', 'bit_depth'] as const;
+const IMPORT_SETTINGS_ALLOWLIST = new Set<string>([...TEXTURE_SETTING_KEYS, ...MODEL_SETTING_KEYS, ...AUDIO_SETTING_KEYS]);
+
+/** Node snake_case to exact bridge (C# option field) key mapping. */
+const IMPORT_SETTINGS_BRIDGE_KEYS: Record<string, string> = {
+  type: 'Type',
+  srgb: 'sRGB',
+  compress: 'Compress',
+  max_size: 'MaxSize',
+  scale: 'Scale',
+  generate_mipmaps: 'GenerateMipMaps',
+  never_stream: 'NeverStream',
+  calculate_normals: 'CalculateNormals',
+  smoothing_normals_angle: 'SmoothingNormalsAngle',
+  flip_normals: 'FlipNormals',
+  calculate_tangents: 'CalculateTangents',
+  smoothing_tangents_angle: 'SmoothingTangentsAngle',
+  reverse_winding_order: 'ReverseWindingOrder',
+  optimize_meshes: 'OptimizeMeshes',
+  merge_meshes: 'MergeMeshes',
+  import_lods: 'ImportLODs',
+  import_vertex_colors: 'ImportVertexColors',
+  base_lod: 'BaseLOD',
+  lod_count: 'LODCount',
+  format: 'Format',
+  quality: 'Quality',
+  disable_streaming: 'DisableStreaming',
+  is_3d: 'Is3D',
+  bit_depth: 'BitDepth',
+};
+
+const IMPORT_SETTINGS_SNAKE_KEYS: Record<string, string> = Object.fromEntries(
+  Object.entries(IMPORT_SETTINGS_BRIDGE_KEYS).map(([snake, pascal]) => [pascal, snake]),
+);
+
+export const AssetSetImportSettingsSchema = z.object({
+  ...AssetSelectorShape,
+  settings: z.record(z.string(), z.union([z.boolean(), z.number(), z.string()])),
+  dry_run: z.boolean().optional().default(false),
+  operation_id: OperationId.optional(),
+  idempotency_key: IdempotencyKey.optional(),
+  ...WaitArgs,
+}).strict().superRefine(exactlyOneSelector);
+
 type AssetOperation = Record<string, unknown> & { OperationId?: string; Phase?: string; ErrorCode?: string; Error?: string };
 
 function importError(error: unknown): ToolDomainError {
@@ -213,6 +267,143 @@ export async function handleAssetReimportStatus(args: z.infer<typeof AssetOperat
   try {
     const result = await getStatus('reimport', args.operation_id, ctx);
     return response('reimport', result.data, result.bridge, !terminal(result.data));
+  } catch (error) {
+    return toolError(importError(error));
+  }
+}
+
+interface ImportSettingsBridgeValue {
+  Boolean?: boolean | null;
+  Integer?: number | null;
+  Number?: number | null;
+  Text?: string | null;
+}
+
+interface ImportSettingsBridgeEntry {
+  Key: string;
+  Value: ImportSettingsBridgeValue | null;
+}
+
+interface ImportSettingsBridgeResult {
+  Asset: unknown;
+  Type: string;
+  Restored: boolean;
+  Settings: ImportSettingsBridgeEntry[];
+}
+
+interface SetImportSettingsBridgeResult {
+  Operation: AssetOperation;
+  WouldChange: boolean;
+  Before: ImportSettingsBridgeResult | null;
+  After: ImportSettingsBridgeResult | null;
+}
+
+type ImportSettingsScalar = boolean | number | string;
+
+function projectImportSettingsEntry(entry: ImportSettingsBridgeEntry): [string, ImportSettingsScalar] {
+  const key = IMPORT_SETTINGS_SNAKE_KEYS[entry.Key] ?? entry.Key;
+  const value = entry.Value ?? {};
+  if (typeof value.Boolean === 'boolean') return [key, value.Boolean];
+  if (typeof value.Integer === 'number') return [key, value.Integer];
+  if (typeof value.Number === 'number') return [key, value.Number];
+  if (typeof value.Text === 'string') return [key, value.Text];
+  throw new ToolDomainError('INTERNAL_ERROR', `Bridge import-settings entry "${entry.Key}" has no scalar value.`);
+}
+
+function projectImportSettings(result: ImportSettingsBridgeResult | null): { asset: unknown; type: string; restored: boolean; settings: Record<string, ImportSettingsScalar> } | null {
+  if (!result) return null;
+  if (!['texture', 'model', 'audio'].includes(result.Type)) {
+    throw new ToolDomainError('VALIDATION_FAILED', `Unsupported import-settings asset type "${result.Type}". Only texture, model, and audio assets are supported.`);
+  }
+  const settings: Record<string, ImportSettingsScalar> = {};
+  for (const entry of result.Settings ?? []) {
+    const [key, value] = projectImportSettingsEntry(entry);
+    settings[key] = value;
+  }
+  return { asset: result.Asset, type: result.Type, restored: result.Restored === true, settings };
+}
+
+export async function handleAssetGetImportSettings(args: z.infer<typeof AssetGetImportSettingsSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  try {
+    const response = await callEditorBridge<'asset.get_import_settings', Record<string, unknown>, ImportSettingsBridgeResult>(
+      ctx, 'asset.get_import_settings', { AssetId: args.asset_id, Path: args.path }, { minimumBridgeVersion: 32, deadlineMs: 15_000 });
+    const data = projectImportSettings(response.data);
+    return toolResult(JSON.stringify({ ...data, bridge: response.bridge }, null, 2), {
+      mode: 'editor-connected',
+      data: { ...data, bridge: response.bridge },
+    });
+  } catch (error) {
+    return toolError(importError(error));
+  }
+}
+
+function validatedSettingsEntries(settings: Record<string, unknown>): Array<{ Key: string; Value: Record<string, unknown> }> {
+  if (Array.isArray(settings) || typeof settings !== 'object' || settings === null) {
+    throw new ToolDomainError('VALIDATION_FAILED', 'Settings must be an object with allowlisted scalar keys.');
+  }
+  const keys = Object.keys(settings);
+  if (keys.length < 1 || keys.length > 16) {
+    throw new ToolDomainError('VALIDATION_FAILED', 'Settings must contain between 1 and 16 entries.');
+  }
+  const unknown = keys.filter(key => !IMPORT_SETTINGS_ALLOWLIST.has(key));
+  if (unknown.length > 0) {
+    throw new ToolDomainError(
+      'VALIDATION_FAILED',
+      `Unknown import setting(s): ${unknown.join(', ')}. Allowed texture keys: ${TEXTURE_SETTING_KEYS.join(', ')}. ` +
+      `Allowed model keys: ${MODEL_SETTING_KEYS.join(', ')}. Allowed audio keys: ${AUDIO_SETTING_KEYS.join(', ')}.`,
+    );
+  }
+  return keys.map(key => {
+    const value = (settings as Record<string, unknown>)[key];
+    const bridgeKey = IMPORT_SETTINGS_BRIDGE_KEYS[key];
+    if (typeof value === 'boolean') return { Key: bridgeKey, Value: { Boolean: value } };
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new ToolDomainError('VALIDATION_FAILED', `Import setting "${key}" must be a finite number.`);
+      return Number.isInteger(value)
+        ? { Key: bridgeKey, Value: { Integer: value } }
+        : { Key: bridgeKey, Value: { Number: value } };
+    }
+    if (typeof value === 'string') {
+      if (value.length > 64) throw new ToolDomainError('VALIDATION_FAILED', `Import setting "${key}" must be at most 64 characters.`);
+      return { Key: bridgeKey, Value: { Text: value } };
+    }
+    throw new ToolDomainError('VALIDATION_FAILED', `Import setting "${key}" must be a boolean, number, or string scalar.`);
+  });
+}
+
+async function startSetImportSettings(params: Record<string, unknown>, ctx: ProjectMeta): Promise<{ data: SetImportSettingsBridgeResult; bridge: unknown }> {
+  const response = await callEditorBridge<'asset.set_import_settings', Record<string, unknown>, SetImportSettingsBridgeResult>(
+    ctx, 'asset.set_import_settings', params, { minimumBridgeVersion: 32, deadlineMs: 30_000 });
+  return { data: response.data, bridge: response.bridge };
+}
+
+export async function handleAssetSetImportSettings(args: z.infer<typeof AssetSetImportSettingsSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  try {
+    const entries = validatedSettingsEntries(args.settings as Record<string, unknown>);
+    const policy = assetImportPolicyForContext(ctx);
+    if (policy.roots.length === 0) {
+      throw new ToolDomainError('IMPORT_SOURCE_NOT_ALLOWED', 'Asset import-settings changes are disabled because no --asset-import-root is configured.');
+    }
+    const started = await startHeavyOperation(ctx, () => startSetImportSettings({
+      OperationId: operationId(args.operation_id),
+      IdempotencyKey: args.idempotency_key,
+      AssetId: args.asset_id,
+      Path: args.path,
+      Settings: entries,
+      DryRun: args.dry_run,
+      AllowedImportRoots: policy.roots,
+      MaxSourceBytes: policy.maxSourceBytes,
+    }, ctx));
+    const before = projectImportSettings(started.data.Before);
+    const after = projectImportSettings(started.data.After);
+    if (args.dry_run) {
+      const data = { would_change: started.data.WouldChange === true, before, after };
+      return toolResult(JSON.stringify({ ...data, bridge: started.bridge }, null, 2), { mode: 'editor-connected', data });
+    }
+    // Settings writes share the "reimport" operation records, so
+    // asset_reimport_status polls them like ordinary reimports.
+    const waited = await maybeWait('reimport', started.data.Operation, args.wait, args.timeout_ms, ctx);
+    return response('reimport', waited.data, waited.bridge ?? started.bridge, !terminal(waited.data));
   } catch (error) {
     return toolError(importError(error));
   }
