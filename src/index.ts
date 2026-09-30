@@ -132,8 +132,8 @@ async function main(): Promise<void> {
   server.setRequestHandler(ListResourcesRequestSchema, async request => listFlaxResources(ctx, request.params?.cursor));
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => listFlaxResourceTemplates(ctx));
   server.setRequestHandler(ReadResourceRequestSchema, async request => readFlaxResource(request.params.uri, ctx));
-  server.setRequestHandler(ListPromptsRequestSchema, async () => listFlaxPrompts());
-  server.setRequestHandler(GetPromptRequestSchema, async request => getFlaxPrompt(request.params.name, request.params.arguments));
+  server.setRequestHandler(ListPromptsRequestSchema, async () => listFlaxPrompts(ctx.projectPath));
+  server.setRequestHandler(GetPromptRequestSchema, async request => getFlaxPrompt(request.params.name, request.params.arguments, ctx.projectPath));
   server.setRequestHandler(SubscribeRequestSchema, async request => {
     subscriptions.subscribe(request.params.uri);
     return {};

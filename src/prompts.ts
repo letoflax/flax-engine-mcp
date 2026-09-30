@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { ErrorCode, McpError, type GetPromptResult, type ListPromptsResult, type Prompt } from '@modelcontextprotocol/sdk/types.js';
 
 type PromptValue = string | boolean | number | undefined;
@@ -100,6 +102,120 @@ function promptMetadata(definition: PromptDefinition): Prompt {
   };
 }
 
+const PROJECT_PROMPTS_DIR = 'mcp-prompts';
+const PROJECT_PROMPT_PATTERN = /^[A-Za-z0-9_-]{1,64}\.md$/;
+const MAX_PROJECT_PROMPTS = 20;
+const MAX_PROJECT_PROMPT_BYTES = 32 * 1024;
+
+const BUILTIN_PROMPT_NAMES = new Set(PROMPT_DEFINITIONS.map(definition => definition.name));
+
+interface ProjectPromptEntry {
+  name: string;
+  description: string;
+  content: string;
+}
+
+function isInsideDir(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+function extractProjectDescription(content: string, stem: string): string {
+  for (const line of content.split('\n')) {
+    const match = /^#\s+(.*)$/.exec(line.trimEnd());
+    if (!match) continue;
+    const heading = match[1]!.trim();
+    if (heading) return heading.length > 256 ? `${heading.slice(0, 256)}…` : heading;
+  }
+  return stem;
+}
+
+function parseZeroArguments(promptName: string, rawArgs: unknown): void {
+  if (rawArgs === undefined) rawArgs = {};
+  if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) {
+    throw new McpError(ErrorCode.InvalidParams, 'Prompt arguments must be an object of string values.');
+  }
+  for (const [name] of Object.entries(rawArgs as Record<string, unknown>)) {
+    throw new McpError(ErrorCode.InvalidParams, `Unknown argument "${name}" for prompt "${promptName}".`);
+  }
+}
+
+async function discoverProjectPrompts(projectPath?: string): Promise<{ entries: ProjectPromptEntry[]; skipped: number }> {
+  const empty = { entries: [], skipped: 0 };
+  if (!projectPath) return empty;
+  const dir = path.join(path.resolve(projectPath), PROJECT_PROMPTS_DIR);
+  let names: string[];
+  try {
+    names = await fs.readdir(dir);
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return empty;
+    return empty;
+  }
+  let realDir: string;
+  try {
+    realDir = await fs.realpath(dir);
+  } catch {
+    return { entries: [], skipped: names.length };
+  }
+  names.sort();
+  const entries: ProjectPromptEntry[] = [];
+  const seen = new Set<string>();
+  let skipped = 0;
+  for (const entry of names) {
+    if (!PROJECT_PROMPT_PATTERN.test(entry) || entry.includes('..')) {
+      skipped += 1;
+      continue;
+    }
+    if (entries.length >= MAX_PROJECT_PROMPTS) {
+      skipped += 1;
+      continue;
+    }
+    const stem = entry.slice(0, -'.md'.length);
+    if (seen.has(stem) || BUILTIN_PROMPT_NAMES.has(stem)) {
+      skipped += 1;
+      continue;
+    }
+    const lexical = path.join(realDir, entry);
+    let realFile: string;
+    try {
+      realFile = await fs.realpath(lexical);
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    if (!isInsideDir(realDir, realFile)) {
+      skipped += 1;
+      continue;
+    }
+    let stat: Awaited<ReturnType<typeof fs.stat>>;
+    try {
+      stat = await fs.stat(realFile);
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    if (!stat.isFile() || stat.size > MAX_PROJECT_PROMPT_BYTES) {
+      skipped += 1;
+      continue;
+    }
+    let content: string;
+    try {
+      content = await fs.readFile(realFile, 'utf-8');
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    if (Buffer.byteLength(content, 'utf8') > MAX_PROJECT_PROMPT_BYTES) {
+      skipped += 1;
+      continue;
+    }
+    seen.add(stem);
+    entries.push({ name: stem, description: extractProjectDescription(content, stem), content });
+  }
+  return { entries, skipped };
+}
+
 function parseArguments(definition: PromptDefinition, rawArgs: unknown): PromptArguments {
   if (rawArgs === undefined) rawArgs = {};
   if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) {
@@ -138,16 +254,38 @@ function parseArguments(definition: PromptDefinition, rawArgs: unknown): PromptA
   return parsed;
 }
 
-export function listFlaxPrompts(): ListPromptsResult {
-  return { prompts: PROMPT_DEFINITIONS.map(promptMetadata) };
+export async function listFlaxPrompts(projectPath?: string): Promise<ListPromptsResult> {
+  const prompts: Prompt[] = PROMPT_DEFINITIONS.map(promptMetadata);
+  if (!projectPath) return { prompts };
+  const discovered = await discoverProjectPrompts(projectPath);
+  for (const entry of discovered.entries) {
+    prompts.push({ name: entry.name, title: entry.name, description: entry.description, arguments: [] });
+  }
+  if (discovered.skipped > 0) {
+    return { prompts, _meta: { projectPromptsSkipped: discovered.skipped } } as ListPromptsResult;
+  }
+  return { prompts };
 }
 
-export function getFlaxPrompt(name: string, rawArgs?: unknown): GetPromptResult {
+export async function getFlaxPrompt(name: string, rawArgs?: unknown, projectPath?: string): Promise<GetPromptResult> {
   const definition = PROMPT_DEFINITIONS.find(candidate => candidate.name === name);
-  if (!definition) throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: ${name}`);
-  const args = parseArguments(definition, rawArgs);
-  return {
-    description: definition.description,
-    messages: [{ role: 'user', content: { type: 'text', text: definition.render(args) } }],
-  };
+  if (definition) {
+    const args = parseArguments(definition, rawArgs);
+    return {
+      description: definition.description,
+      messages: [{ role: 'user', content: { type: 'text', text: definition.render(args) } }],
+    };
+  }
+  if (projectPath) {
+    const discovered = await discoverProjectPrompts(projectPath);
+    const entry = discovered.entries.find(candidate => candidate.name === name);
+    if (entry) {
+      parseZeroArguments(entry.name, rawArgs);
+      return {
+        description: entry.description,
+        messages: [{ role: 'user', content: { type: 'text', text: entry.content } }],
+      };
+    }
+  }
+  throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: ${name}`);
 }
