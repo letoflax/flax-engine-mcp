@@ -31,7 +31,7 @@ const TOOL_FAMILIES = {
     'get_physics_settings', 'get_compiler_errors', 'validate_project', 'operation_get_status', 'build_list_targets', 'build_validate', 'build_get_status', 'build_get_result',
     'physics_validate_colliders', 'physics_raycast', 'physics_get_layer_matrix', 'physics_find_overlaps', 'navigation_get_status', 'navigation_validate_agents', 'navigation_query_path',
     'lighting_get_status', 'lighting_validate', 'terrain_get_summary', 'foliage_get_summary', 'list_docs',
-    'read_doc', 'get_latest_log', 'mm_tuning', 'perf_get_snapshot',
+    'read_doc', 'capture_compare', 'get_latest_log', 'mm_tuning', 'perf_get_snapshot',
   ],
   code: [
     'install_editor_bridge', 'code_compile', 'code_generate_project', 'operation_cancel', 'write_script',

@@ -235,6 +235,7 @@ import {
   handlePlayStop,
 } from './runtimeLive.js';
 import { TestRunScenarioSchema, handleTestRunScenario } from './testScenario.js';
+import { CaptureCompareSchema, handleCaptureCompare } from './captureCompare.js';
 import {
   BuildCookSchema,
   BuildListTargetsSchema,
@@ -303,6 +304,7 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   log_search: LogSearchSchema,
   log_get_runtime_errors: LogGetRuntimeErrorsSchema,
   viewport_capture: ViewportCaptureSchema,
+  capture_compare: CaptureCompareSchema,
   runtime_inspect_actor: RuntimeInspectActorSchema,
   perf_get_snapshot: PerfGetSnapshotSchema,
   code_compile: CodeCompileSchema,
@@ -882,6 +884,12 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Captures a bounded viewport image (game requires play mode; editor works outside play mode) into the bridge cache and returns a resource URI.',
       inputSchema: zodToJsonSchema(ViewportCaptureSchema),
       handler: (a, c) => handleViewportCapture(a as Parameters<typeof handleViewportCapture>[0], c),
+    },
+    {
+      name: 'capture_compare',
+      description: 'Compares two viewport capture PNGs (flax://capture/<id> URIs or bare 32-hex ids) per pixel and reports the differing-pixel fraction against a threshold, with an optional red-overlay diff PNG readable as a new capture resource.',
+      inputSchema: zodToJsonSchema(CaptureCompareSchema),
+      handler: (a, c) => handleCaptureCompare(a as Parameters<typeof handleCaptureCompare>[0], c),
     },
     {
       name: 'runtime_inspect_actor',
