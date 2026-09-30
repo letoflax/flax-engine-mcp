@@ -1,12 +1,19 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ToolResponse } from './errors.js';
+import { toolFamily } from './permissions.js';
 import { ProjectMeta } from './projectContext.js';
 import { isSubscribableFlaxResource } from './resources.js';
 
 const MaxSubscriptions = 128;
 const DebounceMs = 350;
 const HeartbeatPollMs = 2_500;
+
+// Scene-family tools that never change a scene tree: selection, lease
+// bookkeeping, and the Visject graph-window undo.
+const SceneToolsWithoutTreeChange = new Set(['editor_set_selection', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'graph_undo']);
+// Asset-family tools that also relink actors in a loaded scene.
+const AssetToolsChangingSceneTree = new Set(['prefab_create_from_actor', 'prefab_apply_overrides']);
 
 export type ResourceNotifier = (method: 'notifications/resources/updated' | 'notifications/resources/list_changed', params: Record<string, never> | { uri: string }) => Promise<void>;
 
@@ -86,17 +93,18 @@ export class ResourceSubscriptionManager {
   /** Called once after dispatch, never before the tool response is known to be successful. */
   afterTool(name: string, response: ToolResponse): void {
     if (response.isError) return;
-    const sceneMutation = new Set([
-      'scene_save', 'project_save_all', 'actor_create', 'actor_update', 'actor_delete', 'actor_duplicate', 'actor_reparent',
-      'script_attach', 'script_detach', 'script_instance_update', 'edit_undo', 'edit_redo',
-    ]).has(name);
+    // Classification follows the permission families, so a newly registered
+    // mutation tool notifies subscribers without being listed here again.
+    const family = toolFamily(name);
+    if (!family || family === 'read') return;
+    // A capture adds a resource but changes no scene, log, or editor state.
+    if (name === 'viewport_capture') { this.notifyResourceListChanged(); return; }
+    const sceneMutation = (family === 'scene' && !SceneToolsWithoutTreeChange.has(name)) || AssetToolsChangingSceneTree.has(name);
     const sourceMutation = new Set(['write_script', 'apply_script_patch', 'generate_script', 'code_compile', 'code_generate_project']).has(name);
-    const runtimeMutation = new Set(['play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume', 'play_step_frame', 'play_run_for', 'test_run_scenario', 'code_compile', 'code_generate_project']).has(name);
-    const generalMutation = sceneMutation || sourceMutation || runtimeMutation || /^(?:reimport_asset|install_editor_bridge)$/.test(name);
+    const runtimeMutation = family === 'runtime' || name === 'code_compile' || name === 'code_generate_project';
     if (sceneMutation) for (const uri of this.subscriptions) if (/^flax:\/\/scene\/[0-9a-f]{32}\/tree$/i.test(uri)) this.schedule(uri);
     if (sourceMutation) this.schedule('flax://code/diagnostics/latest');
     if (runtimeMutation) this.schedule('flax://logs/recent');
-    if (generalMutation) this.schedule('flax://editor/status');
-    if (name === 'viewport_capture') this.notifyResourceListChanged();
+    this.schedule('flax://editor/status');
   }
 }

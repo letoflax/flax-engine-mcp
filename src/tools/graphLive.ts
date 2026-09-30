@@ -219,7 +219,7 @@ async function graphCall(
   // A bridge-opened window needs frames before VisjectSurfaceWindow.Update()
   // runs LoadSurface(). The bridge keeps the window open and reports
   // INVALID_STATE + details.NotReady; retry here so
-  // callers never hand-pump retries. Bounded: 5 attempts, ~9s max.
+  // callers never hand-pump retries. Bounded: 6 attempts, ~9s max.
   let lastError: unknown;
   for (let attempt = 0; attempt < 6; attempt++) {
     try {

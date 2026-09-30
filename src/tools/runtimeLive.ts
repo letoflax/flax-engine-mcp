@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
+import { isHeadlessRefusal } from '../bridge/mapBridgeError.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
@@ -139,7 +140,10 @@ function runtimeError(error: unknown): ToolDomainError {
   if (remote === 'NOT_FOUND') return new ToolDomainError('NOT_FOUND', error.message, error.details);
   if (remote === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, error.details);
   if (remote === 'COMPILATION_IN_PROGRESS' || remote === 'PLAY_BUSY' || remote === 'EDITOR_BUSY') return new ToolDomainError('EDITOR_BUSY', error.message, error.details);
-  if (remote === 'INVALID_STATE') return new ToolDomainError('INVALID_PLAY_STATE', error.message, error.details);
+  // A headless Editor refuses play start with INVALID_STATE and "headless" in
+  // the message. That is not a wrong play state (a retry cannot help), so it
+  // reports HEADLESS_MODE like every other headless refusal.
+  if (remote === 'INVALID_STATE') return new ToolDomainError(isHeadlessRefusal(error) ? 'HEADLESS_MODE' : 'INVALID_PLAY_STATE', error.message, error.details);
   if (remote === 'PLAY_STATE_CONFLICT' || remote === 'DIRTY_SCENES' || remote === 'INVALID_REQUEST' || remote === 'VALIDATION_FAILED') return new ToolDomainError('VALIDATION_FAILED', error.message, error.details);
   if (remote === 'UNSUPPORTED_FLAX_VERSION') return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, error.details);
   if (remote === 'REQUEST_TOO_LARGE' || remote === 'RESPONSE_TOO_LARGE') return new ToolDomainError('CONTENT_TOO_LARGE', error.message, error.details);

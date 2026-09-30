@@ -227,11 +227,22 @@ test('graph calls stop retrying after repeated not-ready responses', async () =>
 test('graph calls do not retry INVALID_STATE without the not-ready marker', async () => {
   const f = await fixture();
   try {
+    // A headless Editor refuses with INVALID_STATE, "headless" in the message,
+    // and no details: not retried, and reported as HEADLESS_MODE because a
+    // retry cannot help (EDITOR_BUSY would invite one).
     const inspect = handleGraphInspect(GraphInspectSchema.parse({ path: 'Content/Graphs/G.flax' }), f.ctx);
-    await respondOnce(f, { ok: false, errorCode: 'INVALID_STATE', error: 'Headless mode has no GUI surface.' });
+    await respondOnce(f, { ok: false, errorCode: 'INVALID_STATE', error: 'Graph inspection is unavailable in headless editor mode because the surface is a GUI control.' });
     const out = await inspect;
     assert.equal(out.isError, true);
-    assert.equal((out.structuredContent as any).error.code, 'EDITOR_BUSY');
+    assert.equal((out.structuredContent as any).error.code, 'HEADLESS_MODE');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+
+    // Any other INVALID_STATE without the not-ready marker is not retried either and stays EDITOR_BUSY.
+    const busy = handleGraphInspect(GraphInspectSchema.parse({ path: 'Content/Graphs/G.flax' }), f.ctx);
+    await respondOnce(f, { ok: false, errorCode: 'INVALID_STATE', error: 'The graph root context is not ready. Retry shortly.' });
+    const busyOut = await busy;
+    assert.equal(busyOut.isError, true);
+    assert.equal((busyOut.structuredContent as any).error.code, 'EDITOR_BUSY');
     assert.deepEqual(await fs.readdir(f.requests), []);
   } finally {
     await f.cleanup();

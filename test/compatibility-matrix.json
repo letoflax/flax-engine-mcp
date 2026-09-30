@@ -16,15 +16,16 @@
         "duplicate retry",
         "remote permission denied"
       ],
-      "headedEditor": "bridge v33 surface run manually on 2026-09-30 (see docs/TESTING.md); older surfaces still manual required",
-      "headless": "status/compile/diagnostics/logs, member reads, settings writes, scene/content creation, domain queries; play and edit-time writes are unsupported",
+      "headedEditor": "bridge v33 surface and the v32 import-settings surface run manually on 2026-09-30 in two runs (see docs/TESTING.md); no manual run is recorded for other older surfaces beyond what those runs exercised",
+      "headless": "status/compile/diagnostics/logs, member reads, settings writes, scene/content creation, import settings, domain queries, actor create/update and script attach; play, captures, and edit-time writes that need Editor windows or the live scene are refused (HEADLESS_MODE, CAPTURE_UNAVAILABLE)",
       "liveVerified": {
         "date": "2026-09-30",
         "flaxBuild": "1.12.6912",
         "bridgeVersion": 33,
         "notExercised": [
-          "particle_set_parameter with a real parameter",
-          "settings refusal while the settings window is open"
+          "an asset-typed particle parameter",
+          "a brush type without a string form",
+          "restored:false import settings for a Model or an AudioClip"
         ]
       }
     },

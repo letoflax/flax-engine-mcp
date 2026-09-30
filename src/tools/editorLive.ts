@@ -4,6 +4,7 @@ import { mapBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
+import { bridgeWarnings } from './liveToolSupport.js';
 
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
 const ContentPath = z.string().min(9).max(512).superRefine((value, ctx) => {
@@ -151,9 +152,9 @@ const LEGACY_ACTOR_PROPERTIES = new Set(['Light.Color', 'Light.Brightness', 'Cam
 export const ActorSetPropertySchema = z.object({
   target_id: FlaxId.describe('Actor GUID. Script.Enabled alone takes a script GUID.'),
   property: z.string().min(1).max(128)
-    .describe('Member or Type.Member of an editor-visible actor member, for example Mass, RigidBody.IsKinematic, BoxCollider.Size, AudioSource.Clip (bridge v33; list them with actor_get_properties). The v28 aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled still work on older bridges. Name, active, transform, and layer belong to actor_update.'),
+    .describe('Member or Type.Member of an editor-visible actor member, for example Mass, RigidBody.IsKinematic, BoxCollider.Size, AudioSource.Clip, Model (bridge v33; list them with actor_get_properties). The v28 aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled still work on older bridges. Name, active, transform, and layer belong to actor_update.'),
   value: z.union([z.boolean(), z.number().finite(), z.string()])
-    .describe('Coerced strictly to the member type: boolean, finite number, or string. Strings carry enum names ("A, B" for flags), vectors ("x,y[,z[,w]]"), colors ("#rrggbb[aa]" or "r,g,b[,a]"), and references: an asset GUID or Content/ path, an actor or script GUID, or "" to clear a reference.'),
+    .describe('Coerced strictly to the member type: boolean, finite number, or string. Strings carry enum names ("A, B" for flags), vectors ("x,y[,z[,w]]"), colors ("#rrggbb[aa]" or "r,g,b[,a]"), rectangles ("x,y,width,height"), margins ("left,right,top,bottom"), and references: an actor or script GUID, or an asset as a GUID, a project "Content/..." path, or engine content as "engine:<path>" (path below the engine Content folder without extension, for example "engine:Editor/Primitives/Cube"); "" clears a reference. Font members (kind font) take "<font asset>;size=<points>", for example "engine:Editor/Fonts/Roboto-Regular;size=24". Brush members (kind brush) take "<kind>:<value>[;option=value]" with the kinds solid, gradient, texture, texture9, sprite, sprite9, material, ui_brush, and video; ui_control_set_property lists every form. actor_get_properties returns references, fonts, and brushes in these same shapes as Value.Text.'),
   dry_run: z.boolean().optional().default(false)
     .describe('Preview the coercion and report would_change plus before/after without writing. Requires bridge v33.'),
   ...RevisionedLiveWrite,
@@ -199,7 +200,8 @@ function toBridgeVector(value: z.infer<typeof Vector3> | undefined): AnyRecord |
 }
 
 function bridgeError(error: unknown): ToolDomainError {
-  // Shared mapper owns the full BridgeRpcError contract (graph/mm pattern).
+  // Shared mapper owns the full BridgeRpcError contract (graph/mm pattern),
+  // including a headless edit-time refusal (HEADLESS_MODE).
   // SCENE_REVISION_CONFLICT is editor-surface-specific and stays here so
   // revision-guard details keep flowing to callers.
   const mapped = mapBridgeError(error);
@@ -231,7 +233,9 @@ async function liveCall(
     return toolResult(JSON.stringify(data, null, 2), {
       mode: response.mode,
       data,
-      warnings: response.warnings,
+      // A result DTO may carry its own Warnings (for example a brush the engine
+      // accepts but would not draw); they belong in the envelope too.
+      warnings: [...response.warnings, ...bridgeWarnings(response.data)],
       changes: typeof changes === 'function' ? changes(response.data) : changes,
     });
   } catch (error) {

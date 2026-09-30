@@ -131,14 +131,19 @@ test('replacement requires force or the matching installed hash', async () => {
   }
 });
 
-test('the packaged bridge resolver finds the real version 32 artifact', async () => {
+test('the packaged bridge resolver finds the real bundled artifact and reports its version', async () => {
   const f = await fixture();
   try {
     const bundledPath = await locateBundledEditorBridge();
     assert.equal(path.basename(bundledPath), 'FlaxMcpBridge.cs');
+    // The expected version comes from the artifact's own header marker, which the installer does not
+    // parse, so this stays a cross-check without pinning a number that changes every bridge bump.
+    // bridgeV7Contract.test.ts pins the current version once.
+    const marker = (await fs.readFile(bundledPath, 'utf8')).match(/MCP-BRIDGE-VERSION:\s*(\d+)/);
+    assert.ok(marker, 'the bundled bridge source must carry an MCP-BRIDGE-VERSION header');
     const info = await inspectEditorBridgeInstallation(f.ctx);
     assert.equal(info.bundled.available, true);
-    assert.equal(info.bundled.version, '33');
+    assert.equal(info.bundled.version, marker[1]);
     assert.match(info.bundled.hash ?? '', /^[a-f0-9]{64}$/);
     assert.equal(info.installed.present, false);
   } finally {

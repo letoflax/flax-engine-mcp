@@ -1,5 +1,7 @@
 # GUID audit P7 — Model/Material text refs vs .flax headers (READ-ONLY REPORT)
 
+> Status (2026-09-30): historical record of a one-off read-only audit; it is not maintained and its counts describe the scene files of that date. The scenes it examines belong to external projects, not to this repository. The bridge's registry/file ID guard (`registry/file ID mismatch`, `ASSET_OPERATION_FAILED`, in `bridge/FlaxMcpBridge.cs`) cites this report; current bridge behaviour is documented in `bridge/PROTOCOL.md`.
+
 Date: 2026-09-26. No file under `D:\Code\flax\flax-test\` was written or modified;
 flax-test `Content/Scenes/*.scene` bytes were only read as a fallback comparison.
 Primary source is the playback copies

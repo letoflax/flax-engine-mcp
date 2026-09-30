@@ -2,6 +2,22 @@ import { ToolDomainError } from '../errors.js';
 import { BridgeRpcError } from './protocol.js';
 
 /**
+ * True when a remote INVALID_STATE was raised because the Editor runs
+ * headless: "headless" in the remote error message or in its serialized
+ * details. Surface-specific mappers that give INVALID_STATE another meaning
+ * (a wrong play state) use this to keep the two apart.
+ */
+export function isHeadlessRefusal(error: BridgeRpcError): boolean {
+  let serialized = '';
+  try {
+    serialized = JSON.stringify(error.details) ?? '';
+  } catch {
+    serialized = String(error.details);
+  }
+  return /headless/i.test(error.message) || /headless/i.test(serialized);
+}
+
+/**
  * Shared bridge→tool error mapper (P2a).
  *
  * Consolidates the previously duplicated graphError()/mmError() logic so both
@@ -15,9 +31,18 @@ import { BridgeRpcError } from './protocol.js';
  * - INVALID_STATE carrying headless evidence maps to HEADLESS_MODE (a new
  *   ToolErrorCode placed next to CAPTURE_UNAVAILABLE); any other
  *   INVALID_STATE maps to EDITOR_BUSY. Headless is detected from the
- *   serialized BridgeRpcError details only, not the message. The graph
- *   retry-glue (graphNotReadyDelay/graphCall) is untouched: NotReady retries
- *   still happen before this mapper runs.
+ *   remote error message or the serialized BridgeRpcError details. The
+ *   bridge raises every headless refusal (RequireEditTime, graph
+ *   inspect/edit/undo, editor selection, capture, play start) as
+ *   INVALID_STATE with "headless" in the message and no details, and only
+ *   when the Editor is headless, so the message is the evidence a real
+ *   Editor sends. HEADLESS_MODE tells the caller a retry cannot help;
+ *   EDITOR_BUSY invites one. Surfaces with their own mapper (domainLive,
+ *   mmTuning, runtimeLive) call isHeadlessRefusal for the same split; only
+ *   viewport_capture keeps CAPTURE_UNAVAILABLE for a headless Editor, the
+ *   code it uses for every reason a capture cannot be taken. The graph retry-glue
+ *   (graphNotReadyDelay/graphCall) is untouched: NotReady retries still
+ *   happen before this mapper runs.
  */
 export function mapBridgeError(error: unknown): ToolDomainError {
   if (error instanceof ToolDomainError) return error;
@@ -40,13 +65,7 @@ export function mapBridgeError(error: unknown): ToolDomainError {
     if (code === 'NOT_FOUND') return new ToolDomainError('NOT_FOUND', error.message, details);
     if (code === 'EDITOR_BUSY') return new ToolDomainError('EDITOR_BUSY', error.message, details);
     if (code === 'INVALID_STATE') {
-      let serialized = '';
-      try {
-        serialized = JSON.stringify(error.details) ?? '';
-      } catch {
-        serialized = String(error.details);
-      }
-      if (/headless/i.test(serialized)) return new ToolDomainError('HEADLESS_MODE', error.message, details);
+      if (isHeadlessRefusal(error)) return new ToolDomainError('HEADLESS_MODE', error.message, details);
       return new ToolDomainError('EDITOR_BUSY', error.message, details);
     }
     if (code === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, details);

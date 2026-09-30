@@ -1,5 +1,7 @@
 # Flax Engine MCP — Kế hoạch cải tiến chi tiết
 
+> **Trạng thái tài liệu (2026-09-30): lộ trình gốc, chỉ còn giá trị lịch sử.** Bản này được viết khi MCP mới có 23 tool và không mô tả trạng thái hiện tại; các con số, tên tool và thứ tự phase bên dưới giữ nguyên như lúc lập kế hoạch. Trạng thái hiện tại là server 1.11.0, bridge v33 / protocol v1, 170 tool. Phần lớn nội dung Phase 0–6 đã được triển khai, nhưng không phải mục nào cũng đúng như kế hoạch. Hai điểm lệch chính: Node và Editor Bridge giao tiếp bằng file-RPC dưới `Cache/MCP` (không dùng Named Pipe, Unix socket hay WebSocket như mục 4.3), và bridge cung cấp *edit lease* thay cho `edit_begin_transaction` / `edit_commit_transaction` / `edit_rollback_transaction` (`TransactionsSupported` luôn là `false`). Tài liệu hiện hành: `README.md` (danh sách tool, profile quyền, ghi chú), `bridge/PROTOCOL.md` (giao thức theo từng phiên bản bridge), `docs/TESTING.md` và `test/compatibility-matrix.json` (kiểm thử, ma trận tương thích).
+
 > Tài liệu này đề xuất lộ trình nâng cấp MCP hiện tại từ một **project file assistant** thành một **Flax Editor automation layer an toàn, có trạng thái và phù hợp cho AI agent**.
 
 ## 1. Tóm tắt điều hành

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createAssetImportPolicy, chooseAssetImportDestination, verifyAssetImportDestination, verifyAssetImportSource } from '../assetImportPolicy.js';
 import { createProjectContext, type ProjectMeta } from '../projectContext.js';
 import { handleGetServerCapabilities } from './serverStatus.js';
@@ -280,15 +281,23 @@ test('asset import-settings tools require bridge v32 and exactly one selector be
 test('asset_set_import_settings rejects unknown keys and missing roots without any RPC', async () => {
   const f = await fixture(32);
   try {
-    const unknown = await handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+    // The strict settings schema rejects unknown and read-only keys before the handler runs.
+    assert.throws(() => AssetSetImportSettingsSchema.parse({
       path: 'Content/Existing.flax', settings: { max_size: 1024, bogus_key: true }, dry_run: true,
-    }), f.ctx);
+    }), /bogus_key/);
+    assert.throws(() => AssetSetImportSettingsSchema.parse({
+      path: 'Content/Existing.flax', settings: { type: 'ColorRGBA' }, dry_run: true,
+    }), /unrecognized/i);
+    // A caller that skips the schema still gets VALIDATION_FAILED and no RPC.
+    const unparsed = (settings: Record<string, unknown>) => handleAssetSetImportSettings(
+      { path: 'Content/Existing.flax', settings, dry_run: true, wait: false, timeout_ms: 1_000 } as Parameters<typeof handleAssetSetImportSettings>[0], f.ctx);
+    const unknown = await unparsed({ max_size: 1024, bogus_key: true });
     assert.equal((unknown.structuredContent as Record<string, any>).error.code, 'VALIDATION_FAILED');
     assert.match(JSON.stringify((unknown.structuredContent as Record<string, any>).error), /bogus_key/);
-    const nested = await handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
-      path: 'Content/Existing.flax', settings: { type: 'ColorRGBA' }, dry_run: true,
-    }), f.ctx);
-    assert.equal((nested.structuredContent as Record<string, any>).error.code, 'VALIDATION_FAILED');
+    for (const settings of [{ type: 'ColorRGBA' }, { max_size: 1e19 }, { max_size: 10.5 }, { scale: Number.NaN }, { compress: 'yes' }, { format: 1 }, {}]) {
+      const rejected = await unparsed(settings);
+      assert.equal((rejected.structuredContent as Record<string, any>).error.code, 'VALIDATION_FAILED', JSON.stringify(settings));
+    }
     assert.deepEqual(await fs.readdir(f.requests), []);
 
     const noRoots = await fixture(32);
@@ -341,9 +350,11 @@ test('asset_set_import_settings writes reuse reimport operation tracking for sta
     assert.equal(start.body.method, 'asset.set_import_settings');
     const params = JSON.parse(String(start.body.paramsJson));
     assert.deepEqual(params.Settings, [{ Key: 'Compress', Value: { Boolean: false } }]);
+    const after = textureSettingsResult(true);
+    (after.Settings as Array<Record<string, unknown>>).find(entry => entry.Key === 'Compress')!.Value = { Boolean: false };
     await reply(f, start, { ok: true, resultJson: JSON.stringify({
       Operation: { OperationId: 'b'.repeat(32), Kind: 'reimport', Phase: 'running', Progress: 0 },
-      WouldChange: true, Before: textureSettingsResult(true), After: textureSettingsResult(true),
+      WouldChange: true, Before: textureSettingsResult(true), After: after, Adopted: false,
     }) });
     await requestGone(f, start.name);
     const poll = await nextRequest(f);
@@ -352,11 +363,198 @@ test('asset_set_import_settings writes reuse reimport operation tracking for sta
     await reply(f, poll, { ok: true, resultJson: JSON.stringify({ OperationId: 'b'.repeat(32), Kind: 'reimport', Phase: 'succeeded', Progress: 1, ResultPath: 'Content/Imported/Texture.flax' }) });
     const result = await pending;
     assert.equal(envelope(result).data.operation.Phase, 'succeeded');
+    // A real write keeps the preview it was started with and reports one change.
+    assert.equal(envelope(result).data.would_change, true);
+    assert.equal(envelope(result).data.before.settings.compress, true);
+    assert.equal(envelope(result).data.after.settings.compress, false);
+    assert.equal('adopted' in envelope(result).data, false);
+    assert.deepEqual(envelope(result).changes, [{ kind: 'reimport-asset', operationId: 'b'.repeat(32) }]);
 
     const statusPending = handleAssetReimportStatus(AssetOperationStatusSchema.parse({ operation_id: 'b'.repeat(32) }), f.ctx);
     const status = await nextRequest(f);
     assert.equal(status.body.method, 'asset.reimport_status');
     await reply(f, status, { ok: true, resultJson: JSON.stringify({ OperationId: 'b'.repeat(32), Kind: 'reimport', Phase: 'succeeded', Progress: 1 }) });
     assert.equal(envelope(await statusPending).data.operation.Phase, 'succeeded');
+  } finally { await f.cleanup(); }
+});
+
+test('asset_set_import_settings publishes the typed settings shape and rejects values the bridge cannot hold', () => {
+  const schema = zodToJsonSchema(AssetSetImportSettingsSchema) as Record<string, any>;
+  const settings = schema.properties.settings;
+  assert.equal(settings.type, 'object');
+  assert.equal(settings.additionalProperties, false);
+  assert.deepEqual(Object.keys(settings.properties).sort(), [
+    'base_lod', 'bit_depth', 'calculate_normals', 'calculate_tangents', 'compress', 'disable_streaming', 'flip_normals', 'format',
+    'generate_mipmaps', 'import_lods', 'import_vertex_colors', 'is_3d', 'lod_count', 'max_size', 'merge_meshes', 'never_stream',
+    'optimize_meshes', 'quality', 'reverse_winding_order', 'scale', 'smoothing_normals_angle', 'smoothing_tangents_angle', 'srgb',
+  ]);
+  assert.equal(settings.required, undefined);
+  assert.deepEqual(settings.properties.bit_depth.enum, ['_8', '_16', '_24', '_32']);
+  assert.deepEqual(settings.properties.format.enum, ['Raw', 'Vorbis']);
+  assert.equal(settings.properties.srgb.type, 'boolean');
+  assert.deepEqual([settings.properties.max_size.type, settings.properties.max_size.minimum, settings.properties.max_size.maximum], ['integer', 1, 16384]);
+  assert.deepEqual([settings.properties.scale.type, settings.properties.scale.minimum, settings.properties.scale.maximum], ['number', 0.0001, 1000]);
+  // Engine limits from ModelTool.h / AudioTool.h (Flax 1.12).
+  assert.deepEqual([settings.properties.smoothing_normals_angle.minimum, settings.properties.smoothing_normals_angle.maximum], [0, 175]);
+  assert.deepEqual([settings.properties.smoothing_tangents_angle.minimum, settings.properties.smoothing_tangents_angle.maximum], [0, 45]);
+  assert.deepEqual([settings.properties.base_lod.type, settings.properties.base_lod.minimum, settings.properties.base_lod.maximum], ['integer', 0, 5]);
+  assert.deepEqual([settings.properties.lod_count.type, settings.properties.lod_count.minimum, settings.properties.lod_count.maximum], ['integer', 1, 6]);
+  assert.deepEqual([settings.properties.quality.minimum, settings.properties.quality.maximum], [0, 1]);
+  for (const property of Object.values(settings.properties) as Array<Record<string, unknown>>) assert.equal(typeof property.description, 'string');
+
+  const parse = (value: Record<string, unknown>) => AssetSetImportSettingsSchema.parse({ path: 'Content/Existing.flax', settings: value });
+  const rejected: Array<Record<string, unknown>> = [
+    { max_size: 1e300 }, { max_size: 1e19 }, { max_size: 2.5 }, { max_size: 0 }, { max_size: 16385 },
+    { scale: 1e19 }, { scale: Number.NaN }, { scale: 0 }, { scale: Number.POSITIVE_INFINITY },
+    { quality: Number.NaN }, { quality: 1.5 }, { smoothing_normals_angle: 176 }, { smoothing_tangents_angle: 46 },
+    { base_lod: 6 }, { lod_count: 7 }, { lod_count: 0 }, { bit_depth: '16' }, { format: 'vorbis' }, { compress: 1 }, { type: 'ColorRGBA' }, {},
+  ];
+  for (const value of rejected) assert.throws(() => parse(value), Error, `settings ${JSON.stringify(value)} must be rejected`);
+  const accepted = parse({ scale: 1, lod_count: 6, base_lod: 5, smoothing_normals_angle: 175, smoothing_tangents_angle: 45, bit_depth: '_16', format: 'Raw' });
+  assert.equal(accepted.settings.lod_count, 6);
+});
+
+test('asset_set_import_settings sends float options as Number and integer options as Integer', async () => {
+  const f = await fixture(32);
+  try {
+    const pending = handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+      path: 'Content/Imported/Texture.flax', settings: { scale: 2, max_size: 1024, srgb: false }, dry_run: true,
+    }), f.ctx);
+    const request = await nextRequest(f);
+    const params = JSON.parse(String(request.body.paramsJson));
+    // Entries follow the schema order, so the bridge fingerprint does not depend on the caller's key order.
+    assert.deepEqual(params.Settings, [
+      { Key: 'sRGB', Value: { Boolean: false } },
+      { Key: 'MaxSize', Value: { Integer: 1024 } },
+      { Key: 'Scale', Value: { Number: 2 } },
+    ]);
+    await reply(f, request, { ok: true, resultJson: JSON.stringify({
+      Operation: { OperationId: 'a'.repeat(32), Kind: 'reimport', Phase: 'dry_run', Progress: 1, DryRun: true },
+      WouldChange: false, Before: textureSettingsResult(true), After: textureSettingsResult(true), Adopted: false,
+    }) });
+    const data = envelope(await pending).data;
+    assert.equal(data.would_change, false);
+    assert.equal('adopted' in data, false);
+  } finally { await f.cleanup(); }
+});
+
+test('asset_set_import_settings never reports an adopted or failed operation as a no-change preview', async () => {
+  const f = await fixture(32);
+  try {
+    const dryRun = (operation: string) => handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+      path: 'Content/Imported/Texture.flax', settings: { max_size: 1024 }, dry_run: true, operation_id: operation,
+    }), f.ctx);
+
+    // Adopted without a stored preview (also the shape older bridges return): would_change is unknown.
+    const unknownPending = dryRun('c'.repeat(32));
+    const unknownRequest = await nextRequest(f);
+    await reply(f, unknownRequest, { ok: true, resultJson: JSON.stringify({
+      Operation: { OperationId: 'c'.repeat(32), Kind: 'reimport', Phase: 'dry_run', Progress: 1, DryRun: true },
+      WouldChange: false, Before: null, After: null,
+    }) });
+    const unknown = await unknownPending;
+    assert.equal(envelope(unknown).ok, true);
+    assert.equal('would_change' in envelope(unknown).data, false);
+    assert.equal(envelope(unknown).data.adopted, true);
+    assert.equal(envelope(unknown).data.operation.OperationId, 'c'.repeat(32));
+    assert.match(envelope(unknown).warnings.join(' '), /would_change is unknown/);
+    await requestGone(f, unknownRequest.name);
+
+    // Adopted operation whose first attempt failed: the failure is reported with its own code.
+    const failedPending = dryRun('d'.repeat(32));
+    const failedRequest = await nextRequest(f);
+    await reply(f, failedRequest, { ok: true, resultJson: JSON.stringify({
+      Operation: { OperationId: 'd'.repeat(32), Kind: 'reimport', Phase: 'failed', Progress: 1, DryRun: true, ErrorCode: 'EDITOR_BUSY', Error: 'Asset import is unavailable while the editor is playing.' },
+      WouldChange: null, Before: null, After: null, Adopted: true,
+    }) });
+    const failed = await failedPending;
+    assert.equal(failed.isError, true);
+    assert.equal(envelope(failed).error.code, 'EDITOR_BUSY');
+    assert.match(envelope(failed).error.message, /editor is playing.*new operation_id/);
+    assert.deepEqual(envelope(failed).error.details, { operationId: 'd'.repeat(32), adopted: true });
+    await requestGone(f, failedRequest.name);
+
+    // Adopted operation with its stored preview: the original answer is replayed and marked adopted.
+    const after = textureSettingsResult(true);
+    (after.Settings as Array<Record<string, unknown>>).find(entry => entry.Key === 'MaxSize')!.Value = { Integer: 1024 };
+    const replayPending = dryRun('e'.repeat(32));
+    const replayRequest = await nextRequest(f);
+    await reply(f, replayRequest, { ok: true, resultJson: JSON.stringify({
+      Operation: { OperationId: 'e'.repeat(32), Kind: 'reimport', Phase: 'dry_run', Progress: 1, DryRun: true },
+      WouldChange: true, Before: textureSettingsResult(true), After: after, Adopted: true,
+    }) });
+    const replay = envelope(await replayPending);
+    assert.equal(replay.data.would_change, true);
+    assert.equal(replay.data.after.settings.max_size, 1024);
+    assert.equal(replay.data.adopted, true);
+    assert.deepEqual(replay.warnings, []);
+  } finally { await f.cleanup(); }
+});
+
+test('asset_set_import_settings reports a no-op write as unchanged without polling or claiming a reimport', async () => {
+  const f = await fixture(32);
+  try {
+    const pending = handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({
+      path: 'Content/Imported/Texture.flax', settings: { compress: true }, operation_id: 'b'.repeat(32), wait: true, timeout_ms: 1_000,
+    }), f.ctx);
+    const start = await nextRequest(f);
+    assert.equal(JSON.parse(String(start.body.paramsJson)).DryRun, false);
+    await reply(f, start, { ok: true, resultJson: JSON.stringify({
+      Operation: { OperationId: 'b'.repeat(32), Kind: 'reimport', Phase: 'succeeded', Progress: 1, ResultPath: 'Content/Imported/Texture.flax' },
+      WouldChange: false, Before: textureSettingsResult(true), After: textureSettingsResult(true), Adopted: false,
+    }) });
+    const result = envelope(await pending);
+    assert.equal(result.ok, true);
+    assert.equal(result.data.would_change, false);
+    assert.equal(result.data.operation.Phase, 'succeeded');
+    assert.deepEqual(result.data.before.settings, result.data.after.settings);
+    assert.deepEqual(result.changes, []);
+    assert.match(result.warnings.join(' '), /No reimport was queued/);
+    assert.equal('pending' in result.data, false);
+    await requestGone(f, start.name);
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally { await f.cleanup(); }
+});
+
+test('asset import-settings tools surface bridge refusals and default-valued reads honestly', async () => {
+  const f = await fixture(32);
+  try {
+    const getPending = handleAssetGetImportSettings(AssetGetImportSettingsSchema.parse({ path: 'Content/Imported/Texture.flax' }), f.ctx);
+    const getRequest = await nextRequest(f);
+    await reply(f, getRequest, { ok: true, resultJson: JSON.stringify(textureSettingsResult(false)) });
+    const defaults = envelope(await getPending);
+    assert.equal(defaults.data.restored, false);
+    assert.match(defaults.warnings.join(' '), /engine defaults.*refuse to write/);
+    await requestGone(f, getRequest.name);
+
+    const restoredPending = handleAssetGetImportSettings(AssetGetImportSettingsSchema.parse({ path: 'Content/Imported/Texture.flax' }), f.ctx);
+    const restoredRequest = await nextRequest(f);
+    await reply(f, restoredRequest, { ok: true, resultJson: JSON.stringify(textureSettingsResult(true)) });
+    assert.deepEqual(envelope(await restoredPending).warnings, []);
+    await requestGone(f, restoredRequest.name);
+
+    const unsupportedPending = handleAssetGetImportSettings(AssetGetImportSettingsSchema.parse({ path: 'Content/Existing.flax' }), f.ctx);
+    const unsupportedRequest = await nextRequest(f);
+    await reply(f, unsupportedRequest, { ok: false, errorCode: 'VALIDATION_FAILED', error: 'Import settings are only supported for texture, model, and audio assets.' });
+    assert.equal(envelope(await unsupportedPending).error.code, 'VALIDATION_FAILED');
+    await requestGone(f, unsupportedRequest.name);
+
+    const refusedPending = handleAssetSetImportSettings(AssetSetImportSettingsSchema.parse({ path: 'Content/Imported/Texture.flax', settings: { max_size: 1024 } }), f.ctx);
+    const refusedRequest = await nextRequest(f);
+    await reply(f, refusedRequest, { ok: false, errorCode: 'IMPORT_FAILED', error: 'The asset\'s current import options could not be restored from its import metadata.' });
+    const refused = await refusedPending;
+    assert.equal(refused.isError, true);
+    assert.equal(envelope(refused).error.code, 'IMPORT_FAILED');
+    assert.match(envelope(refused).error.message, /could not be restored/);
+    await requestGone(f, refusedRequest.name);
+
+    // A failed operation record keeps its own error code when it maps onto a tool error code.
+    for (const [errorCode, expected] of [['VALIDATION_FAILED', 'VALIDATION_FAILED'], ['EDITOR_BUSY', 'EDITOR_BUSY'], ['SOMETHING_ELSE', 'IMPORT_FAILED']]) {
+      const statusPending = handleAssetReimportStatus(AssetOperationStatusSchema.parse({ operation_id: 'f'.repeat(32) }), f.ctx);
+      const status = await nextRequest(f);
+      await reply(f, status, { ok: true, resultJson: JSON.stringify({ OperationId: 'f'.repeat(32), Kind: 'reimport', Phase: 'failed', Progress: 1, ErrorCode: errorCode, Error: 'failed' }) });
+      assert.equal(envelope(await statusPending).error.code, expected);
+      await requestGone(f, status.name);
+    }
   } finally { await f.cleanup(); }
 });

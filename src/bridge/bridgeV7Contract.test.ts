@@ -5,6 +5,26 @@ import test from 'node:test';
 
 const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import.meta.url));
 
+/**
+ * The one place this suite pins the bridge version. A version bump edits this
+ * constant only; the per-feature tests below assert their own feature and do
+ * not repeat the version.
+ */
+const CURRENT_BRIDGE_VERSION = 33;
+
+test('every place the bridge source states its version agrees with the current version', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  const found = (pattern: RegExp) => [...source.matchAll(pattern)].map(match => Number(match[1]));
+  // The header marker on the first line of the bridge source; it appears exactly once.
+  assert.deepEqual(found(/MCP-BRIDGE-VERSION:\s*(\d+)/g), [CURRENT_BRIDGE_VERSION]);
+  // The version constant and the two status DTOs the bridge reports it through.
+  const declared = found(/\bint\s+BridgeVersion\s*=\s*(\d+)\s*;/g);
+  assert.ok(declared.length >= 3, `expected the constant and both DTO defaults, found ${declared.length}`);
+  assert.ok(declared.every(version => version === CURRENT_BRIDGE_VERSION), `BridgeVersion declarations: ${declared.join(', ')}`);
+  // The startup log line.
+  assert.deepEqual(found(/Debug\.Log\("\[Flax MCP\] Bridge v(\d+) listening/g), [CURRENT_BRIDGE_VERSION]);
+});
+
 test('bridge v20 keeps read-only sub-context inspection with navigate-and-restore traversal', async () => {
   const source = await readFile(bridgePath, 'utf8');
   assert.match(source, /IncludeSubcontexts/);
@@ -17,8 +37,6 @@ test('bridge v20 keeps read-only sub-context inspection with navigate-and-restor
 
 test('bridge v21 binds AnimationGraph BaseModel plus the v20 clip/value/move surface', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /case "graph\.set_model"/);
   assert.match(source, /McpGraphSetModelRequest/);
   assert.match(source, /SetGraphBaseModel/);
@@ -57,8 +75,6 @@ test('bridge refuses scene saves while scripts compile and keeps asset swaps ins
 
 test('bridge v21 preserves revisioned edit leases without claiming atomic transactions', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /ProtocolVersion\s*=\s*1/);
   assert.match(source, /TransactionsSupported\s*=\s*false/);
   assert.match(source, /EditLeaseSemantics\s*=\s*"visible-immediately-no-rollback"/);
@@ -256,8 +272,6 @@ test('bridge v13 exposes only verified public material and animation reads and k
 
 test('bridge v29 implements bounded material write, instance creation, and slot assignment', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /ExecuteIdempotent\("material\.set_parameters"/);
   assert.match(source, /ExecuteIdempotent\("material\.create_instance"/);
   assert.match(source, /ExecuteIdempotent\("material\.assign_to_actor"/);
@@ -288,7 +302,6 @@ test('bridge v29 implements bounded material write, instance creation, and slot 
   assert.match(source, /ReadPersistedMaterialInstanceId\(absolute\)/);
   assert.match(source, /does NOT preserve the virtual asset's in-memory ID/);
   assert.match(source, /the persisted ID is the durable reference/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v33 listening/);
 });
 
 test('bridge v17 exposes the window-backed Visject graph surface with bounded AnimGraph topology macros', async () => {
@@ -322,7 +335,6 @@ test('bridge v17 exposes the window-backed Visject graph surface with bounded An
 
 test('bridge v22 captures game and editor viewports through verified Screenshot paths', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
   assert.match(source, /EditorViewportCaptureSupported = true/);
   assert.match(source, /Viewport must be 'game' or 'editor'/);
   assert.match(source, /EditWin\.Viewport\.Task/);
@@ -335,8 +347,6 @@ test('bridge v22 captures game and editor viewports through verified Screenshot 
 
 test('bridge v23 controls play time scale through verified Time.TimeScale', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /PlayTimeScaleSupported = true/);
   assert.match(source, /McpTimeScaleRequest/);
   assert.match(source, /case "play\.set_time_scale"/);
@@ -348,8 +358,6 @@ test('bridge v23 controls play time scale through verified Time.TimeScale', asyn
 
 test('bridge v24 reads and replaces editor selection through verified SceneEditing APIs', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /EditorSelectionSupported = true/);
   assert.match(source, /McpSelectionRequest/);
   assert.match(source, /McpSelectionEntry/);
@@ -368,8 +376,6 @@ test('bridge v24 reads and replaces editor selection through verified SceneEditi
 
 test('bridge v25 opens canonical Content scenes through verified Level.LoadSceneAsync', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /SceneOpenSupported = true/);
   assert.match(source, /McpSceneOpen\b/);
   assert.match(source, /McpSceneOpenResult/);
@@ -385,7 +391,6 @@ test('bridge v25 opens canonical Content scenes through verified Level.LoadScene
   assert.match(source, /McpSceneOpenTypeDetails/);
   assert.match(source, /ScriptsBuilder\.IsCompiling \|\| !ScriptsBuilder\.IsReady/);
   assert.match(source, /Scene open is unavailable while the editor is in play mode/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v33 listening/);
 });
 
 test('bridge v31 keeps domain queries while backing navmesh/bake/probe/foliage writes with verified public APIs', async () => {
@@ -413,8 +418,6 @@ test('bridge v31 keeps domain queries while backing navmesh/bake/probe/foliage w
 
 test('bridge v26 gates play-mode input simulation to managed Flax APIs only', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /InputSimulationSupported = true/);
   assert.match(source, /McpKeyPress/);
   assert.match(source, /McpMouseClick/);
@@ -431,7 +434,6 @@ test('bridge v26 gates play-mode input simulation to managed Flax APIs only', as
   assert.match(source, /Capability = "input_mouse_click"/);
   assert.match(source, /KeyboardKeys\.None/);
   assert.match(source, /KeyboardKeys\.MAX/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v33 listening/);
   assert.doesNotMatch(source, /\[\s*DllImport/);
   assert.doesNotMatch(source, /user32\.dll/i);
   assert.doesNotMatch(source, /SendInput\s*\(/);
@@ -447,8 +449,6 @@ test('bridge v26 gates play-mode input simulation to managed Flax APIs only', as
 
 test('bridge v27 reads one instantaneous engine performance snapshot without allocation storms', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /PerfSnapshotSupported = true/);
   assert.match(source, /McpPerfSnapshot/);
   assert.match(source, /case "perf\.snapshot"/);
@@ -464,7 +464,6 @@ test('bridge v27 reads one instantaneous engine performance snapshot without all
   assert.match(source, /device\.RendererType/);
   assert.match(source, /adapter\.Description/);
   assert.match(source, /FEditor\.Instance\.IsHeadlessMode/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v33 listening/);
   // The only main-thread-external sleeps are the two v31 background poll
   // cadences (navmesh/probe); PerfSnapshot itself never sleeps.
   assert.deepEqual(source.match(/Thread\.Sleep\s*\([^)]*\)/g) ?? [], ['Thread.Sleep(100)', 'Thread.Sleep(100)']);
@@ -472,8 +471,6 @@ test('bridge v27 reads one instantaneous engine performance snapshot without all
 
 test('bridge v29 keeps the v28 bounded script/component write surface', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /ScriptFieldWriteSupported = true/);
   assert.match(source, /ActorPropertyWriteSupported = true/);
   assert.match(source, /case "script\.instance_set_value"/);
@@ -513,8 +510,6 @@ test('bridge v29 keeps the v28 bounded script/component write surface', async ()
 
 test('bridge v31 backs foliage/navmesh/bake/probe writes with verified public APIs and keeps terrain.paint an honest stub', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /NavigationBuildSupported = true/);
   assert.match(source, /LightingBakeSupported = true/);
   assert.match(source, /FoliageInstanceWriteSupported = true/);
@@ -566,8 +561,6 @@ test('bridge v31 backs foliage/navmesh/bake/probe writes with verified public AP
 
 test('bridge v32 exposes bounded texture/model/audio import-settings get/set on verified typed Options', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /AssetImportSettingsSupported = true/);
   assert.match(source, /case "asset\.get_import_settings"/);
   assert.match(source, /case "asset\.set_import_settings"/);
@@ -603,18 +596,15 @@ test('bridge v32 exposes bounded texture/model/audio import-settings get/set on 
   assert.match(source, /Format must be Raw or Vorbis/);
   assert.match(source, /BitDepth must be _8, _16, _24, or _32/);
   assert.match(source, /MaxSize must be between 1 and 16384/);
-  assert.match(source, /SmoothingNormalsAngle must be between 0 and 180/);
+  assert.match(source, /SmoothingNormalsAngle must be between 0 and 175/);
   assert.match(source, /Quality must be between 0 and 1/);
   assert.match(source, /Settings must contain between 1 and 16 entries/);
   assert.match(source, /Asset import-settings changes require at least one configured import root/);
   assert.doesNotMatch(source, /AudioClipItem/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v33 listening/);
 });
 
 test('bridge v33 reaches actor and control members only through the editor-visible selection', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
-  assert.match(source, /BridgeVersion\s*=\s*33/);
   assert.match(source, /ActorPropertyReadSupported = true/);
   assert.match(source, /GenericActorPropertyWriteSupported = true/);
   assert.match(source, /UiControlWorkflowsSupported = true/);
@@ -736,10 +726,17 @@ test('bridge v33 writes settings and creates content only through Editor APIs wi
   assert.match(source, /class McpLambdaUndo : IUndoAction/);
   // The binary header carries the durable ID before the registry lists the new asset.
   assert.match(source, /metadata\.Id = ReadPersistedMaterialInstanceId\(absolute\)\.ToString\("N"\)/);
+  // A new file is looked up in the asset registry under the engine's own
+  // path spelling (StringUtils.NormalizePath). An OS-spelled path misses the
+  // registry key and makes the engine register the file a second time
+  // ("Founded duplicated asset", live-observed after every binary asset.create).
+  assert.match(source, /return StringUtils\.NormalizePath\(Path\.Combine\(Globals\.ProjectFolder, projectRelativePath\)\);/);
+  assert.match(source, /Content\.GetAssetInfo\(EngineAssetPath\(normalized\), out clash\)/);
+  assert.match(source, /Content\.GetAssetInfo\(EngineAssetPath\(normalized\), out info\)/);
+  assert.doesNotMatch(source, /Content\.GetAssetInfo\((?:absolute|output), out/);
   // The modal "save before closing?" path is never taken.
   assert.doesNotMatch(source, /CheckSaveBeforeClose/);
   assert.doesNotMatch(source, /MessageBox\.Show/);
-  assert.match(source, /Debug\.Log\("\[Flax MCP\] Bridge v33 listening/);
 });
 
 test('bridge v33 never lets an anonymous type reach FlaxEngine.Json as an empty object', async () => {

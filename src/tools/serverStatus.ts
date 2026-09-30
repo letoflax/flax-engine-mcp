@@ -187,6 +187,11 @@ export async function inspectEditorBridge(
   return { ...status, connected: true, reason: 'connected' };
 }
 
+/** True when a live bridge speaking protocol v1 reports at least this bridge version. */
+export function bridgeAtLeast(editor: EditorBridgeStatus, minimumBridgeVersion: number): boolean {
+  return editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= minimumBridgeVersion;
+}
+
 export async function handleGetServerCapabilities(
   _args: unknown,
   ctx: ProjectMeta
@@ -194,35 +199,36 @@ export async function handleGetServerCapabilities(
   try {
     const [identity, editor] = await Promise.all([readProjectIdentity(ctx), inspectEditorBridge(ctx)]);
     const mode: ToolMode = editor.connected ? 'editor-connected' : 'offline';
-    const phase2 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 6;
-    const phase3 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 7;
-    const phase4Assets = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 8;
-    const phase5AssetImport = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 9;
-    const phase6AssetOrganization = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 10;
-    const operationHandles = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 11;
-    const phase6Prefabs = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 12;
-    const prefabOverrideWorkflows = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 30;
-    const assetQuarantineDelete = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
-    const buildCook = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
-    const materialAnimation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
-    const domainQueries = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 14;
-    const editorViewportCapture = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 22;
-    const playTimeScale = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 23;
-    const editorSelection = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 24;
-    const sceneOpen = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 25;
-    const inputSimulation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 26;
-    const perfSnapshot = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 27;
-    const scriptFieldWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 28;
-    const actorPropertyWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 28;
-    const materialParameterWrite = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
-    const materialInstanceCreation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
-    const materialAssignment = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 29;
-    const terrainFoliageWrites = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
-    const assetImportSettings = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 32;
-    const navigationBuild = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
-    const lightingBake = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
-    const environmentProbeBake = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
-    const bridgeV33 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 33;
+    const supports = (minimumBridgeVersion: number) => bridgeAtLeast(editor, minimumBridgeVersion);
+    const phase2 = supports(6);
+    const phase3 = supports(7);
+    const phase4Assets = supports(8);
+    const phase5AssetImport = supports(9);
+    const phase6AssetOrganization = supports(10);
+    const operationHandles = supports(11);
+    const phase6Prefabs = supports(12);
+    const prefabOverrideWorkflows = supports(30);
+    const assetQuarantineDelete = supports(13);
+    const buildCook = supports(13);
+    const materialAnimation = supports(13);
+    const domainQueries = supports(14);
+    const editorViewportCapture = supports(22);
+    const playTimeScale = supports(23);
+    const editorSelection = supports(24);
+    const sceneOpen = supports(25);
+    const inputSimulation = supports(26);
+    const perfSnapshot = supports(27);
+    const scriptFieldWrite = supports(28);
+    const actorPropertyWrite = supports(28);
+    const materialParameterWrite = supports(29);
+    const materialInstanceCreation = supports(29);
+    const materialAssignment = supports(29);
+    const terrainFoliageWrites = supports(31);
+    const assetImportSettings = supports(32);
+    const navigationBuild = supports(31);
+    const lightingBake = supports(31);
+    const environmentProbeBake = supports(31);
+    const bridgeV33 = supports(33);
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -252,7 +258,7 @@ export async function handleGetServerCapabilities(
         // Still false on v33: writes reach editor-visible members only
         // (what the property grid shows), never arbitrary reflected ones.
         arbitraryActorProperties: false,
-        scriptInstanceEnabledPatch: editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 5,
+        scriptInstanceEnabledPatch: supports(5),
         scriptFieldWrite,
         actorPropertyWrite,
         actorPropertyRead: bridgeV33,

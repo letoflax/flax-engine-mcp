@@ -95,7 +95,7 @@ namespace Game.MCP
     // (Property = "Member" or "Type.Member"); Type/DryRun/WouldChange are
     // additive result fields that older clients can ignore.
     public class McpActorPropertySet { public string ActorId; public string Property; public bool? Bool; public double? Number; public string Text; public bool DryRun; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
-    public class McpActorPropertySetResult { public string ActorId; public string Property; public string Type; public bool DryRun; public bool WouldChange; public McpMaterialTypedValue Before; public McpMaterialTypedValue After; public McpActorDto Actor; public long ProjectRevision; public long SceneRevision; }
+    public class McpActorPropertySetResult { public string ActorId; public string Property; public string Type; public bool DryRun; public bool WouldChange; public McpMaterialTypedValue Before; public McpMaterialTypedValue After; public McpActorDto Actor; public long ProjectRevision; public long SceneRevision; public string[] Warnings; }
     public class McpSceneSave { public string SceneId; }
     // Bridge v25 canonical scene.open. Exactly one of AssetId/Path selects a
     // Content scene asset (FlaxEngine.SceneAsset only). AllowDirtyScenes
@@ -153,7 +153,10 @@ namespace Game.MCP
     public class McpAssetMetadata { public string Id; public string Path; public string TypeName; public string Extension; public string Folder; }
     public class McpAssetDto { public string Id; public string Path; public string TypeName; public string Extension; public string Folder; public int DependencyCount; public int MissingDependencyCount; public int ReferenceCount; }
     public class McpAssetSearchResult { public McpAssetDto[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
-    public class McpAssetGetResult { public McpAssetMetadata Asset; public bool ImportSettingsAvailable = false; public string[] Warnings; }
+    // ImportSettingsAvailable is true when the registry type is one that
+    // asset.get_import_settings supports (texture, model, audio); the
+    // settings themselves are only returned by that method.
+    public class McpAssetGetResult { public McpAssetMetadata Asset; public bool ImportSettingsAvailable; public string[] Warnings; }
     public class McpAssetDependency { public string FromId; public McpAssetDto Asset; public int Depth; public bool Cycle; }
     public class McpAssetDependenciesResult { public McpAssetDto Root; public McpAssetDependency[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
     public class McpAssetReference { public McpAssetDto Asset; public string Kind; }
@@ -171,13 +174,17 @@ namespace Game.MCP
     // key/scalar entries with exact C# option field names (never anonymous
     // types: FlaxEngine.Json drops anonymous-type properties to "{}", so
     // every nested shape is an explicit named DTO). Only texture, model, and
-    // audio binary assets are supported.
+    // audio binary assets are supported: exactly FlaxEngine.Texture,
+    // FlaxEngine.Model, FlaxEngine.SkinnedModel, and FlaxEngine.AudioClip.
+    // In a set result WouldChange/Before/After are null when no preview
+    // exists (an adopted operation that failed before it was computed), and
+    // Adopted marks a result replayed for an already-known OperationId.
     public class McpImportSettingsValue { public bool? Boolean; public long? Integer; public double? Number; public string Text; }
     public class McpImportSettingsEntry { public string Key; public McpImportSettingsValue Value; }
     public class McpAssetImportSettingsGet { public string AssetId; public string Path; }
     public class McpAssetImportSettingsResult { public McpAssetMetadata Asset; public string Type; public bool Restored; public McpImportSettingsEntry[] Settings; }
     public class McpAssetImportSettingsSet { public string OperationId; public string IdempotencyKey; public string AssetId; public string Path; public McpImportSettingsEntry[] Settings; public bool DryRun; public string[] AllowedImportRoots; public long MaxSourceBytes; }
-    public class McpAssetImportSettingsSetResult { public McpAssetOperation Operation; public bool WouldChange; public McpAssetImportSettingsResult Before; public McpAssetImportSettingsResult After; }
+    public class McpAssetImportSettingsSetResult { public McpAssetOperation Operation; public bool? WouldChange; public McpAssetImportSettingsResult Before; public McpAssetImportSettingsResult After; public bool Adopted; }
     // v10 asset organization stays intentionally narrow: each request selects a
     // registry asset, provides a Content-relative existing folder and/or a
     // filename-without-extension, and invokes one public Flax Content API.
@@ -481,6 +488,10 @@ namespace Game.MCP
         // Internal result-path to operation mapping for ContentImporting's worker
         // completion event. Full paths never leave the bridge response DTO.
         private readonly Dictionary<string, string> _pendingReimportsByOutputPath = new Dictionary<string, string>();
+        // The preview (WouldChange/Before/After) each asset.set_import_settings
+        // operation returned, so a retry that adopts the OperationId replays
+        // the real result. Entries live exactly as long as the operation record.
+        private readonly Dictionary<string, McpAssetImportSettingsSetResult> _assetImportSettingsResults = new Dictionary<string, McpAssetImportSettingsSetResult>();
         private readonly Dictionary<string, McpOperation> _operations = new Dictionary<string, McpOperation>();
         // Only metadata necessary for a bounded result projection is retained.
         // The persisted generic operation remains the durable source of truth.
@@ -840,6 +851,7 @@ namespace Game.MCP
             return new McpAssetGetResult
             {
                 Asset = AssetMetadata(record),
+                ImportSettingsAvailable = ImportSettingsKindForType(record.Info.TypeName) != null,
                 Warnings = AssetMetadataWarnings(),
             };
         }
@@ -1313,14 +1325,7 @@ namespace Game.MCP
                 // as a synchronous success signal.
                 var item = FEditor.Instance.ContentDatabase.FindAsset(record.Id) as BinaryAssetItem;
                 if (item == null) throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not available to the Editor content database.");
-                lock (_stateLock)
-                {
-                    var itemPath = Path.IsPathRooted(item.Path) ? item.Path : Path.Combine(Globals.ProjectFolder, item.Path);
-                    _pendingReimportsByOutputPath[Path.GetFullPath(itemPath)] = operation.OperationId;
-                    operation.Phase = "running";
-                    operation.Progress = 0.0f;
-                }
-                FEditor.Instance.ContentImporting.Reimport(item, BuildModelReimportSettings(item, request.ModelImportType), true);
+                QueueAssetReimport(operation, item, () => FEditor.Instance.ContentImporting.Reimport(item, BuildModelReimportSettings(item, request.ModelImportType), true));
                 return CopyAssetImportOperation(operation);
             }
             catch (McpProtocolException ex)
@@ -1335,11 +1340,56 @@ namespace Game.MCP
             }
         }
 
+        // ContentImportingModule.Reimport(item, settings, skipSettingsDialog:true)
+        // only adds a request, and returns without adding one when
+        // item.GetImportPath fails (its own 100 ms Content.Load) or the import
+        // path no longer exists; ImportFileEnd then never fires. So the same
+        // two public checks run here first and the operation is marked
+        // "running" only when they pass, and a Reimport that throws takes its
+        // pending entry with it, so a later manual reimport of the same asset
+        // cannot complete this operation.
+        private void QueueAssetReimport(McpAssetOperation operation, BinaryAssetItem item, Action reimport)
+        {
+            bool queueable;
+            try
+            {
+                string engineImportPath;
+                queueable = !item.GetImportPath(out engineImportPath) && File.Exists(engineImportPath);
+            }
+            catch { queueable = false; }
+            if (!queueable)
+                throw new McpProtocolException("IMPORT_FAILED", "Flax Editor would not queue this reimport: the asset's import source metadata is not loadable or its source file no longer exists.");
+            var itemPath = Path.IsPathRooted(item.Path) ? item.Path : Path.Combine(Globals.ProjectFolder, item.Path);
+            var output = Path.GetFullPath(itemPath);
+            lock (_stateLock)
+            {
+                _pendingReimportsByOutputPath[output] = operation.OperationId;
+                operation.Phase = "running";
+                operation.Progress = 0.0f;
+            }
+            try { reimport(); }
+            catch
+            {
+                lock (_stateLock)
+                {
+                    string pendingOperationId;
+                    if (_pendingReimportsByOutputPath.TryGetValue(output, out pendingOperationId) && string.Equals(pendingOperationId, operation.OperationId, StringComparison.Ordinal))
+                        _pendingReimportsByOutputPath.Remove(output);
+                }
+                throw;
+            }
+        }
+
         private static object BuildModelReimportSettings(BinaryAssetItem item, string modelImportType)
         {
             if (string.IsNullOrWhiteSpace(modelImportType)) return null;
             var importSettings = new ModelImportSettings();
-            FEditor.TryRestoreImportOptions(ref importSettings.Settings, item.Path);
+            // The settings object replaces the importer's options wholesale
+            // (ModelImportEntry.TryOverrideSettings), so without the asset's
+            // own restored options every other field would silently become
+            // an engine default.
+            if (!FEditor.TryRestoreImportOptions(ref importSettings.Settings, item.Path))
+                throw new McpProtocolException("IMPORT_FAILED", "The asset's current model import options could not be restored (it has no model import metadata), so a ModelImportType override would reimport it with engine defaults for every other option. Nothing was reimported.");
             // Repair options persisted by an earlier zero-initialized import (Scale 0, clamped to 0.0001 by the importer / null rotation collapse the skeleton).
             if (!(importSettings.Settings.Scale >= 0.001f)) importSettings.Settings.Scale = 1.0f;
             if (importSettings.Settings.Rotation.LengthSquared < 0.5f) importSettings.Settings.Rotation = Quaternion.Identity;
@@ -1364,28 +1414,60 @@ namespace Game.MCP
 
         // Bridge v32 asset import-settings get/set. Reads restore the typed
         // Options via Editor.TryRestoreImportOptions and fall back to
-        // Options.Default (Restored:false); writes clone the current options,
+        // Options.Default (Restored:false); writes clone the restored options,
         // mutate the reviewed allowlist only, and apply through
         // ContentImporting.Reimport(item, settings, skipSettingsDialog:true)
         // on the shared "reimport" operation records, so
-        // asset.reimport_status polls settings writes. There is no dry-run
-        // validate-only import, no metadata write without reimport, and no
-        // direct conversion outside (re)import in the Flax 1.12 managed API.
+        // asset.reimport_status polls settings writes. A write is refused when
+        // the current options cannot be restored: the importer replaces its
+        // options wholesale with the object passed to Reimport
+        // (TextureImportEntry/ModelImportEntry/AudioImportEntry
+        // .TryOverrideSettings), so defaults would overwrite every option the
+        // caller did not name. There is no dry-run validate-only import, no
+        // metadata write without reimport, and no direct conversion outside
+        // (re)import in the Flax 1.12 managed API.
         private static object AssetImportSettingsFingerprintInput(McpAssetImportSettingsSet request)
         {
             if (request == null) return new { Missing = true };
             return new { request.AssetId, request.Path, request.Settings, request.DryRun, request.AllowedImportRoots, request.MaxSourceBytes };
         }
 
-        // The editor assembly's audio item subclass is internal (CS0122 if
-        // named), so audio is classified by registry type name while
-        // texture/model use the public BinaryAssetItem subclasses.
-        private static string ClassifyImportSettingsAsset(BinaryAssetItem item, McpAssetRecord record)
+        // Exact registry type names only. BinaryAssetProxy.ConstructItem builds
+        // a TextureAssetItem for every TextureBase (CubeTexture, SpriteAtlas,
+        // IESProfile), whose importers carry state this allowlist does not
+        // cover (atlas sprites, cube faces), so those types are refused.
+        private static string ImportSettingsKindForType(string typeName)
         {
-            if (item is TextureAssetItem) return "texture";
-            if (item is ModelItem || item is SkinnedModeItem) return "model";
-            if (record != null && string.Equals(record.Info.TypeName, "FlaxEngine.AudioClip", StringComparison.Ordinal)) return "audio";
-            throw new McpProtocolException("VALIDATION_FAILED", "Import settings are only supported for texture, model, and audio assets.");
+            if (string.Equals(typeName, "FlaxEngine.Texture", StringComparison.Ordinal)) return "texture";
+            if (string.Equals(typeName, "FlaxEngine.Model", StringComparison.Ordinal) || string.Equals(typeName, "FlaxEngine.SkinnedModel", StringComparison.Ordinal)) return "model";
+            if (string.Equals(typeName, "FlaxEngine.AudioClip", StringComparison.Ordinal)) return "audio";
+            return null;
+        }
+
+        // Runs on the registry record alone, before the editor item lookup,
+        // Content.Load, or any source check, so an unsupported asset always
+        // fails VALIDATION_FAILED.
+        private static string ClassifyImportSettingsAsset(McpAssetRecord record)
+        {
+            var typeName = record == null ? null : record.Info.TypeName;
+            var kind = ImportSettingsKindForType(typeName);
+            if (kind == null)
+                throw new McpProtocolException("VALIDATION_FAILED", "Import settings are only supported for texture, model, and audio assets (FlaxEngine.Texture, FlaxEngine.Model, FlaxEngine.SkinnedModel, FlaxEngine.AudioClip).", new { TypeName = typeName });
+            return kind;
+        }
+
+        // The editor assembly's audio item subclass is internal (CS0122 if
+        // named), so only texture/model are cross-checked against the public
+        // BinaryAssetItem subclasses the editor built for the asset.
+        private static BinaryAssetItem RequireImportSettingsItem(McpAssetRecord record, string kind)
+        {
+            var item = FEditor.Instance.ContentDatabase.FindAsset(record.Id) as BinaryAssetItem;
+            if (item == null) throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not available to the Editor content database.");
+            var matches = string.Equals(kind, "texture", StringComparison.Ordinal) ? item is TextureAssetItem
+                : string.Equals(kind, "model", StringComparison.Ordinal) ? (item is ModelItem || item is SkinnedModeItem)
+                : true;
+            if (!matches) throw new McpProtocolException("IMPORT_FAILED", "The Editor content database item does not match the asset's registry type.");
+            return item;
         }
 
         private static bool TryRestoreTextureSettings(BinaryAssetItem item, out TextureTool.Options options)
@@ -1485,64 +1567,109 @@ namespace Game.MCP
             };
         }
 
-        private static McpAssetImportSettingsResult ReadImportSettings(McpAssetRecord record, BinaryAssetItem item, string kind)
+        // One restore per request. The read projection, the mutated projection,
+        // and the settings object handed to Reimport all derive from the same
+        // restored Options value, so before/after can never come from two
+        // different restore outcomes. With changes == null this is the plain
+        // read; afterEntries and settingsObject are then null.
+        private static McpAssetImportSettingsResult BuildImportSettings(McpAssetRecord record, BinaryAssetItem item, string kind, McpImportSettingsEntry[] changes, out McpImportSettingsEntry[] afterEntries, out object settingsObject)
         {
+            afterEntries = null;
+            settingsObject = null;
+            bool restored;
+            McpImportSettingsEntry[] currentEntries;
             if (string.Equals(kind, "texture", StringComparison.Ordinal))
             {
                 TextureTool.Options options;
-                var restored = TryRestoreTextureSettings(item, out options);
-                return new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = "texture", Restored = restored, Settings = ProjectTextureSettings(options) };
+                restored = TryRestoreTextureSettings(item, out options);
+                currentEntries = ProjectTextureSettings(options);
+                if (changes != null)
+                {
+                    var wrapper = new TextureImportSettings();
+                    wrapper.Settings = MutateTextureSettings(options, changes);
+                    afterEntries = ProjectTextureSettings(wrapper.Settings);
+                    settingsObject = wrapper;
+                }
             }
-            if (string.Equals(kind, "model", StringComparison.Ordinal))
+            else if (string.Equals(kind, "model", StringComparison.Ordinal))
             {
                 ModelTool.Options options;
-                var restored = TryRestoreModelSettings(item, out options);
-                return new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = "model", Restored = restored, Settings = ProjectModelSettings(options) };
+                restored = TryRestoreModelSettings(item, out options);
+                currentEntries = ProjectModelSettings(options);
+                if (changes != null)
+                {
+                    var wrapper = new ModelImportSettings();
+                    wrapper.Settings = MutateModelSettings(options, changes);
+                    afterEntries = ProjectModelSettings(wrapper.Settings);
+                    settingsObject = wrapper;
+                }
             }
-            if (string.Equals(kind, "audio", StringComparison.Ordinal))
+            else if (string.Equals(kind, "audio", StringComparison.Ordinal))
             {
                 AudioTool.Options options;
-                var restored = TryRestoreAudioSettings(item, out options);
-                return new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = "audio", Restored = restored, Settings = ProjectAudioSettings(options) };
+                restored = TryRestoreAudioSettings(item, out options);
+                currentEntries = ProjectAudioSettings(options);
+                if (changes != null)
+                {
+                    var wrapper = new AudioImportSettings();
+                    wrapper.Settings = MutateAudioSettings(options, changes);
+                    afterEntries = ProjectAudioSettings(wrapper.Settings);
+                    settingsObject = wrapper;
+                }
             }
-            throw new McpProtocolException("VALIDATION_FAILED", "Import settings are only supported for texture, model, and audio assets.");
+            else throw new McpProtocolException("VALIDATION_FAILED", "Import settings are only supported for texture, model, and audio assets.");
+            return new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = kind, Restored = restored, Settings = currentEntries };
         }
 
         private McpAssetImportSettingsResult GetAssetImportSettings(McpAssetImportSettingsGet request)
         {
             if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset import-settings parameters are required.");
             var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, BuildAssetRegistry());
-            var item = FEditor.Instance.ContentDatabase.FindAsset(record.Id) as BinaryAssetItem;
-            if (item == null) throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not a binary asset with restorable import options.");
-            return ReadImportSettings(record, item, ClassifyImportSettingsAsset(item, record));
+            var kind = ClassifyImportSettingsAsset(record);
+            var item = RequireImportSettingsItem(record, kind);
+            McpImportSettingsEntry[] unusedEntries;
+            object unusedSettings;
+            return BuildImportSettings(record, item, kind, null, out unusedEntries, out unusedSettings);
+        }
+
+        // Every entry carries exactly one scalar. A float setting also
+        // accepts an Integer-typed value (JSON clients send 1 for 1.0).
+        private static int ImportSettingScalarCount(McpImportSettingsValue value)
+        {
+            if (value == null) return 0;
+            return (value.Boolean.HasValue ? 1 : 0) + (value.Integer.HasValue ? 1 : 0) + (value.Number.HasValue ? 1 : 0) + (value.Text != null ? 1 : 0);
         }
 
         private static bool RequireSettingBool(McpImportSettingsEntry entry)
         {
-            if (entry.Value == null || !entry.Value.Boolean.HasValue || entry.Value.Integer.HasValue || entry.Value.Number.HasValue || entry.Value.Text != null)
+            if (ImportSettingScalarCount(entry.Value) != 1 || !entry.Value.Boolean.HasValue)
                 throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be a boolean.");
             return entry.Value.Boolean.Value;
         }
 
-        private static long RequireSettingInt(McpImportSettingsEntry entry)
+        private static int RequireSettingInt(McpImportSettingsEntry entry, int min, int max, string rangeMessage)
         {
-            if (entry.Value == null || !entry.Value.Integer.HasValue || entry.Value.Boolean.HasValue || entry.Value.Number.HasValue || entry.Value.Text != null)
+            if (ImportSettingScalarCount(entry.Value) != 1 || !entry.Value.Integer.HasValue)
                 throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be an integer.");
-            return entry.Value.Integer.Value;
+            var value = entry.Value.Integer.Value;
+            if (value < min || value > max) throw new McpProtocolException("VALIDATION_FAILED", rangeMessage);
+            return (int)value;
         }
 
-        private static double RequireSettingFloat(McpImportSettingsEntry entry)
+        // The range test is a negated conjunction so NaN (which a plain
+        // "value < min || value > max" lets through) and infinities fail it.
+        private static float RequireSettingFloat(McpImportSettingsEntry entry, double min, double max, string rangeMessage)
         {
-            if (entry.Value == null || entry.Value.Boolean.HasValue || entry.Value.Text != null)
+            if (ImportSettingScalarCount(entry.Value) != 1 || (!entry.Value.Number.HasValue && !entry.Value.Integer.HasValue))
                 throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be a number.");
-            if (entry.Value.Number.HasValue) return entry.Value.Number.Value;
-            if (entry.Value.Integer.HasValue) return entry.Value.Integer.Value;
-            throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be a number.");
+            var value = entry.Value.Number.HasValue ? entry.Value.Number.Value : (double)entry.Value.Integer.Value;
+            if (!(value >= min && value <= max)) throw new McpProtocolException("VALIDATION_FAILED", rangeMessage);
+            return (float)value;
         }
 
         private static string RequireSettingEnum(McpImportSettingsEntry entry)
         {
-            if (entry.Value == null || entry.Value.Boolean.HasValue || entry.Value.Integer.HasValue || entry.Value.Number.HasValue || entry.Value.Text == null)
+            if (ImportSettingScalarCount(entry.Value) != 1 || entry.Value.Text == null)
                 throw new McpProtocolException("VALIDATION_FAILED", "Import setting '" + entry.Key + "' must be a string.");
             return entry.Value.Text;
         }
@@ -1563,31 +1690,29 @@ namespace Game.MCP
             throw new McpProtocolException("VALIDATION_FAILED", "BitDepth must be _8, _16, _24, or _32.");
         }
 
+        private static void RequireUniqueSettingKey(McpImportSettingsEntry entry, HashSet<string> seen)
+        {
+            if (entry == null || string.IsNullOrEmpty(entry.Key) || !seen.Add(entry.Key))
+                throw new McpProtocolException("VALIDATION_FAILED", "Duplicate or missing import setting key.");
+        }
+
+        // Numeric ranges are the engine's own Limit attributes
+        // (TextureTool.h / ModelTool.h / AudioTool.h, Flax 1.12) except where
+        // noted: texture Scale keeps the engine minimum 0.0001 but a tighter
+        // bridge maximum of 8 (engine: 1000), and MaxSize/model Scale carry no
+        // engine Limit, so their bounds are bridge policy.
         private static TextureTool.Options MutateTextureSettings(TextureTool.Options current, McpImportSettingsEntry[] entries)
         {
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var entry in entries)
             {
-                if (entry == null || string.IsNullOrEmpty(entry.Key) || !seen.Add(entry.Key))
-                    throw new McpProtocolException("VALIDATION_FAILED", "Duplicate or missing import setting key.");
+                RequireUniqueSettingKey(entry, seen);
                 switch (entry.Key)
                 {
                     case "sRGB": current.sRGB = RequireSettingBool(entry); break;
                     case "Compress": current.Compress = RequireSettingBool(entry); break;
-                    case "MaxSize":
-                        {
-                            var maxSize = RequireSettingInt(entry);
-                            if (maxSize < 1 || maxSize > 16384) throw new McpProtocolException("VALIDATION_FAILED", "MaxSize must be between 1 and 16384.");
-                            current.MaxSize = (int)maxSize;
-                            break;
-                        }
-                    case "Scale":
-                        {
-                            var scale = RequireSettingFloat(entry);
-                            if (!(scale > 0.0) || scale > 8.0) throw new McpProtocolException("VALIDATION_FAILED", "Scale must be greater than 0 and at most 8.");
-                            current.Scale = (float)scale;
-                            break;
-                        }
+                    case "MaxSize": current.MaxSize = RequireSettingInt(entry, 1, 16384, "MaxSize must be between 1 and 16384."); break;
+                    case "Scale": current.Scale = RequireSettingFloat(entry, 0.0001, 8.0, "Scale must be between 0.0001 and 8."); break;
                     case "GenerateMipMaps": current.GenerateMipMaps = RequireSettingBool(entry); break;
                     case "NeverStream": current.NeverStream = RequireSettingBool(entry); break;
                     default:
@@ -1602,60 +1727,32 @@ namespace Game.MCP
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var entry in entries)
             {
-                if (entry == null || string.IsNullOrEmpty(entry.Key) || !seen.Add(entry.Key))
-                    throw new McpProtocolException("VALIDATION_FAILED", "Duplicate or missing import setting key.");
+                RequireUniqueSettingKey(entry, seen);
                 switch (entry.Key)
                 {
-                    case "Scale":
-                        {
-                            var scale = RequireSettingFloat(entry);
-                            if (scale < 0.001 || scale > 1000.0) throw new McpProtocolException("VALIDATION_FAILED", "Scale must be between 0.001 and 1000.");
-                            current.Scale = (float)scale;
-                            break;
-                        }
+                    case "Scale": current.Scale = RequireSettingFloat(entry, 0.001, 1000.0, "Scale must be between 0.001 and 1000."); break;
                     case "CalculateNormals": current.CalculateNormals = RequireSettingBool(entry); break;
-                    case "SmoothingNormalsAngle":
-                        {
-                            var angle = RequireSettingFloat(entry);
-                            if (angle < 0.0 || angle > 180.0) throw new McpProtocolException("VALIDATION_FAILED", "SmoothingNormalsAngle must be between 0 and 180.");
-                            current.SmoothingNormalsAngle = (float)angle;
-                            break;
-                        }
+                    // ModelTool.h: SmoothingNormalsAngle Limit(0, 175), SmoothingTangentsAngle Limit(0, 45).
+                    case "SmoothingNormalsAngle": current.SmoothingNormalsAngle = RequireSettingFloat(entry, 0.0, 175.0, "SmoothingNormalsAngle must be between 0 and 175."); break;
                     case "FlipNormals": current.FlipNormals = RequireSettingBool(entry); break;
                     case "CalculateTangents": current.CalculateTangents = RequireSettingBool(entry); break;
-                    case "SmoothingTangentsAngle":
-                        {
-                            var angle = RequireSettingFloat(entry);
-                            if (angle < 0.0 || angle > 180.0) throw new McpProtocolException("VALIDATION_FAILED", "SmoothingTangentsAngle must be between 0 and 180.");
-                            current.SmoothingTangentsAngle = (float)angle;
-                            break;
-                        }
+                    case "SmoothingTangentsAngle": current.SmoothingTangentsAngle = RequireSettingFloat(entry, 0.0, 45.0, "SmoothingTangentsAngle must be between 0 and 45."); break;
                     case "ReverseWindingOrder": current.ReverseWindingOrder = RequireSettingBool(entry); break;
                     case "OptimizeMeshes": current.OptimizeMeshes = RequireSettingBool(entry); break;
                     case "MergeMeshes": current.MergeMeshes = RequireSettingBool(entry); break;
                     case "ImportLODs": current.ImportLODs = RequireSettingBool(entry); break;
                     case "ImportVertexColors": current.ImportVertexColors = RequireSettingBool(entry); break;
-                    case "BaseLOD":
-                        {
-                            var baseLod = RequireSettingInt(entry);
-                            if (baseLod < 0 || baseLod > 16) throw new McpProtocolException("VALIDATION_FAILED", "BaseLOD must be between 0 and 16.");
-                            current.BaseLOD = (int)baseLod;
-                            break;
-                        }
-                    case "LODCount":
-                        {
-                            var lodCount = RequireSettingInt(entry);
-                            if (lodCount < 1 || lodCount > 16) throw new McpProtocolException("VALIDATION_FAILED", "LODCount must be between 1 and 16.");
-                            current.LODCount = (int)lodCount;
-                            break;
-                        }
+                    // ModelTool.h: BaseLOD Limit(0, 5), LODCount Limit(1, 6); MODEL_MAX_LODS is 6.
+                    case "BaseLOD": current.BaseLOD = RequireSettingInt(entry, 0, 5, "BaseLOD must be between 0 and 5."); break;
+                    case "LODCount": current.LODCount = RequireSettingInt(entry, 1, 6, "LODCount must be between 1 and 6."); break;
                     default:
                         throw new McpProtocolException("VALIDATION_FAILED", "Unknown model import setting '" + entry.Key + "'. Allowed: Scale, CalculateNormals, SmoothingNormalsAngle, FlipNormals, CalculateTangents, SmoothingTangentsAngle, ReverseWindingOrder, OptimizeMeshes, MergeMeshes, ImportLODs, ImportVertexColors, BaseLOD, LODCount.");
                 }
             }
-            // Repair options that would collapse the import the way the
-            // model-type reimport path already guards (see
-            // BuildModelReimportSettings).
+            // Repair restored options that would collapse the import the way
+            // the model-type reimport path already guards (see
+            // BuildModelReimportSettings). A caller-supplied Scale never
+            // reaches this: it is range-checked above and NaN is rejected.
             if (!(current.Scale >= 0.001f)) current.Scale = 1.0f;
             if (current.Rotation.LengthSquared < 0.5f) current.Rotation = Quaternion.Identity;
             return current;
@@ -1666,18 +1763,11 @@ namespace Game.MCP
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var entry in entries)
             {
-                if (entry == null || string.IsNullOrEmpty(entry.Key) || !seen.Add(entry.Key))
-                    throw new McpProtocolException("VALIDATION_FAILED", "Duplicate or missing import setting key.");
+                RequireUniqueSettingKey(entry, seen);
                 switch (entry.Key)
                 {
                     case "Format": current.Format = ParseAudioFormat(RequireSettingEnum(entry)); break;
-                    case "Quality":
-                        {
-                            var quality = RequireSettingFloat(entry);
-                            if (quality < 0.0 || quality > 1.0) throw new McpProtocolException("VALIDATION_FAILED", "Quality must be between 0 and 1.");
-                            current.Quality = (float)quality;
-                            break;
-                        }
+                    case "Quality": current.Quality = RequireSettingFloat(entry, 0.0, 1.0, "Quality must be between 0 and 1."); break;
                     case "DisableStreaming": current.DisableStreaming = RequireSettingBool(entry); break;
                     case "Is3D": current.Is3D = RequireSettingBool(entry); break;
                     case "BitDepth": current.BitDepth = ParseAudioBitDepth(RequireSettingEnum(entry)); break;
@@ -1704,6 +1794,32 @@ namespace Game.MCP
             return false;
         }
 
+        private McpAssetImportSettingsSetResult RememberImportSettingsResult(McpAssetOperation operation, bool wouldChange, McpAssetImportSettingsResult before, McpAssetImportSettingsResult after)
+        {
+            lock (_stateLock)
+                _assetImportSettingsResults[operation.OperationId] = new McpAssetImportSettingsSetResult { WouldChange = wouldChange, Before = before, After = after };
+            return new McpAssetImportSettingsSetResult { Operation = CopyAssetImportOperation(operation), WouldChange = wouldChange, Before = before, After = after };
+        }
+
+        // A retry that adopts a known OperationId replays what the first call
+        // computed, together with the operation's current phase. When the
+        // first call failed before it had a preview, WouldChange/Before/After
+        // stay null (unknown), never a "no change" answer; the caller reads
+        // the failure from Operation.Phase/ErrorCode.
+        private McpAssetImportSettingsSetResult AdoptedImportSettingsResult(McpAssetOperation operation)
+        {
+            McpAssetImportSettingsSetResult first;
+            lock (_stateLock) _assetImportSettingsResults.TryGetValue(operation.OperationId, out first);
+            return new McpAssetImportSettingsSetResult
+            {
+                Operation = operation,
+                Adopted = true,
+                WouldChange = first == null ? null : first.WouldChange,
+                Before = first == null ? null : first.Before,
+                After = first == null ? null : first.After,
+            };
+        }
+
         private McpAssetImportSettingsSetResult SetAssetImportSettings(McpAssetImportSettingsSet request)
         {
             if (request == null) throw new McpProtocolException("INVALID_REQUEST", "Asset import-settings parameters are required.");
@@ -1712,13 +1828,23 @@ namespace Game.MCP
             var fingerprint = Fingerprint(JsonSerializer.Serialize(PlainForJson(AssetImportSettingsFingerprintInput(request)), false));
             bool adopted;
             var operation = BeginAssetImportOperation(request.OperationId, "reimport", fingerprint, request.DryRun, out adopted);
-            if (adopted) return new McpAssetImportSettingsSetResult { Operation = operation, WouldChange = false, Before = null, After = null };
+            if (adopted) return AdoptedImportSettingsResult(operation);
             try
             {
                 EnsureAssetImportEditorReady();
                 if (request.AllowedImportRoots == null || request.AllowedImportRoots.Length == 0)
                     throw new McpProtocolException("IMPORT_SOURCE_NOT_ALLOWED", "Asset import-settings changes require at least one configured import root.");
                 var record = ResolveAssetRecord(new McpAssetGet { AssetId = request.AssetId, Path = request.Path }, BuildAssetRegistry());
+                // Classify the asset and validate the requested values before
+                // Content.Load or any source check, so an unsupported asset or
+                // a bad value always fails VALIDATION_FAILED.
+                var kind = ClassifyImportSettingsAsset(record);
+                var item = RequireImportSettingsItem(record, kind);
+                object settingsObject;
+                McpImportSettingsEntry[] afterEntries;
+                var before = BuildImportSettings(record, item, kind, request.Settings, out afterEntries, out settingsObject);
+                if (!before.Restored)
+                    throw new McpProtocolException("IMPORT_FAILED", "The asset's current import options could not be restored from its import metadata, so a settings write would replace every option that was not requested with an engine default. Nothing was changed; reimport the asset from the Flax Editor first.");
                 Asset loaded = null;
                 try { loaded = Content.Load(record.Id, AssetLoadTimeoutMs); } catch { }
                 var binary = loaded as BinaryAsset;
@@ -1732,42 +1858,6 @@ namespace Game.MCP
                 string outputExtension;
                 if (!FEditor.CanImport(Path.GetExtension(canonicalSource), out outputExtension))
                     throw new McpProtocolException("IMPORT_FAILED", "Flax reports the asset source extension is not importable.");
-                var item = FEditor.Instance.ContentDatabase.FindAsset(record.Id) as BinaryAssetItem;
-                if (item == null) throw new McpProtocolException("IMPORT_FAILED", "The selected Content asset is not available to the Editor content database.");
-                var kind = ClassifyImportSettingsAsset(item, record);
-                var before = ReadImportSettings(record, item, kind);
-                object settingsObject;
-                McpImportSettingsEntry[] afterEntries;
-                if (string.Equals(kind, "texture", StringComparison.Ordinal))
-                {
-                    TextureTool.Options current;
-                    TryRestoreTextureSettings(item, out current);
-                    current = MutateTextureSettings(current, request.Settings);
-                    afterEntries = ProjectTextureSettings(current);
-                    var wrapper = new TextureImportSettings();
-                    wrapper.Settings = current;
-                    settingsObject = wrapper;
-                }
-                else if (string.Equals(kind, "model", StringComparison.Ordinal))
-                {
-                    ModelTool.Options current;
-                    TryRestoreModelSettings(item, out current);
-                    current = MutateModelSettings(current, request.Settings);
-                    afterEntries = ProjectModelSettings(current);
-                    var wrapper = new ModelImportSettings();
-                    wrapper.Settings = current;
-                    settingsObject = wrapper;
-                }
-                else
-                {
-                    AudioTool.Options current;
-                    TryRestoreAudioSettings(item, out current);
-                    current = MutateAudioSettings(current, request.Settings);
-                    afterEntries = ProjectAudioSettings(current);
-                    var wrapper = new AudioImportSettings();
-                    wrapper.Settings = current;
-                    settingsObject = wrapper;
-                }
                 var after = new McpAssetImportSettingsResult { Asset = AssetMetadata(record), Type = kind, Restored = before.Restored, Settings = afterEntries };
                 operation.ResultPath = record.Path;
                 operation.ResultAssetId = record.Id.ToString("N");
@@ -1775,25 +1865,20 @@ namespace Game.MCP
                 if (request.DryRun)
                 {
                     FinishAssetImportOperation(operation, "dry_run", null, null);
-                    return new McpAssetImportSettingsSetResult { Operation = CopyAssetImportOperation(operation), WouldChange = wouldChange, Before = before, After = after };
+                    return RememberImportSettingsResult(operation, wouldChange, before, after);
                 }
                 if (!wouldChange)
                 {
+                    // Nothing to write: the operation finishes "succeeded"
+                    // with WouldChange:false and no reimport is queued.
                     FinishAssetImportOperation(operation, "succeeded", null, null);
-                    return new McpAssetImportSettingsSetResult { Operation = CopyAssetImportOperation(operation), WouldChange = false, Before = before, After = after };
+                    return RememberImportSettingsResult(operation, false, before, after);
                 }
                 // The write shares the "reimport" operation records and the
                 // pending-reimport completion map, so asset.reimport_status
                 // polls settings writes like ordinary reimports.
-                lock (_stateLock)
-                {
-                    var itemPath = Path.IsPathRooted(item.Path) ? item.Path : Path.Combine(Globals.ProjectFolder, item.Path);
-                    _pendingReimportsByOutputPath[Path.GetFullPath(itemPath)] = operation.OperationId;
-                    operation.Phase = "running";
-                    operation.Progress = 0.0f;
-                }
-                FEditor.Instance.ContentImporting.Reimport(item, settingsObject, true);
-                return new McpAssetImportSettingsSetResult { Operation = CopyAssetImportOperation(operation), WouldChange = true, Before = before, After = after };
+                QueueAssetReimport(operation, item, () => FEditor.Instance.ContentImporting.Reimport(item, settingsObject, true));
+                return RememberImportSettingsResult(operation, true, before, after);
             }
             catch (McpProtocolException ex)
             {
@@ -5207,6 +5292,14 @@ namespace Game.MCP
                     _assetImportOperations.Remove(oldest);
                     _assetImportOperationFingerprints.Remove(oldest);
                 }
+                // Stored import-settings previews are dropped together with
+                // their operation record (TTL expiry above or eviction here).
+                if (_assetImportSettingsResults.Count > 0)
+                {
+                    var orphaned = new List<string>();
+                    foreach (var pair in _assetImportSettingsResults) if (!_assetImportOperations.ContainsKey(pair.Key)) orphaned.Add(pair.Key);
+                    foreach (var key in orphaned) _assetImportSettingsResults.Remove(key);
+                }
                 var created = new McpAssetOperation { OperationId = operationId, Kind = kind, Phase = "requested", Progress = 0.0f, StartedUnixMs = now, DryRun = dryRun };
                 _assetImportOperations[operationId] = created;
                 _assetImportOperationFingerprints[operationId] = fingerprint;
@@ -5559,7 +5652,7 @@ namespace Game.MCP
 
         private static string[] AssetMetadataWarnings()
         {
-            return new[] { "Flax 1.12 public Content metadata exposes only ID, path, type, extension, and folder. File size, modified time, import status, and importer settings are intentionally omitted." };
+            return new[] { "Flax 1.12 public Content metadata exposes only ID, path, type, extension, and folder. File size, modified time, and import status are intentionally omitted. Importer settings are not part of this result: read them with asset.get_import_settings, which supports texture, model, and audio assets only." };
         }
 
         private static string[] AssetGraphWarnings()
@@ -7928,8 +8021,11 @@ namespace Game.MCP
             // setters below. Every other name (and a dry-run preview of the
             // four actor aliases) goes through the generic editor-visible
             // member path.
+            // The StaticModel.Model alias resolves project assets only, so
+            // an engine-content reference takes the generic path as well.
             var isScriptEnabled = string.Equals(q.Property, "Script.Enabled", StringComparison.Ordinal);
-            if (!IsAllowedActorProperty(q.Property) || (q.DryRun && !isScriptEnabled))
+            var isEngineModel = string.Equals(q.Property, "StaticModel.Model", StringComparison.Ordinal) && IsEngineAssetReference(q.Text);
+            if (!IsAllowedActorProperty(q.Property) || (q.DryRun && !isScriptEnabled) || isEngineModel)
                 return SetActorMember(q);
             if (q.DryRun)
                 throw new McpProtocolException("VALIDATION_FAILED", "Property 'Script.Enabled' has no dry-run preview; use script_instance_update with dry_run.");
@@ -8216,6 +8312,8 @@ namespace Game.MCP
             if (type == typeof(FMargin)) return "margin";
             if (type == typeof(LocalizedString)) return "localized_string";
             if (type == typeof(LayersMask)) return "layers_mask";
+            if (IsBrushType(type)) return "brush";
+            if (type == typeof(FontReference)) return "font";
             if (IsJsonAssetReferenceType(type)) return "json_asset";
             if (typeof(Asset).IsAssignableFrom(type)) return "asset";
             if (typeof(Actor).IsAssignableFrom(type)) return "actor";
@@ -8342,12 +8440,136 @@ namespace Game.MCP
             return value;
         }
 
+        // Engine content references for the member path.
+        //
+        // A reference resolves against the project Content registry first and
+        // then against engine content. Engine assets are addressed by GUID or
+        // as "engine:<internal path>", where the internal path is what
+        // Content.LoadAsyncInternal takes: relative to the engine Content
+        // folder, without the .flax extension (engine:Editor/Primitives/Cube).
+        // Either form must name an asset the engine asset registry lists under
+        // Globals.EngineContentFolder: no file path is composed from caller
+        // input, and results carry the engine: form, never an absolute path.
+        // Assets of other referenced projects (plugins) are not resolvable.
+        private const string EngineAssetPrefix = "engine:";
+        private const int MaxEngineInternalPathChars = 260;
+        private const string AssetReferenceShape = "an asset GUID, a Content/ path, an engine:<path> reference (for example engine:Editor/Primitives/Cube), or an empty string to clear.";
+
+        private static string EngineContentRoot()
+        {
+            try { return Path.GetFullPath(Globals.EngineContentFolder); }
+            catch { return null; }
+        }
+
+        private static string EngineInternalAssetPath(string absolutePath, string engineRoot)
+        {
+            if (string.IsNullOrEmpty(absolutePath) || string.IsNullOrEmpty(engineRoot) || !Path.IsPathRooted(absolutePath)) return null;
+            string relative;
+            try { relative = Path.GetRelativePath(engineRoot, Path.GetFullPath(absolutePath)).Replace('\\', '/'); }
+            catch { return null; }
+            if (relative.Length <= 5 || Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith("../", StringComparison.Ordinal)) return null;
+            if (!relative.EndsWith(".flax", StringComparison.OrdinalIgnoreCase)) return null;
+            return relative.Substring(0, relative.Length - 5);
+        }
+
+        private static McpAssetRecord EngineAssetRecord(Guid id, AssetInfo info, string engineRoot)
+        {
+            var internalPath = EngineInternalAssetPath(info.Path, engineRoot);
+            // A project that is the engine project itself lists the same files
+            // as project Content; those keep their Content/ form.
+            if (internalPath == null || AssetProjectRelativePath(info.Path) != null) return null;
+            return new McpAssetRecord { Id = id, Info = info, Path = EngineAssetPrefix + internalPath, Extension = ".flax", Folder = null };
+        }
+
+        private static McpAssetRecord FindEngineAssetRecord(Guid id)
+        {
+            AssetInfo info;
+            try { if (id == Guid.Empty || !Content.GetAssetInfo(id, out info)) return null; }
+            catch { return null; }
+            return EngineAssetRecord(id, info, EngineContentRoot());
+        }
+
+        private static McpAssetRecord FindEngineAssetRecord(string internalPath)
+        {
+            var engineRoot = EngineContentRoot();
+            if (engineRoot == null) return null;
+            var wanted = EngineAssetPrefix + internalPath;
+            var ids = Content.GetAllAssets() ?? new Guid[0];
+            foreach (var id in ids)
+            {
+                AssetInfo info;
+                if (id == Guid.Empty || !Content.GetAssetInfo(id, out info)) continue;
+                var record = EngineAssetRecord(id, info, engineRoot);
+                if (record != null && string.Equals(record.Path, wanted, StringComparison.OrdinalIgnoreCase)) return record;
+            }
+            return null;
+        }
+
+        private static string ValidateEngineInternalPath(string value)
+        {
+            const string shape = "Engine asset references must be \"engine:<path>\" with a '/'-separated path relative to the engine Content folder and no file extension (for example engine:Editor/Primitives/Cube).";
+            if (string.IsNullOrEmpty(value) || value.Length > MaxEngineInternalPathChars || value.IndexOf('\\') >= 0 || value.IndexOf(':') >= 0
+                || value.EndsWith(".flax", StringComparison.OrdinalIgnoreCase))
+                throw new McpProtocolException("VALIDATION_FAILED", shape);
+            foreach (var c in value)
+                if (char.IsControl(c)) throw new McpProtocolException("VALIDATION_FAILED", shape);
+            foreach (var part in value.Split('/'))
+                if (part.Length == 0 || part == "." || part == "..") throw new McpProtocolException("VALIDATION_FAILED", shape);
+            return value;
+        }
+
+        // The reference an agent can paste back for an asset: its Content/
+        // path, its engine: path, or null when the asset is in neither place
+        // (virtual assets, assets of other referenced projects).
+        private static string MemberAssetReferencePath(Guid id)
+        {
+            AssetInfo info;
+            try { if (id == Guid.Empty || !Content.GetAssetInfo(id, out info)) return null; }
+            catch { return null; }
+            var project = AssetProjectRelativePath(info.Path);
+            if (project != null) return project;
+            var internalPath = EngineInternalAssetPath(info.Path, EngineContentRoot());
+            return internalPath == null ? null : EngineAssetPrefix + internalPath;
+        }
+
+        private static bool IsEngineAssetReference(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            if (text.StartsWith(EngineAssetPrefix, StringComparison.Ordinal)) return true;
+            Guid id;
+            return Guid.TryParseExact(text, "N", out id) && FindEngineAssetRecord(id) != null;
+        }
+
+        private static McpAssetRecord ResolveMemberAssetRecord(string text, string need)
+        {
+            if (text.StartsWith(EngineAssetPrefix, StringComparison.Ordinal))
+            {
+                var internalPath = ValidateEngineInternalPath(text.Substring(EngineAssetPrefix.Length));
+                var engine = FindEngineAssetRecord(internalPath);
+                if (engine == null)
+                    throw new McpProtocolException("ASSET_NOT_FOUND", "Asset was not found in the engine content registry: " + EngineAssetPrefix + internalPath);
+                return engine;
+            }
+            if (IsGuidN(text))
+            {
+                Guid id;
+                Guid.TryParseExact(text, "N", out id);
+                foreach (var record in BuildAssetRegistry()) if (record.Id == id) return record;
+                var engine = FindEngineAssetRecord(id);
+                if (engine == null)
+                    throw new McpProtocolException("ASSET_NOT_FOUND", "Asset was not found in the project Content registry or the engine content registry.");
+                return engine;
+            }
+            if (!text.Replace('\\', '/').StartsWith("Content/", StringComparison.Ordinal))
+                throw new McpProtocolException("VALIDATION_FAILED", need + AssetReferenceShape);
+            return ResolveAssetRecord(new McpAssetGet { Path = text }, BuildAssetRegistry());
+        }
+
         private static Asset CoerceAssetReference(Type assetType, string text, string need)
         {
-            if (text == null) throw new McpProtocolException("VALIDATION_FAILED", need + "an asset GUID, a Content/ path, or an empty string to clear.");
+            if (text == null) throw new McpProtocolException("VALIDATION_FAILED", need + AssetReferenceShape);
             if (text.Length == 0) return null;
-            var byId = IsGuidN(text);
-            var record = ResolveAssetRecord(new McpAssetGet { AssetId = byId ? text : null, Path = byId ? null : text }, BuildAssetRegistry());
+            var record = ResolveMemberAssetRecord(text, need);
             Asset asset = null;
             try { asset = Content.LoadAsync(record.Id, assetType); }
             catch { asset = null; }
@@ -8360,6 +8582,416 @@ namespace Game.MCP
             if (asset.ID != record.Id)
                 throw new McpProtocolException("ASSET_OPERATION_FAILED", "registry/file ID mismatch: expected " + record.Id.ToString("N") + " got " + asset.ID.ToString("N") + " (" + record.Path + ")");
             return asset;
+        }
+
+        // GUI brushes and font references.
+        //
+        // An IBrush member takes "<kind>:<value>[;option=value]". The kinds
+        // are the entries of FlaxEditor.CustomEditors.Editors.IBrushEditor
+        // that a scene serializes and an edit-time caller can fill in, built
+        // from the same public constructors and fields the Editor's type
+        // switch and field editors use:
+        //   solid:<color>                          SolidColorBrush
+        //   gradient:<start color>;end=<color>     LinearGradientBrush
+        //   texture:<Texture>                      TextureBrush          [filter]
+        //   texture9:<Texture>                     Texture9SlicingBrush  [filter, border_size, border]
+        //   sprite:<SpriteAtlas>;sprite=<name>     SpriteBrush           [filter] (or index=<n>)
+        //   sprite9:<SpriteAtlas>;sprite=<name>    Sprite9SlicingBrush   [filter, border_size, border]
+        //   material:<MaterialBase>                MaterialBrush
+        //   ui_brush:<JsonAsset of UIBrushAsset>   UIBrush
+        //   video:<VideoPlayer actor GUID>         VideoBrush            [filter]
+        // GPUTextureBrush is left out: its GPUTexture is a runtime GPU resource
+        // (the field is [HideInEditor]), not an asset, so there is nothing to
+        // assign at edit time. Omitted options take the brush constructor
+        // defaults; the read-back spells every option out.
+        //
+        // A FontReference member takes "<FontAsset>;size=<points>", the two
+        // properties FlaxEditor.CustomEditors.Dedicated.FontReferenceEditor
+        // edits. The reference object itself is never null (Label.DrawSelf
+        // dereferences it), so "" yields an empty reference: no font asset and
+        // the default size.
+        private const int MaxBrushTextChars = 1024;
+        private const int MaxSpriteNamesInError = 16;
+        private const string BrushKindList = "solid, gradient, texture, texture9, sprite, sprite9, material, ui_brush, video";
+        private static readonly string[] BrushNoOptions = new string[0];
+        private static readonly string[] BrushGradientOptions = { "end" };
+        private static readonly string[] BrushFilterOptions = { "filter" };
+        private static readonly string[] BrushSlicingOptions = { "filter", "border_size", "border" };
+        private static readonly string[] BrushSpriteOptions = { "sprite", "index", "filter" };
+        private static readonly string[] BrushSpriteSlicingOptions = { "sprite", "index", "filter", "border_size", "border" };
+        private static readonly string[] FontOptions = { "size" };
+
+        private static bool IsBrushType(Type type)
+        {
+            return type != null && typeof(FlaxEngine.GUI.IBrush).IsAssignableFrom(type);
+        }
+
+        private static string FloatText(float value)
+        {
+            return value.ToString("R", CultureInfo.InvariantCulture);
+        }
+
+        private static string ColorText(Color color)
+        {
+            return FloatText(color.R) + "," + FloatText(color.G) + "," + FloatText(color.B) + "," + FloatText(color.A);
+        }
+
+        // Splits "<primary>;key=value;..." and rejects unknown or repeated keys.
+        private static string SplitValueFields(string body, string label, string[] allowed, out Dictionary<string, string> options)
+        {
+            options = new Dictionary<string, string>(StringComparer.Ordinal);
+            var parts = body.Split(';');
+            for (var i = 1; i < parts.Length; i++)
+            {
+                var part = parts[i];
+                var equals = part.IndexOf('=');
+                var key = equals <= 0 ? null : part.Substring(0, equals);
+                if (key == null || Array.IndexOf(allowed, key) < 0)
+                    throw new McpProtocolException("VALIDATION_FAILED", label + " has an unknown option '" + LimitForLog(part, 64) + "' " + (allowed.Length == 0 ? "(it takes no options)." : "(options: " + string.Join(", ", allowed) + ")."));
+                if (options.ContainsKey(key))
+                    throw new McpProtocolException("VALIDATION_FAILED", label + " repeats the option '" + key + "'.");
+                options[key] = part.Substring(equals + 1);
+            }
+            return parts[0];
+        }
+
+        private static FlaxEngine.GUI.BrushFilter BrushFilterOption(Dictionary<string, string> options, string label)
+        {
+            string text;
+            if (!options.TryGetValue("filter", out text)) return FlaxEngine.GUI.BrushFilter.Linear;
+            if (string.Equals(text, "linear", StringComparison.Ordinal)) return FlaxEngine.GUI.BrushFilter.Linear;
+            if (string.Equals(text, "point", StringComparison.Ordinal)) return FlaxEngine.GUI.BrushFilter.Point;
+            throw new McpProtocolException("VALIDATION_FAILED", label + " filter must be \"linear\" or \"point\".");
+        }
+
+        private static float BrushBorderSizeOption(Dictionary<string, string> options, string label)
+        {
+            string text;
+            if (!options.TryGetValue("border_size", out text)) return 10f;
+            var value = ParseStrictFloat(text, label + " border_size");
+            if (value < 0f) throw new McpProtocolException("VALIDATION_FAILED", label + " border_size must be 0 or greater (the Editor limit for this field).");
+            return value;
+        }
+
+        private static FMargin BrushBorderOption(Dictionary<string, string> options, string label)
+        {
+            string text;
+            if (!options.TryGetValue("border", out text)) return new FMargin(0.1f);
+            var v = ParseStrictFloatList(text, 4, label + " border", "left,right,top,bottom");
+            foreach (var component in v)
+                if (component < 0f || component > 1f)
+                    throw new McpProtocolException("VALIDATION_FAILED", label + " border components are texture-space fractions between 0 and 1 (the Editor limit for this field).");
+            return new FMargin(v[0], v[1], v[2], v[3]);
+        }
+
+        // Atlas plus sprite index, which is what
+        // FlaxEditor.CustomEditors.Editors.SpriteHandleEditor stores.
+        private static SpriteHandle CoerceSpriteHandle(string atlasText, Dictionary<string, string> options, string label)
+        {
+            var atlas = CoerceAssetReference(typeof(SpriteAtlas), atlasText, label + " requires ") as SpriteAtlas;
+            string name;
+            string indexText;
+            var hasName = options.TryGetValue("sprite", out name);
+            var hasIndex = options.TryGetValue("index", out indexText);
+            if (atlas == null)
+            {
+                if (hasName || hasIndex)
+                    throw new McpProtocolException("VALIDATION_FAILED", label + " needs a SpriteAtlas asset before sprite= or index=.");
+                return default(SpriteHandle);
+            }
+            if (hasName == hasIndex)
+                throw new McpProtocolException("VALIDATION_FAILED", label + " requires exactly one of sprite=<name> or index=<n> after the atlas.");
+            var count = atlas.SpritesCount;
+            if (hasIndex)
+            {
+                int index;
+                if (!int.TryParse(indexText, NumberStyles.None, CultureInfo.InvariantCulture, out index) || index >= count)
+                    throw new McpProtocolException("VALIDATION_FAILED", label + " index must be an integer between 0 and " + (count - 1) + " (the atlas has " + count + " sprites).");
+                return new SpriteHandle(atlas, index);
+            }
+            var names = new List<string>();
+            for (var i = 0; i < count; i++)
+            {
+                var spriteName = atlas.GetSprite(i).Name ?? "";
+                if (name.Length != 0 && string.Equals(spriteName, name, StringComparison.Ordinal)) return new SpriteHandle(atlas, i);
+                if (names.Count < MaxSpriteNamesInError) names.Add(spriteName);
+            }
+            throw new McpProtocolException("VALIDATION_FAILED", label + " sprite '" + LimitForLog(name, 128) + "' was not found in the atlas (" + count + " sprites" + (names.Count == 0 ? "" : ": " + LimitForLog(string.Join(", ", names.ToArray()), 512) + (count > names.Count ? ", ..." : "")) + ").");
+        }
+
+        private static object CoerceBrushValue(Type type, string text, string need, string memberName)
+        {
+            if (text == null)
+                throw new McpProtocolException("VALIDATION_FAILED", need + "a brush string \"<kind>:<value>[;option=value]\" (kinds: " + BrushKindList + "), or an empty string to clear.");
+            if (text.Length == 0) return null;
+            if (text.Length > MaxBrushTextChars)
+                throw new McpProtocolException("VALIDATION_FAILED", "Member '" + memberName + "' brush string exceeds " + MaxBrushTextChars + " characters.");
+            var colon = text.IndexOf(':');
+            var kind = colon <= 0 ? "" : text.Substring(0, colon);
+            var body = colon <= 0 ? "" : text.Substring(colon + 1);
+            var label = "Member '" + memberName + "' " + kind + " brush";
+            Dictionary<string, string> options;
+            FlaxEngine.GUI.IBrush brush;
+            if (string.Equals(kind, "solid", StringComparison.Ordinal))
+            {
+                var color = SplitValueFields(body, label, BrushNoOptions, out options);
+                brush = new FlaxEngine.GUI.SolidColorBrush(ParseStrictColor(color, label));
+            }
+            else if (string.Equals(kind, "gradient", StringComparison.Ordinal))
+            {
+                var start = SplitValueFields(body, label, BrushGradientOptions, out options);
+                string end;
+                if (!options.TryGetValue("end", out end))
+                    throw new McpProtocolException("VALIDATION_FAILED", label + " requires \"gradient:<start color>;end=<end color>\".");
+                brush = new FlaxEngine.GUI.LinearGradientBrush(ParseStrictColor(start, label), ParseStrictColor(end, label + " end"));
+            }
+            else if (string.Equals(kind, "texture", StringComparison.Ordinal))
+            {
+                var asset = SplitValueFields(body, label, BrushFilterOptions, out options);
+                var filter = BrushFilterOption(options, label);
+                brush = new FlaxEngine.GUI.TextureBrush(CoerceAssetReference(typeof(Texture), asset, label + " requires ") as Texture) { Filter = filter };
+            }
+            else if (string.Equals(kind, "texture9", StringComparison.Ordinal))
+            {
+                var asset = SplitValueFields(body, label, BrushSlicingOptions, out options);
+                var filter = BrushFilterOption(options, label);
+                var borderSize = BrushBorderSizeOption(options, label);
+                var border = BrushBorderOption(options, label);
+                brush = new FlaxEngine.GUI.Texture9SlicingBrush(CoerceAssetReference(typeof(Texture), asset, label + " requires ") as Texture) { Filter = filter, BorderSize = borderSize, Border = border };
+            }
+            else if (string.Equals(kind, "sprite", StringComparison.Ordinal))
+            {
+                var atlas = SplitValueFields(body, label, BrushSpriteOptions, out options);
+                var filter = BrushFilterOption(options, label);
+                brush = new FlaxEngine.GUI.SpriteBrush(CoerceSpriteHandle(atlas, options, label)) { Filter = filter };
+            }
+            else if (string.Equals(kind, "sprite9", StringComparison.Ordinal))
+            {
+                var atlas = SplitValueFields(body, label, BrushSpriteSlicingOptions, out options);
+                var filter = BrushFilterOption(options, label);
+                var borderSize = BrushBorderSizeOption(options, label);
+                var border = BrushBorderOption(options, label);
+                brush = new FlaxEngine.GUI.Sprite9SlicingBrush { Sprite = CoerceSpriteHandle(atlas, options, label), Filter = filter, BorderSize = borderSize, Border = border };
+            }
+            else if (string.Equals(kind, "material", StringComparison.Ordinal))
+            {
+                var asset = SplitValueFields(body, label, BrushNoOptions, out options);
+                brush = new FlaxEngine.GUI.MaterialBrush(CoerceAssetReference(typeof(MaterialBase), asset, label + " requires ") as MaterialBase);
+            }
+            else if (string.Equals(kind, "ui_brush", StringComparison.Ordinal))
+            {
+                var asset = SplitValueFields(body, label, BrushNoOptions, out options);
+                var json = CoerceAssetReference(typeof(JsonAsset), asset, label + " requires ") as JsonAsset;
+                var dataType = typeof(FlaxEngine.GUI.UIBrushAsset).FullName;
+                if (json != null && !string.Equals(json.DataTypeName, dataType, StringComparison.Ordinal))
+                    throw new McpProtocolException("VALIDATION_FAILED", label + " requires a JSON asset of " + dataType + ", got " + (json.DataTypeName ?? "unknown") + ".");
+                brush = json == null ? new FlaxEngine.GUI.UIBrush() : new FlaxEngine.GUI.UIBrush(json);
+            }
+            else if (string.Equals(kind, "video", StringComparison.Ordinal))
+            {
+                var actorId = SplitValueFields(body, label, BrushFilterOptions, out options);
+                var filter = BrushFilterOption(options, label);
+                VideoPlayer player = null;
+                if (actorId.Length != 0)
+                {
+                    if (!IsGuidN(actorId))
+                        throw new McpProtocolException("VALIDATION_FAILED", label + " requires a FlaxEngine.VideoPlayer actor GUID, or nothing for no player.");
+                    var actor = RequireActor(actorId);
+                    player = actor as VideoPlayer;
+                    if (player == null)
+                        throw new McpProtocolException("VALIDATION_FAILED", label + " requires a FlaxEngine.VideoPlayer actor, got " + (actor.TypeName ?? "unknown") + ".");
+                }
+                brush = new FlaxEngine.GUI.VideoBrush(player) { Filter = filter };
+            }
+            else
+            {
+                throw new McpProtocolException("VALIDATION_FAILED", need + "a brush string \"<kind>:<value>[;option=value]\" with one of the kinds " + BrushKindList
+                    + ", or an empty string to clear. GPUTextureBrush is not available: it holds a runtime GPU texture, not an asset.");
+            }
+            if (!type.IsInstanceOfType(brush))
+                throw new McpProtocolException("VALIDATION_FAILED", need + "a " + (FriendlyTypeName(type) ?? "brush") + ", got " + brush.GetType().FullName + ".");
+            return brush;
+        }
+
+        private static void FontSizeLimits(out float min, out float max)
+        {
+            min = 1f;
+            max = 500f;
+            try
+            {
+                var property = typeof(FontReference).GetProperty("Size");
+                var limits = property == null ? null : property.GetCustomAttributes(typeof(LimitAttribute), false);
+                if (limits != null && limits.Length == 1)
+                {
+                    min = ((LimitAttribute)limits[0]).Min;
+                    max = ((LimitAttribute)limits[0]).Max;
+                }
+            }
+            catch { }
+        }
+
+        private static object CoerceFontValue(string text, string need, string memberName)
+        {
+            var shape = need + "a font string \"<font asset>;size=<points>\" (for example \"engine:Editor/Fonts/Roboto-Regular;size=24\"; the asset is a GUID, a Content/ path, an engine:<path>, or empty for no font asset), or an empty string for an empty font reference.";
+            if (text == null) throw new McpProtocolException("VALIDATION_FAILED", shape);
+            if (text.Length == 0) return new FontReference();
+            if (text.Length > MaxBrushTextChars)
+                throw new McpProtocolException("VALIDATION_FAILED", "Member '" + memberName + "' font string exceeds " + MaxBrushTextChars + " characters.");
+            var label = "Member '" + memberName + "' font";
+            Dictionary<string, string> options;
+            var assetText = SplitValueFields(text, label, FontOptions, out options);
+            string sizeText;
+            if (!options.TryGetValue("size", out sizeText)) throw new McpProtocolException("VALIDATION_FAILED", shape);
+            var size = ParseStrictFloat(sizeText, label + " size");
+            float min;
+            float max;
+            FontSizeLimits(out min, out max);
+            if (size < min || size > max)
+                throw new McpProtocolException("VALIDATION_FAILED", label + " size must be between " + FloatText(min) + " and " + FloatText(max) + " (the Editor limit for FontReference.Size).");
+            return new FontReference(CoerceAssetReference(typeof(FontAsset), assetText, label + " requires ") as FontAsset, size);
+        }
+
+        private static string AssetReferenceText(Asset asset, bool byId, out string assetId)
+        {
+            assetId = null;
+            if (asset == null) return "";
+            assetId = asset.ID.ToString("N");
+            if (byId) return assetId;
+            var path = MemberAssetReferencePath(asset.ID);
+            // ';' separates options, so a path containing one is given by GUID.
+            return path == null || path.IndexOf(';') >= 0 ? assetId : path;
+        }
+
+        private static string SpriteReferenceText(SpriteHandle sprite, bool byId, out string assetId)
+        {
+            var atlas = sprite.Atlas;
+            var atlasText = AssetReferenceText(atlas, byId, out assetId);
+            if (atlasText.Length == 0) return "";
+            if (!byId)
+            {
+                try
+                {
+                    var count = atlas.IsLoaded ? atlas.SpritesCount : 0;
+                    if (sprite.Index >= 0 && sprite.Index < count)
+                    {
+                        var name = atlas.GetSprite(sprite.Index).Name;
+                        var first = -1;
+                        for (var i = 0; i < count && first < 0; i++)
+                            if (string.Equals(atlas.GetSprite(i).Name, name, StringComparison.Ordinal)) first = i;
+                        // The name form is used only when it selects this very sprite.
+                        if (!string.IsNullOrEmpty(name) && name.IndexOf(';') < 0 && first == sprite.Index)
+                            return atlasText + ";sprite=" + name;
+                    }
+                }
+                catch { }
+            }
+            return atlasText + ";index=" + sprite.Index.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static string BrushFilterText(FlaxEngine.GUI.BrushFilter filter)
+        {
+            return filter == FlaxEngine.GUI.BrushFilter.Point ? "point" : "linear";
+        }
+
+        private static string BrushSlicingText(float borderSize, FMargin border)
+        {
+            return ";border_size=" + FloatText(borderSize) + ";border=" + FloatText(border.Left) + "," + FloatText(border.Right) + "," + FloatText(border.Top) + "," + FloatText(border.Bottom);
+        }
+
+        // The string CoerceBrushValue accepts for this brush, or null when the
+        // brush type has no string form. byId spells references as GUIDs and
+        // sprites as indices, which gives a stable form for comparisons.
+        private static string DescribeBrush(object raw, bool byId, out string assetId)
+        {
+            assetId = null;
+            var solid = raw as FlaxEngine.GUI.SolidColorBrush;
+            if (solid != null) return "solid:" + ColorText(solid.Color);
+            var gradient = raw as FlaxEngine.GUI.LinearGradientBrush;
+            if (gradient != null) return "gradient:" + ColorText(gradient.StartColor) + ";end=" + ColorText(gradient.EndColor);
+            var texture = raw as FlaxEngine.GUI.TextureBrush;
+            if (texture != null) return "texture:" + AssetReferenceText(texture.Texture, byId, out assetId) + ";filter=" + BrushFilterText(texture.Filter);
+            var texture9 = raw as FlaxEngine.GUI.Texture9SlicingBrush;
+            if (texture9 != null)
+                return "texture9:" + AssetReferenceText(texture9.Texture, byId, out assetId) + ";filter=" + BrushFilterText(texture9.Filter) + BrushSlicingText(texture9.BorderSize, texture9.Border);
+            var sprite = raw as FlaxEngine.GUI.SpriteBrush;
+            if (sprite != null) return "sprite:" + SpriteReferenceText(sprite.Sprite, byId, out assetId) + ";filter=" + BrushFilterText(sprite.Filter);
+            var sprite9 = raw as FlaxEngine.GUI.Sprite9SlicingBrush;
+            if (sprite9 != null)
+                return "sprite9:" + SpriteReferenceText(sprite9.Sprite, byId, out assetId) + ";filter=" + BrushFilterText(sprite9.Filter) + BrushSlicingText(sprite9.BorderSize, sprite9.Border);
+            var material = raw as FlaxEngine.GUI.MaterialBrush;
+            if (material != null) return "material:" + AssetReferenceText(material.Material, byId, out assetId);
+            var ui = raw as FlaxEngine.GUI.UIBrush;
+            if (ui != null) return "ui_brush:" + AssetReferenceText(ui.Asset.Asset, byId, out assetId);
+            var video = raw as FlaxEngine.GUI.VideoBrush;
+            if (video != null) return "video:" + (video.Player == null ? "" : video.Player.ID.ToString("N")) + ";filter=" + BrushFilterText(video.Filter);
+            return null;
+        }
+
+        private static string DescribeFont(FontReference font, bool byId, out string assetId)
+        {
+            return AssetReferenceText(font.Font, byId, out assetId) + ";size=" + FloatText(font.Size);
+        }
+
+        // Value snapshots for McpMemberUndo. Brushes and font references are
+        // mutable objects the property grid edits in place, so the undo stack
+        // keeps its own copy and hands a fresh copy to every apply. A video
+        // brush is kept as the player's ID, like any scene-object reference.
+        private sealed class VideoBrushSnapshot { public Guid PlayerId; public FlaxEngine.GUI.BrushFilter Filter; }
+
+        internal static object SnapshotMemberValue(object value)
+        {
+            var video = value as FlaxEngine.GUI.VideoBrush;
+            if (video != null) return new VideoBrushSnapshot { PlayerId = video.Player == null ? Guid.Empty : video.Player.ID, Filter = video.Filter };
+            return CopyMemberValue(value);
+        }
+
+        internal static object RestoreMemberValue(object value)
+        {
+            var video = value as VideoBrushSnapshot;
+            if (video == null) return CopyMemberValue(value);
+            var id = video.PlayerId;
+            return new FlaxEngine.GUI.VideoBrush(id == Guid.Empty ? null : FObject.TryFind<VideoPlayer>(ref id)) { Filter = video.Filter };
+        }
+
+        private static object CopyMemberValue(object value)
+        {
+            var font = value as FontReference;
+            if (font != null) return new FontReference(font.Font, font.Size);
+            var solid = value as FlaxEngine.GUI.SolidColorBrush;
+            if (solid != null) return new FlaxEngine.GUI.SolidColorBrush(solid.Color);
+            var gradient = value as FlaxEngine.GUI.LinearGradientBrush;
+            if (gradient != null) return new FlaxEngine.GUI.LinearGradientBrush(gradient.StartColor, gradient.EndColor);
+            var texture = value as FlaxEngine.GUI.TextureBrush;
+            if (texture != null) return new FlaxEngine.GUI.TextureBrush(texture.Texture) { Filter = texture.Filter };
+            var texture9 = value as FlaxEngine.GUI.Texture9SlicingBrush;
+            if (texture9 != null)
+                return new FlaxEngine.GUI.Texture9SlicingBrush(texture9.Texture) { Filter = texture9.Filter, BorderSize = texture9.BorderSize, Border = texture9.Border, ShowBorders = texture9.ShowBorders };
+            var sprite = value as FlaxEngine.GUI.SpriteBrush;
+            if (sprite != null) return new FlaxEngine.GUI.SpriteBrush(sprite.Sprite) { Filter = sprite.Filter };
+            var sprite9 = value as FlaxEngine.GUI.Sprite9SlicingBrush;
+            if (sprite9 != null)
+                return new FlaxEngine.GUI.Sprite9SlicingBrush { Sprite = sprite9.Sprite, Filter = sprite9.Filter, BorderSize = sprite9.BorderSize, Border = sprite9.Border, ShowBorders = sprite9.ShowBorders };
+            var material = value as FlaxEngine.GUI.MaterialBrush;
+            if (material != null) return new FlaxEngine.GUI.MaterialBrush(material.Material);
+            var ui = value as FlaxEngine.GUI.UIBrush;
+            if (ui != null) return new FlaxEngine.GUI.UIBrush(ui.Asset);
+            return value;
+        }
+
+        // Edit-time hints for values the engine accepts but would not draw.
+        private static string[] MemberWriteWarnings(object target, McpMemberSlot slot, object coerced)
+        {
+            var warnings = new List<string>();
+            var control = target as FControl;
+            if (control != null && coerced is FlaxEngine.GUI.IBrush && string.Equals(slot.Info.Name, "BackgroundBrush", StringComparison.Ordinal) && control.BackgroundColor.A <= 0f)
+                warnings.Add("BackgroundBrush is drawn tinted by BackgroundColor, whose alpha is 0, so the brush stays invisible until BackgroundColor is set (the Editor property grid switches it to white when a brush is picked).");
+            var material = coerced as FlaxEngine.GUI.MaterialBrush;
+            if (material != null && material.Material != null && !material.Material.IsGUI)
+                warnings.Add("The material is not a GUI-domain material; the engine requires one for a MaterialBrush (\"It must be GUI domain\").");
+            var font = coerced as FontReference;
+            if (font != null && font.Font == null)
+                warnings.Add("The font reference has no font asset, so it resolves to no font until one is assigned.");
+            return warnings.Count == 0 ? null : warnings.ToArray();
         }
 
         private static object CoerceMemberValue(Type type, bool? boolValue, double? number, string text, string memberName)
@@ -8425,6 +9057,8 @@ namespace Game.MCP
                 RequireIntegralComponents(v, need);
                 return new Int4((int)v[0], (int)v[1], (int)v[2], (int)v[3]);
             }
+            if (IsBrushType(type)) return CoerceBrushValue(type, text, need, memberName);
+            if (type == typeof(FontReference)) return CoerceFontValue(text, need, memberName);
             if (IsJsonAssetReferenceType(type))
             {
                 var json = CoerceAssetReference(typeof(JsonAsset), text, need) as JsonAsset;
@@ -8469,6 +9103,15 @@ namespace Game.MCP
             var beforeObject = before as FObject;
             var afterObject = after as FObject;
             if (beforeObject != null && afterObject != null) return ReferenceEquals(before, after) || beforeObject.ID == afterObject.ID;
+            if (before is FlaxEngine.GUI.IBrush && after is FlaxEngine.GUI.IBrush)
+            {
+                // Compared through the string form: Sprite9SlicingBrush.Equals
+                // ignores its border fields.
+                string ignored;
+                var left = DescribeBrush(before, true, out ignored);
+                var right = DescribeBrush(after, true, out ignored);
+                if (left != null && right != null) return string.Equals(left, right, StringComparison.Ordinal);
+            }
             return before.Equals(after);
         }
 
@@ -8517,8 +9160,31 @@ namespace Game.MCP
                 }
                 catch { json = null; }
                 if (json == null) return new McpMaterialTypedValue { Kind = "null", TypeName = LimitForLog(type.FullName, 256) };
-                return new McpMaterialTypedValue { Kind = "asset", AssetId = json.ID.ToString("N"), TypeName = LimitForLog(json.DataTypeName, 256) };
+                return new McpMaterialTypedValue { Kind = "asset", AssetId = json.ID.ToString("N"), Text = MemberAssetReferencePath(json.ID), TypeName = LimitForLog(json.DataTypeName, 256) };
             }
+            // Text is the string the write path accepts, so a value can be
+            // read, edited, and written back. A brush type without a string
+            // form reports its type only.
+            if (raw is FlaxEngine.GUI.IBrush)
+            {
+                string brushAssetId = null;
+                string brushText;
+                try { brushText = DescribeBrush(raw, false, out brushAssetId); }
+                catch { brushText = null; }
+                return new McpMaterialTypedValue { Kind = "brush", Text = LimitForLog(brushText, MaxBrushTextChars), AssetId = brushAssetId, TypeName = LimitForLog(type.FullName, 256) };
+            }
+            var fontReference = raw as FontReference;
+            if (fontReference != null)
+            {
+                string fontAssetId = null;
+                string fontText;
+                try { fontText = DescribeFont(fontReference, false, out fontAssetId); }
+                catch { fontText = null; }
+                return new McpMaterialTypedValue { Kind = "font", Text = LimitForLog(fontText, MaxBrushTextChars), AssetId = fontAssetId, Number = fontReference.Size, TypeName = LimitForLog(type.FullName, 256) };
+            }
+            var assetReference = raw as Asset;
+            if (assetReference != null)
+                return new McpMaterialTypedValue { Kind = "asset", AssetId = assetReference.ID.ToString("N"), Text = MemberAssetReferencePath(assetReference.ID), TypeName = LimitForLog(type.FullName, 256) };
             return SafeMaterialAnimationValue(raw);
         }
 
@@ -8557,6 +9223,8 @@ namespace Game.MCP
                 }
             }
             if (dto.Reason == null) dto.Reason = block;
+            if (dto.Reason == null && dto.Value != null && string.Equals(dto.Value.Kind, "brush", StringComparison.Ordinal) && dto.Value.Text == null)
+                dto.Reason = "The current brush is a " + (dto.Value.TypeName ?? "brush") + ", which has no string form; it can be replaced or cleared but not read back.";
             return dto;
         }
 
@@ -8615,6 +9283,7 @@ namespace Game.MCP
             var wouldChange = !MemberValuesEqual(beforeRaw, coerced);
             var before = ProjectMemberValue(beforeRaw, slot.ValueType);
             var typeName = FriendlyTypeName(slot.ValueType);
+            var warnings = MemberWriteWarnings(target, slot, coerced);
             if (q.DryRun)
             {
                 var preview = CurrentRevision(owner.Scene);
@@ -8622,7 +9291,7 @@ namespace Game.MCP
                 {
                     ActorId = owner.ID.ToString("N"), Property = slot.Info.Name, Type = typeName, DryRun = true, WouldChange = wouldChange,
                     Before = before, After = ProjectMemberValue(coerced, slot.ValueType), Actor = null,
-                    ProjectRevision = preview.ProjectRevision, SceneRevision = preview.SceneRevision,
+                    ProjectRevision = preview.ProjectRevision, SceneRevision = preview.SceneRevision, Warnings = warnings,
                 };
             }
             if (!wouldChange)
@@ -8634,7 +9303,7 @@ namespace Game.MCP
                 {
                     ActorId = owner.ID.ToString("N"), Property = slot.Info.Name, Type = typeName, DryRun = false, WouldChange = false,
                     Before = before, After = before, Actor = ActorDto(owner, false),
-                    ProjectRevision = unchanged.ProjectRevision, SceneRevision = unchanged.SceneRevision,
+                    ProjectRevision = unchanged.ProjectRevision, SceneRevision = unchanged.SceneRevision, Warnings = warnings,
                 };
             }
             var action = new McpMemberUndo(owner, string.Equals(targetKind, MemberTargetControl, StringComparison.Ordinal), slot.Info.Name, beforeRaw, coerced);
@@ -8650,7 +9319,7 @@ namespace Game.MCP
             {
                 ActorId = owner.ID.ToString("N"), Property = slot.Info.Name, Type = typeName, DryRun = false, WouldChange = wouldChange,
                 Before = before, After = ProjectMemberValue(afterRaw, slot.ValueType), Actor = ActorDto(owner, false),
-                ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision,
+                ProjectRevision = revision.ProjectRevision, SceneRevision = revision.SceneRevision, Warnings = warnings,
             };
         }
 
@@ -9352,9 +10021,23 @@ namespace Game.MCP
             if (File.Exists(output) || Directory.Exists(output))
                 throw new McpProtocolException("FILE_EXISTS", "A file already exists at the requested destination.");
             AssetInfo clash;
-            if (Content.GetAssetInfo(output, out clash))
+            if (Content.GetAssetInfo(EngineAssetPath(normalized), out clash))
                 throw new McpProtocolException("FILE_EXISTS", "A Content asset already exists at the requested destination.");
             return output;
+        }
+
+        // Flax keys its asset registry by one path spelling: the project
+        // folder as the engine reports it, '/' separators, and the drive root
+        // kept as "C:\" (StringUtils.NormalizePath, the form the Editor
+        // Content database passes to Content.GetAssetInfo). A path in the OS
+        // spelling names the same file but misses that key, so
+        // Content.GetAssetInfo registers the file a second time: the engine
+        // logs "Founded duplicated asset" and tries to rewrite the new file
+        // under a fresh ID (live-observed after every binary asset.create;
+        // the rewrite failed only because the file was still open).
+        private static string EngineAssetPath(string projectRelativePath)
+        {
+            return StringUtils.NormalizePath(Path.Combine(Globals.ProjectFolder, projectRelativePath));
         }
 
         // The Content database normally notices new files through its file
@@ -9392,7 +10075,7 @@ namespace Game.MCP
             try
             {
                 AssetInfo info;
-                if (Content.GetAssetInfo(absolute, out info))
+                if (Content.GetAssetInfo(EngineAssetPath(normalized), out info))
                 {
                     metadata.Id = info.ID.ToString("N");
                     if (!string.IsNullOrEmpty(info.TypeName)) metadata.TypeName = info.TypeName;
@@ -10921,7 +11604,7 @@ namespace Game.MCP
             // request. Authenticated failures naturally echo the valid token.
             return new McpResponse { id = id, token = requestToken, ok = false, errorCode = code, error = message, errorDetails = details == null ? null : JsonSerializer.Serialize(PlainForJson(details), false), timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
         }
-        private static bool IsSafeRequestFile(string name) { if (string.IsNullOrEmpty(name) || name.Length > 133 || !name.EndsWith(".json")) return false; for (var i = 0; i < name.Length - 5; i++) if (!(char.IsLetterOrDigit(name[i]) || name[i] == '-' || name[i] == '_')) return false; return true; }
+        private static bool IsSafeRequestFile(string name) { if (string.IsNullOrEmpty(name) || name.Length > 133 || !name.EndsWith(".json")) return false; for (var i = 0; i < name.Length - 5; i++) { var c = name[i]; if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_')) return false; } return true; }
         private static void WriteAtomic(string path, string text) { var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp"; File.WriteAllText(temp, text); if (File.Exists(path)) File.Replace(temp, path, null); else File.Move(temp, path); }
         private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
         private static string CreateSessionToken() { var bytes = new byte[32]; using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(bytes); return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_'); }
@@ -11152,13 +11835,15 @@ namespace Game.MCP
         private static object Pack(object value)
         {
             var sceneObject = value as SceneObject;
-            return sceneObject == null ? value : new SceneObjectRef { Id = sceneObject.ID };
+            // Brushes and font references are mutable objects: the stack keeps
+            // a private copy (see FlaxMcpBridgePlugin.SnapshotMemberValue).
+            return sceneObject == null ? FlaxMcpBridgePlugin.SnapshotMemberValue(value) : new SceneObjectRef { Id = sceneObject.ID };
         }
 
         private static object Unpack(object value)
         {
             var reference = value as SceneObjectRef;
-            if (reference == null) return value;
+            if (reference == null) return FlaxMcpBridgePlugin.RestoreMemberValue(value);
             var id = reference.Id;
             return FObject.TryFind<SceneObject>(ref id);
         }

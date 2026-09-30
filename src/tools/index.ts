@@ -543,6 +543,7 @@ const WRITE_TOOL_NAMES = new Set([
   'graph_set_model',
   'animgraph_add_state',
   'animgraph_add_transition',
+  'animgraph_set_state_clip',
   'mm_apply_preset',
   'install_editor_bridge',
   'scene_save',
@@ -725,13 +726,13 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'actor_update',
-      description: 'Patches allowlisted live actor fields: name, active, one transform space (world or local), and layer. Uses editor Undo; arbitrary properties are not exposed.',
+      description: 'Patches allowlisted live actor fields: name, active, one transform space (world or local), layer, and the reviewed component assignments (AnimatedModel skinned model, animation graph, and UpdateWhenOffscreen; StaticModel model). Uses editor Undo. Other editor-visible members are written with actor_set_property.',
       inputSchema: zodToJsonSchema(ActorUpdateSchema),
       handler: (a, c) => handleActorUpdate(a as Parameters<typeof handleActorUpdate>[0], c),
     },
     {
       name: 'actor_set_property',
-      description: 'Sets one editor-visible member of a live actor (anything the Flax property grid shows: collider, rigid body, light, camera, audio source, model and other component settings) through the Editor property wrapper with editor undo and a dry_run preview. Accepts Member or Type.Member; asset and actor references are GUIDs. Requires bridge v33; the aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled work from bridge v28. Name, active, transform, and layer stay with actor_update.',
+      description: 'Sets one editor-visible member of a live actor (anything the Flax property grid shows: collider, rigid body, light, camera, audio source, model and other component settings) through the Editor property wrapper with editor undo and a dry_run preview. Accepts Member or Type.Member. Asset references are a GUID, a project Content/ path, or engine content as engine:<path> (for example engine:Editor/Primitives/Cube); actor references are GUIDs. Requires bridge v33; the aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled work from bridge v28. Name, active, transform, and layer stay with actor_update.',
       inputSchema: zodToJsonSchema(ActorSetPropertySchema),
       handler: (a, c) => handleActorSetProperty(a as Parameters<typeof handleActorSetProperty>[0], c),
     },
@@ -982,7 +983,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'test_run_scenario',
-      description: 'Runs a bounded gameplay smoke scenario for run_seconds and asserts log/no-error/viewport conditions, always stopping play.',
+      description: 'Runs a bounded gameplay smoke scenario for run_seconds and asserts log/no-error/viewport conditions, always stopping play. Optional steps (max 16, each at at_seconds after play is running) act on the game during the run: set_script_value writes a game script member and invoke_script_method calls a public game method, optionally expecting a returned value or an exception (the runtime_set_script_value and runtime_invoke_script_method tools, which need bridge v33 and their permission). A failed step or expectation fails the scenario. Steps need bridge v33 and are refused before play starts on an older bridge; a scenario without steps is unchanged. Flax 1.12 has no key or mouse injection, so steps are how a scenario drives gameplay.',
       inputSchema: zodToJsonSchema(TestRunScenarioSchema),
       handler: (a, c) => handleTestRunScenario(a as Parameters<typeof handleTestRunScenario>[0], c),
     },
@@ -1152,7 +1153,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'reimport_asset',
-      description: 'Shows current asset type and, if open_editor:true, launches FlaxEditor so you can reimport manually. NOTE: headless reimport is not supported by Flax CLI — the actual reimport must be done in the editor.',
+      description: 'Deprecated alias of asset_reimport. With a connected bridge v9+ it reimports a Content asset from its existing importer metadata (same dry_run/wait/operation_id behaviour as asset_reimport; type changes are refused). Without one it only reports the current asset type and the manual Editor steps. It never launches an editor process; open_editor is ignored.',
       inputSchema: zodToJsonSchema(ReimportAssetSchema),
       handler: (a, c) => handleReimportAsset(a as Parameters<typeof handleReimportAsset>[0], c),
     },
@@ -1172,7 +1173,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'asset_get',
-      description: 'Reads stable registry metadata for exactly one Content asset by GUID or project-relative path. Import settings are explicitly unavailable in Flax 1.12 public APIs. Requires bridge v8.',
+      description: 'Reads stable registry metadata for exactly one Content asset by GUID or project-relative path. ImportSettingsAvailable reports whether asset_get_import_settings supports the asset type (texture, model, audio); the settings themselves are read with that tool. Requires bridge v8.',
       inputSchema: zodToJsonSchema(AssetGetSchema),
       handler: (a, c) => handleAssetGet(a as Parameters<typeof handleAssetGet>[0], c),
     },
@@ -1214,13 +1215,13 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'asset_get_import_settings',
-      description: 'Reads the bounded import options for one texture, model, or audio Content asset: restored metadata (restored:true) or engine defaults (restored:false). Other asset types fail VALIDATION_FAILED. Requires bridge v32.',
+      description: 'Reads the bounded import options for one Texture, Model/SkinnedModel, or AudioClip Content asset: restored metadata (restored:true) or engine defaults (restored:false, with a warning). Every other asset type, including CubeTexture, SpriteAtlas, and IESProfile, fails VALIDATION_FAILED. Requires bridge v32.',
       inputSchema: zodToJsonSchema(AssetGetImportSettingsSchema),
       handler: (a, c) => handleAssetGetImportSettings(a as Parameters<typeof handleAssetGetImportSettings>[0], c),
     },
     {
       name: 'asset_set_import_settings',
-      description: 'Previews (dry_run) or applies allowlisted import-option scalars for one texture, model, or audio asset via ContentImporting.Reimport with skipDialog:true; polls via asset_reimport_status. Unknown keys, out-of-range values, and non-exact enum names fail VALIDATION_FAILED. Requires bridge v32 and --asset-import-root.',
+      description: 'Previews (dry_run) or applies allowlisted import-option scalars for one Texture, Model/SkinnedModel, or AudioClip asset via ContentImporting.Reimport with skipDialog:true; polls via asset_reimport_status. Both modes return would_change with before/after; a write whose values already match queues no reimport. Refuses with IMPORT_FAILED when the asset\'s current options cannot be restored, so an unrequested option is never replaced by an engine default. Keys, types, and ranges outside the input schema fail INVALID_ARGUMENT; a key of another asset type, a value outside that type\'s range, and unsupported asset types fail VALIDATION_FAILED. Requires bridge v32 and --asset-import-root.',
       inputSchema: zodToJsonSchema(AssetSetImportSettingsSchema),
       handler: (a, c) => handleAssetSetImportSettings(a as Parameters<typeof handleAssetSetImportSettings>[0], c),
     },
@@ -1415,7 +1416,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'mm_tuning',
-      description: 'Motion-matching tuning reads (M6): live telemetry snapshot, top-N cost ranking from a trace file, deterministic replay verify, or native search self-test. Requires bridge v15 with mm.tuning.',
+      description: 'Motion-matching tuning reads (M6): live telemetry snapshot, top-N cost ranking from a trace file, deterministic replay verify, or native search self-test. op:"rebuild_start" is the one non-read op: it queues a full database rebuild and is refused under the read-only and code-edit permission profiles. Requires a local bridge that implements mm.tuning (the bundled bridge does not).',
       inputSchema: zodToJsonSchema(MMTuningSchema),
       handler: (a, c) => handleMMTuning(a as Parameters<typeof handleMMTuning>[0], c),
     },
@@ -1485,37 +1486,37 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     // ── Bridge v33: editor-visible members, UI, particles ─────────────────────
     {
       name: 'actor_get_properties',
-      description: 'Lists the editor-visible members of a live actor (the same selection the Flax property grid shows) with type, current value, enum names, and whether actor_set_property can write each one. Bounded to 256 members; works in play mode too. Requires bridge v33.',
+      description: 'Lists the editor-visible members of a live actor (the same selection the Flax property grid shows) with type, current value, enum names, and whether actor_set_property can write each one. Asset references report their GUID plus the Content/ or engine:<path> form that actor_set_property accepts. Bounded to 256 members; works in play mode too. Requires bridge v33.',
       inputSchema: zodToJsonSchema(ActorGetPropertiesSchema),
       handler: (a, c) => handleActorGetProperties(a as Parameters<typeof handleActorGetProperties>[0], c),
     },
     {
       name: 'ui_control_create',
-      description: 'Creates a FlaxEngine.UIControl actor owning a new GUI control (Button, Label, Image, TextBox, Panel, ...) under a UICanvas or a container UIControl, the way the Editor scene tree spawns it, with editor undo and dry_run. Create the canvas first with actor_create type FlaxEngine.UICanvas. Requires bridge v33.',
+      description: 'Creates a FlaxEngine.UIControl actor owning a new GUI control (Button, Label, Image, TextBox, Panel, ...) under a UICanvas or a container UIControl, the way the Editor scene tree spawns it, with editor undo and dry_run. Create the canvas first with actor_create type FlaxEngine.UICanvas; give an Image its picture and a Label its font size with ui_control_set_property. Requires bridge v33.',
       inputSchema: zodToJsonSchema(UiControlCreateSchema),
       handler: (a, c) => handleUiControlCreate(a as Parameters<typeof handleUiControlCreate>[0], c),
     },
     {
       name: 'ui_control_get_properties',
-      description: 'Lists the editor-visible members of the GUI control owned by a UIControl actor (text, size, location, anchors, colors, ...) with type, current value, and writability. Requires bridge v33.',
+      description: 'Lists the editor-visible members of the GUI control owned by a UIControl actor (text, size, location, anchors, colors, fonts, brushes, ...) with type, current value, and writability. Brushes, fonts, and asset references are returned as the strings ui_control_set_property accepts (Value.Text). Requires bridge v33.',
       inputSchema: zodToJsonSchema(UiControlGetPropertiesSchema),
       handler: (a, c) => handleUiControlGetProperties(a as Parameters<typeof handleUiControlGetProperties>[0], c),
     },
     {
       name: 'ui_control_set_property',
-      description: 'Sets one editor-visible member of the GUI control owned by a UIControl actor through the Editor property wrapper with editor undo and a dry_run preview. Control hierarchy (Parent, IndexInParent) stays with actor_reparent. Requires bridge v33.',
+      description: 'Sets one editor-visible member of the GUI control owned by a UIControl actor through the Editor property wrapper with editor undo and a dry_run preview. Covers text, layout, colors, fonts (Font: "<font asset>;size=<points>"), and brushes (Image Brush, BackgroundBrush: a texture, sprite, solid color, gradient, material, 9-slicing, UI brush asset, or video brush); assets may be project Content/ paths, GUIDs, or engine:<path> engine content. Control hierarchy (Parent, IndexInParent) stays with actor_reparent. Requires bridge v33.',
       inputSchema: zodToJsonSchema(UiControlSetPropertySchema),
       handler: (a, c) => handleUiControlSetProperty(a as Parameters<typeof handleUiControlSetProperty>[0], c),
     },
     {
       name: 'particle_get_parameters',
-      description: 'Lists the parameters a ParticleEffect actor exposes from its ParticleSystem: emitter track, name, type, current value, and default value. Requires bridge v33.',
+      description: 'Lists the parameters a ParticleEffect actor exposes from its ParticleSystem: emitter track, name, type, current value, and default value. Asset values report their GUID plus the Content/ or engine:<path> form. Requires bridge v33.',
       inputSchema: zodToJsonSchema(ParticleGetParametersSchema),
       handler: (a, c) => handleParticleGetParameters(a as Parameters<typeof handleParticleGetParameters>[0], c),
     },
     {
       name: 'particle_set_parameter',
-      description: 'Overrides one public parameter on a ParticleEffect actor through ParticleEffect.SetParameterValue with editor undo and a dry_run preview. The override is stored on the actor and the scene is marked edited, not saved. Requires bridge v33.',
+      description: 'Overrides one public parameter on a ParticleEffect actor through ParticleEffect.SetParameterValue with editor undo and a dry_run preview. Asset parameters take a GUID, a Content/ path, or engine:<path> engine content. The override is stored on the actor and the scene is marked edited, not saved. Requires bridge v33.',
       inputSchema: zodToJsonSchema(ParticleSetParameterSchema),
       handler: (a, c) => handleParticleSetParameter(a as Parameters<typeof handleParticleSetParameter>[0], c),
     },
@@ -1523,7 +1524,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     // ── Bridge v33: play-mode script drive ────────────────────────────────────
     {
       name: 'runtime_set_script_value',
-      description: 'During play mode, writes one editor-visible field or property of a game script (members declared in game code only, never engine members). No undo is recorded and the value is discarded when play stops. Use it to drive gameplay from tests, since Flax 1.12 has no managed key or mouse injection. Requires bridge v33.',
+      description: 'During play mode, writes one editor-visible field or property of a game script (members declared in game code only, never engine members). Values use the actor_set_property shapes, including engine:<path> assets, brushes, and fonts. No undo is recorded and the value is discarded when play stops. Use it to drive gameplay from tests, since Flax 1.12 has no managed key or mouse injection. Requires bridge v33.',
       inputSchema: zodToJsonSchema(RuntimeSetScriptValueSchema),
       handler: (a, c) => handleRuntimeSetScriptValue(a as Parameters<typeof handleRuntimeSetScriptValue>[0], c),
     },

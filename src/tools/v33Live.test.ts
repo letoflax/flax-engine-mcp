@@ -162,6 +162,11 @@ test('actor_set_property sends generic members and dry-run previews to a v33 bri
     const uiNoop = await roundTrip(f, handleUiControlSetProperty(UiControlSetPropertySchema.parse({ actor_id: ACTOR, property: 'Text', value: 'Play' }), f.ctx),
       ok({ ActorId: ACTOR, Property: 'Text', DryRun: false, WouldChange: false }));
     assert.deepEqual(uiNoop.envelope.changes, []);
+
+    // A result's own Warnings reach the envelope, as they do for UI writes.
+    const warned = await roundTrip(f, handleActorSetProperty(ActorSetPropertySchema.parse({ target_id: ACTOR, property: 'Font', value: ';size=24' }), f.ctx),
+      ok({ ActorId: ACTOR, Property: 'Font', WouldChange: true, Warnings: ['The font reference has no font asset.'] }));
+    assert.deepEqual(warned.envelope.warnings, ['The font reference has no font asset.']);
   } finally { await f.cleanup(); }
 });
 
@@ -342,4 +347,79 @@ test('lifecycle tools keep bridge conflict codes instead of collapsing them to I
       { ok: false, errorCode: 'INVALID_STATE', error: 'ui.create_control is an edit-time operation and is unavailable while the editor is in play mode or play was requested.' });
     assert.equal(playing.envelope.error.code, 'EDITOR_BUSY');
   } finally { await f.cleanup(); }
+});
+
+test('brush, font, and engine-asset strings reach the bridge unchanged and read back as pasteable text', async () => {
+  const f = await fixture();
+  try {
+    // The value stays a plain string on the wire: the bridge owns the grammar.
+    const brush = 'texture:engine:Engine/Textures/FlaxIcon;filter=point';
+    const written = await roundTrip(f, handleUiControlSetProperty(UiControlSetPropertySchema.parse({ actor_id: ACTOR, property: 'Brush', value: brush }), f.ctx),
+      ok({ ActorId: ACTOR, Property: 'Brush', Type: 'FlaxEngine.GUI.IBrush', DryRun: false, WouldChange: true,
+        After: { Kind: 'brush', Text: brush, AssetId: 'd'.repeat(32), TypeName: 'FlaxEngine.GUI.TextureBrush' } }));
+    assert.deepEqual(written.request.params, { ActorId: ACTOR, Property: 'Brush', Text: brush, DryRun: false });
+    assert.equal(written.envelope.data.result.After.Text, brush);
+    assert.deepEqual(written.envelope.changes, [{ kind: 'ui.control_property_set', id: ACTOR, property: 'Brush' }]);
+
+    // Bridge hints (an invisible background brush, a non-GUI material) surface as tool warnings.
+    const hinted = await roundTrip(f, handleUiControlSetProperty(UiControlSetPropertySchema.parse({ actor_id: ACTOR, property: 'BackgroundBrush', value: 'solid:#ff8000' }), f.ctx),
+      ok({ ActorId: ACTOR, Property: 'BackgroundBrush', WouldChange: true, Warnings: ['BackgroundBrush is drawn tinted by BackgroundColor'] }));
+    assert.deepEqual(hinted.request.params, { ActorId: ACTOR, Property: 'BackgroundBrush', Text: 'solid:#ff8000', DryRun: false });
+    assert.deepEqual(hinted.envelope.warnings, ['BackgroundBrush is drawn tinted by BackgroundColor']);
+
+    const font = await roundTrip(f, handleUiControlSetProperty(UiControlSetPropertySchema.parse({ actor_id: ACTOR, property: 'Font', value: 'engine:Editor/Fonts/Roboto-Regular;size=24', dry_run: true }), f.ctx),
+      ok({ ActorId: ACTOR, Property: 'Font', DryRun: true, WouldChange: true }));
+    assert.deepEqual(font.request.params, { ActorId: ACTOR, Property: 'Font', Text: 'engine:Editor/Fonts/Roboto-Regular;size=24', DryRun: true });
+    assert.deepEqual(font.envelope.changes, []);
+
+    // Clearing stays the empty string, for brushes as for any reference.
+    const cleared = await roundTrip(f, handleUiControlSetProperty(UiControlSetPropertySchema.parse({ actor_id: ACTOR, property: 'Brush', value: '' }), f.ctx),
+      ok({ ActorId: ACTOR, Property: 'Brush', WouldChange: true, After: { Kind: 'null', TypeName: 'FlaxEngine.GUI.IBrush' } }));
+    assert.deepEqual(cleared.request.params, { ActorId: ACTOR, Property: 'Brush', Text: '', DryRun: false });
+
+    // Engine assets use the same member path on actors, particle parameters, and play-mode script members.
+    const model = await roundTrip(f, handleActorSetProperty(ActorSetPropertySchema.parse({ target_id: ACTOR, property: 'Model', value: 'engine:Editor/Primitives/Sphere' }), f.ctx),
+      ok({ ActorId: ACTOR, Property: 'Model', WouldChange: true, After: { Kind: 'asset', Text: 'engine:Editor/Primitives/Sphere', AssetId: 'e'.repeat(32), TypeName: 'FlaxEngine.Model' } }));
+    assert.deepEqual(model.request.params, { ActorId: ACTOR, Property: 'Model', Text: 'engine:Editor/Primitives/Sphere' });
+    assert.equal(model.envelope.data.result.After.Text, 'engine:Editor/Primitives/Sphere');
+
+    const particle = await roundTrip(f, handleParticleSetParameter(ParticleSetParameterSchema.parse({ actor_id: ACTOR, name: 'Sprite', value: 'engine:Engine/Textures/WhiteTexture' }), f.ctx),
+      ok({ ActorId: ACTOR, Name: 'Sprite', WouldChange: true }));
+    assert.deepEqual(particle.request.params, { ActorId: ACTOR, Name: 'Sprite', Text: 'engine:Engine/Textures/WhiteTexture', DryRun: false });
+
+    const runtime = await roundTrip(f, handleRuntimeSetScriptValue(RuntimeSetScriptValueSchema.parse({ script_id: SCRIPT, member: 'Icon', value: 'sprite:Content/UI/Atlas.flax;sprite=Heart' }), f.ctx),
+      ok({ ScriptId: SCRIPT, Member: 'Icon' }));
+    assert.deepEqual(runtime.request.params, { ScriptId: SCRIPT, Member: 'Icon', Text: 'sprite:Content/UI/Atlas.flax;sprite=Heart' });
+
+    // An engine reference the bridge cannot resolve stays ASSET_NOT_FOUND for the caller.
+    const missing = await roundTrip(f, handleUiControlSetProperty(UiControlSetPropertySchema.parse({ actor_id: ACTOR, property: 'Brush', value: 'texture:engine:Engine/Textures/Nope' }), f.ctx),
+      { ok: false, errorCode: 'ASSET_NOT_FOUND', error: 'Asset was not found in the engine content registry: engine:Engine/Textures/Nope' });
+    assert.equal(missing.isError, true);
+    assert.equal(missing.envelope.error.code, 'ASSET_NOT_FOUND');
+  } finally { await f.cleanup(); }
+});
+
+test('member value schemas document every brush kind, the font form, and engine asset references', () => {
+  const shapes = [
+    UiControlSetPropertySchema.shape.value.description ?? '',
+    ParticleSetParameterSchema.shape.value.description ?? '',
+  ];
+  for (const text of shapes) {
+    for (const kind of ['solid:', 'gradient:', 'texture:', 'texture9:', 'sprite:', 'sprite9:', 'material:', 'ui_brush:', 'video:']) {
+      assert.ok(text.includes(`"${kind}`), `value description must document the ${kind} brush form`);
+    }
+    assert.match(text, /;size=<points>/);
+    assert.match(text, /engine:Editor\/Primitives\/Cube/);
+    assert.match(text, /"" clears/);
+  }
+  const actorValue = ActorSetPropertySchema.shape.value.description ?? '';
+  assert.match(actorValue, /engine:<path>/);
+  assert.match(actorValue, /;size=<points>/);
+  assert.match(actorValue, /solid, gradient, texture, texture9, sprite, sprite9, material, ui_brush, and video/);
+  assert.match(RuntimeSetScriptValueSchema.shape.value.description ?? '', /engine:<path>/);
+
+  // The value is still one bounded scalar: no object or array form was added.
+  assert.equal(UiControlSetPropertySchema.safeParse({ actor_id: ACTOR, property: 'Brush', value: { kind: 'texture' } }).success, false);
+  assert.equal(UiControlSetPropertySchema.safeParse({ actor_id: ACTOR, property: 'Brush', value: 'x'.repeat(4097) }).success, false);
+  assert.equal(UiControlSetPropertySchema.safeParse({ actor_id: ACTOR, property: 'Brush', value: 'texture:Content/UI/Logo.flax;filter=point' }).success, true);
 });

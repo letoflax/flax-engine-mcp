@@ -139,4 +139,4 @@ test('real Flax GUI integration is opt-in and skipped unless an explicit host co
   // window. The tests above exercise only a deterministic file-RPC peer.
 });
 
-test('operation cancellation has no released bridge API and remains explicitly untested', { skip: 'Bridge v8 has no cancellable build/import operation API; add this probe with the operation contract.' }, () => {});
+test('operation cancellation against a real Editor remains explicitly untested here', { skip: 'operation_cancel and build_cancel exist since bridge v11/v13 and are covered by fixture tests; this file RPC peer cannot run a cancellable build or import, so the live probe needs a real Editor.' }, () => {});

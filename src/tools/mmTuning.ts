@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
-import { mapBridgeError } from '../bridge/mapBridgeError.js';
+import { isHeadlessRefusal, mapBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
+import { isFamilyAllowed, policyForContext } from '../permissions.js';
 import { ProjectMeta } from '../projectContext.js';
 
 type RecordValue = Record<string, unknown>;
@@ -21,16 +22,8 @@ function mmError(error: unknown) {
   // delegate everything else (including headless evidence → HEADLESS_MODE).
   if (error instanceof BridgeRpcError && error.code === 'BRIDGE_REMOTE_ERROR') {
     const remote = error.details as { code?: unknown; details?: unknown } | undefined;
-    if (remote?.code === 'INVALID_STATE') {
-      let serialized = '';
-      try {
-        serialized = JSON.stringify(error.details) ?? '';
-      } catch {
-        serialized = String(error.details);
-      }
-      if (!/headless/i.test(serialized)) {
-        return new ToolDomainError('INVALID_PLAY_STATE', error.message, remote?.details);
-      }
+    if (remote?.code === 'INVALID_STATE' && !isHeadlessRefusal(error)) {
+      return new ToolDomainError('INVALID_PLAY_STATE', error.message, remote?.details);
     }
   }
   return mapBridgeError(error);
@@ -57,6 +50,11 @@ export const MMApplyPresetSchema = z.object({
 
 export async function handleMMTuning(args: z.infer<typeof MMTuningSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
+    // mm_tuning sits in the read family, but rebuild_start queues a full
+    // database rebuild. That one op needs a profile that allows runtime tools.
+    if (args.op === 'rebuild_start' && !isFamilyAllowed('runtime', policyForContext(ctx))) {
+      throw new ToolDomainError('PERMISSION_DENIED', 'mm_tuning op "rebuild_start" queues a database rebuild and is not allowed by the active permission profile.');
+    }
     const params: RecordValue = { Op: args.op, TopN: args.top_n, MaxEntries: args.max_entries };
     if (args.entry_index !== undefined) params.EntryIndex = args.entry_index;
     if (args.trace_path !== undefined) params.TracePath = args.trace_path;

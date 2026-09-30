@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { auditOperationOf } from './audit.js';
 import { callEditorBridge } from './bridge/fileRpcClient.js';
 import { ProjectMeta, safeReadFile, walkDir } from './projectContext.js';
 import { inspectEditorBridge, readProjectIdentity } from './tools/serverStatus.js';
@@ -216,7 +217,7 @@ async function auditRecent(ctx: ProjectMeta): Promise<Json> {
   const entries = raw.split('\n').filter(Boolean).slice(-25).flatMap(line => {
     try {
       const row = JSON.parse(line) as Record<string, unknown>;
-      return [{ timestamp: String(row.timestamp ?? ''), operation: row.operation === 'apply_script_patch' ? 'apply_script_patch' : 'write_script',
+      return [{ timestamp: String(row.timestamp ?? ''), operation: auditOperationOf(row.operation),
         target: typeof row.target === 'string' ? row.target : '', dry_run: row.dry_run === true, success: row.success === true }];
     } catch { return []; }
   }).reverse();

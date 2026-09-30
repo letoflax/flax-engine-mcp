@@ -1,12 +1,20 @@
-# Flax MCP Editor Bridge protocol (bridge v14 / protocol v1)
+# Flax MCP Editor Bridge protocol (bridge v33 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
 
-At startup the bridge creates `requests/`, `processing/`, and `responses/`, then
-writes these project-local files:
+This document is cumulative. The opening sections describe the v5 to v7 baseline;
+each later `## Bridge vNN` section records what that version added or superseded,
+and the "Bridge v33" section at the end describes the newest bridge. Sections are
+not in strict version order (after v14 the file continues with v27 down to v16,
+then v28 to v33), so when two statements disagree, the one from the higher bridge
+version wins. The protocol version stays 1: every addition since v5 is optional or
+additive.
 
-- `bridge.json`: `{ "BridgeVersion": 14, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+At startup the bridge creates `requests/`, `processing/`, and `responses/` (plus
+`captures/` and `operations/`), then writes these project-local files:
+
+- `bridge.json`: `{ "BridgeVersion": 33, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
@@ -18,7 +26,9 @@ The Node client writes `requests/<id>.json` using a temporary file then rename.
 bridge instance. A response is atomically written to `responses/<id>.json`.
 
 Request fields are lowercase `id`, `token`, `method`, `paramsJson`, and `deadlineUnixMs`.
-`paramsJson` is a JSON string, not an arbitrary object, and is capped at 64 KiB.
+`paramsJson` is a JSON string, not an arbitrary object, and is capped at 64 KiB
+(the whole request file at 128 KiB; a successful `resultJson` at 512 KiB, beyond
+which the bridge answers `RESPONSE_TOO_LARGE`).
 `deadlineUnixMs` is Unix milliseconds; it may be zero or within the next 60 s.
 Response fields are lowercase `id`, `token`, `ok`, `errorCode`, `error`, optional `errorDetails`, `resultJson`, and `timestamp`. `errorDetails` is an optional JSON string added in bridge v7; clients that do not understand it can ignore it. The v7 revision conflict uses it to return the current bridge-known revision.
 The client rejects a response unless its token matches the active session token
@@ -30,9 +40,13 @@ exists only so the local client can reject a bridge from another project.
 
 Bridge v5 methods remain available: `status`, `scene.list_loaded`, `scene.get_tree`, `scene.save`,
 `project.save_all`, actor CRUD/find/duplicate/reparent, narrowly scoped script
-attach/detach/instance read/update, and `edit.undo`/`edit.redo`. The script update
-surface only permits an optional `Enabled` patch; an empty patch fails, and arbitrary
-reflection-based or serialized-property changes are not exposed. `actor.update`
+attach/detach/instance read/update, and `edit.undo`/`edit.redo`. The
+`script.instance_update` method only permits an optional `Enabled` patch and an
+empty patch fails; that has not changed. Later versions add bounded, separately
+named writes instead of widening it: `script.instance_set_value` (v28),
+`actor.set_property` (v28, generic editor-visible members in v33), and play-mode
+`runtime.set_script_value` (v33). They go through the Editor property wrapper and
+never accept an arbitrary serialized blob. `actor.update`
 permits only name, active, world position/scale/Euler angles, local
 position/scale/Euler angles, layer, and v15 component assignments for
 `FlaxEngine.AnimatedModel` (`SkinnedModel`, `AnimationGraph`,
@@ -50,9 +64,10 @@ Bridge v7 actor DTOs additionally expose bounded, public Flax 1.12 metadata:
 position/scale/Euler angles, `Layer`, `LayerName`, numeric `StaticFlags`, and up to
 64 tag names (`TagsTruncated` reports the remainder). `actor.find` retains its
 v5 name-substring filter and adds v7-only exact `TypeName`, direct `ParentId`, and
-`Active` filters. These fields are explicit allowlisted DTO members; arbitrary
-actor components/properties, prefab overrides, and script serialized properties
-remain unsupported.
+`Active` filters. These fields are explicit allowlisted DTO members; at v7,
+arbitrary actor components/properties, prefab overrides, and script serialized
+properties were unsupported. Later versions add editor-visible member reads and
+writes (v28, v33) and prefab override workflows (v30) as separate methods.
 
 Bridge v6 adds:
 
@@ -90,7 +105,9 @@ active compilation/play session, and log text is redacted before it leaves the
 bridge. `Tail:true` requests the newest matching entries; ordinary sequence
 scans remain ascending and paginated.
 
-Viewport capture is play-mode-only and unavailable in headless mode. It writes a
+In v6 viewport capture was play-mode-only (bridge v22 added an `editor` viewport
+scope that works outside play mode, see "Bridge v22"); both scopes are unavailable
+in headless mode. It writes a
 PNG below `Cache/MCP/captures`; status returns an opaque capture ID, never an
 arbitrary caller path. Files expire after 24 hours and the Node server exposes
 them through `flax://capture/<id>` with bounded MCP `resources/list` and
@@ -99,6 +116,14 @@ them through `flax://capture/<id>` with bounded MCP `resources/list` and
 `actor.duplicate` delegates to Flax's undoable editor command. Flax 1.12 does not
 return the new actor ID from that public command, so the response reports
 `Verified:false` and `NewActorId:null`; clients must refresh the scene tree.
+
+`actor.validate_create` takes the same parameters as `actor.create` and resolves
+the type and parent without spawning; the Node `actor_create` dry-run uses it.
+`scene.save` fails with `EDITOR_BUSY` while game scripts are compiling or reloading
+(saving then could flush unresolved script values), and its `McpSceneRef` result may
+carry a `SaveReport` string when keyed lines present in the scene file before the
+save are gone after it (the scene serializer omits values equal to C# defaults and
+flushes dangling asset references as empty).
 
 ## Bridge v7: revisions, edit leases, and idempotency
 
@@ -180,14 +205,13 @@ accepts only `Enabled`; bounded field writes go through
 `script.instance_set_value` (bridge v28) and arbitrary serialized script
 writes remain unexposed.
 
-## Bridge v8: public asset registry and reference graph
-
 ## MCP resource delivery (Node server)
 
 The Node MCP server exposes bridge data as bounded read-only resources; this does
 not add a bridge RPC or imply an Editor event stream. Fixed resources include
 project metadata/settings, bridge status, loaded scenes, diagnostics, logs,
-compile status, and script audit history. Live scene/actor URIs require bridge
+script compilation status (`flax://build/status`, not GameCooker builds), and
+script audit history. Live scene/actor URIs require bridge
 v5; live asset URIs require v8. All resource URIs use canonical `flax://` paths,
 reject queries/fragments/encoded traversal, redact host paths, and limit JSON to
 256 KiB. Capture PNG resources retain the existing cache confinement, TTL, and
@@ -195,15 +219,21 @@ size checks.
 
 The MCP server may subscribe clients to Editor status, scene trees, diagnostics,
 and logs. It sends debounced `notifications/resources/updated` only after a
-successful MCP mutation known to affect a subscribed resource; Editor status is
-also bounded-polled through the heartbeat. The bridge has no verified callback
+successful call of a fixed set of MCP tools (scene save, actor create/update/
+delete/duplicate/reparent, script attach/detach/enabled patch, undo/redo, C#
+source writes, compile and project generation, and play controls);
+other write tools, such as `actor_set_property` or `scene_open`, do not trigger it.
+Editor status is also bounded-polled through the heartbeat. The bridge has no verified callback
 for manual Editor edits or arbitrary plugin mutations, so those changes are not
 guaranteed to cause notifications. Successful captures cause the server to send
 `notifications/resources/list_changed`.
 
+## Bridge v8: public asset registry and reference graph
+
 Bridge v8 keeps protocol v1 because the asset RPCs and status fields are additive.
 `status` adds `AssetRegistrySupported:true`, `AssetReferenceGraphSupported:true`,
-`AssetImportSettingsSupported:false`, and `AssetReferenceLocationsSupported:false`.
+`AssetImportSettingsSupported:false` (true since bridge v32), and
+`AssetReferenceLocationsSupported:false`.
 
 The v8 allowlisted methods are `asset.search`, `asset.get`,
 `asset.dependencies`, and `asset.find_references`. Successful result DTOs use
@@ -233,7 +263,9 @@ references. Result kind is `asset`, `scene`, or `prefab` only when the registry
 type verifies it; actor and property paths are intentionally absent. Public APIs
 do not verify importer settings, import status, file size, modified time, or
 asset-reference locations, so v8 omits them instead of inferring them from files
-or reflection.
+or reflection. (Importer settings are still not part of the `asset.get` or
+`asset.search` results; bridge v32 reads and writes them through the separate
+`asset.get_import_settings` and `asset.set_import_settings` methods.)
 
 ## Bridge v9: allowlisted asset import and reimport
 
@@ -254,7 +286,9 @@ junctions is rejected.
 
 `asset.import_start` accepts PascalCase `OperationId`, `IdempotencyKey`,
 `SourcePath`, `SourceSizeBytes`, `SourceLastWriteUnixMs`, `DestinationPath`,
-`CollisionPolicy`, `DryRun`, `AllowedImportRoots`, and `MaxSourceBytes`.
+`CollisionPolicy`, `DryRun`, `AllowedImportRoots`, and `MaxSourceBytes`, plus an
+optional `ModelImportType` (`Model`, `SkinnedModel`, `Animation`, or `Prefab`;
+added with bridge v16) that selects the model importer type for model sources.
 `DestinationPath` is strictly project-relative `Content/.../*.flax`; absolute
 paths, traversal, and a Content parent resolving through a junction are rejected.
 `CollisionPolicy` is `error` (default) or bounded `rename`, never overwrite.
@@ -270,8 +304,11 @@ selected object must load as `BinaryAsset`; the bridge uses only its public
 `ContentImporting.Reimport(..., skipSettingsDialog:true)` API. Its worker
 completion event provides the terminal operation state/progress; no void-returning
 reimport API is misrepresented as synchronous success. Missing or unallowlisted
-metadata sources reject rather than prompting for a file. Importer settings and
-type changes remain unsupported.
+metadata sources reject rather than prompting for a file. `asset.reimport_start`
+also accepts the optional `ModelImportType` (v16), which switches a model source
+between the four importer types; no other importer setting or type change is
+available through it. Bridge v32 adds allowlisted importer-option writes as
+`asset.set_import_settings` (see "Bridge v32").
 
 Both start methods reject `EDITOR_BUSY` while the Editor is playing, starting
 play, compiling/reloading scripts, or already importing content. They are UI-free
@@ -349,10 +386,13 @@ start request after a lost response.
 Current compile, project-generation, import, and reimport handles are mirrored
 into this common status surface. `operation.cancel` is truthful: it returns
 `CANCELLATION_UNSUPPORTED` when Flax's public backend has no safe cancellation
-API (including compilation and content importing). The only currently safe
-checkpoint is queued project generation before it runs; cancellation then
-returns terminal `cancelled` with `OPERATION_CANCELLED`. These raw handles are
-not a claim of MCP Tasks support.
+API (including compilation and content importing). At v11 the only safe
+checkpoint was queued project generation before it runs; cancellation then
+returns terminal `cancelled` with `OPERATION_CANCELLED`. Since bridge v13 a
+running `build_cook` operation can also be cancelled (asynchronously, see the
+v13 build section). The v31 navmesh, lightmap, and probe bakes do not create
+operation handles; only `lighting.bake` can be cancelled, through its own
+toggle. These raw handles are not a claim of MCP Tasks support.
 
 ## Bridge v12: bounded prefab editor workflows
 
@@ -452,28 +492,36 @@ collection. animation.validate_bindings compares that actor's public
 SkinnedModel, AnimationGraph, and graph BaseModel references; it does not infer
 skeleton compatibility beyond matching public asset IDs.
 
-The v13 method names material.set_parameters, material.create_instance,
-material.assign_to_actor, and animation.set_graph_parameter are present only to
-return stable UNSUPPORTED_FLAX_VERSION capabilities. Flax 1.12 exposes runtime
-setters and virtual material instances, but this bridge has no reviewed Editor
-undo, durable-save, actor-slot targeting, semantic-preview, and confirmation
-path for those mutations. It therefore never calls SetParameterValue or
-CreateVirtualInstance, nor does it mutate material slots or animation graph
-state.
+As shipped in v13, the method names material.set_parameters,
+material.create_instance, material.assign_to_actor, and
+animation.set_graph_parameter were present only to return stable
+UNSUPPORTED_FLAX_VERSION capabilities. Flax 1.12 exposes runtime setters and
+virtual material instances, but v13 had no reviewed Editor undo, durable-save,
+actor-slot targeting, semantic-preview, and confirmation path for those
+mutations, so it never called SetParameterValue or CreateVirtualInstance and did
+not mutate material slots or animation graph state. Superseded by bridge v29:
+the three material methods are now real edit-time implementations (see
+"Bridge v29" below). Only animation.set_graph_parameter is still a stable
+UNSUPPORTED_FLAX_VERSION capability.
+
 ## Bridge v14: bounded advanced domain queries
 
 Bridge v14 adds read-only `physics.validate_colliders`, `physics.raycast`,
 `physics.get_layer_matrix`, and `physics.find_overlaps`; navigation status,
 agent validation, and path query methods; lighting status/validation; plus
 `terrain.get_summary` and `foliage.get_summary`. All query only public Flax
-1.12 runtime state and cap caller-controlled result counts.
+1.12 runtime state and cap caller-controlled result counts. In a real Editor the
+v14 queries returned empty objects until the named-DTO fix shipped with bridge v33
+(see "Serialization and type-resolution fixes shipped with v33" below); the
+field names did not change.
 
 `navigation.build`, `lighting.bake`, and `environment_probe.bake` shipped as
 stable `UNSUPPORTED_FLAX_VERSION` capabilities (bridge v31 replaced all three
 stubs with real implementations — see "Bridge v31" below). Terrain and foliage
-shipped metadata-only; bridge v31 adds real foliage instance writes while
-`terrain.paint` remains a validated stub with no verified managed write path
-(see "Bridge v31").
+shipped metadata-only; bridge v31 adds real foliage instance writes and a
+`terrain.paint` method that is a validated stub with no verified managed write
+path (see "Bridge v31").
+
 ## Bridge v27: engine-side performance snapshot
 
 Bridge v27 keeps protocol v1 and the full v26 surface. It adds
@@ -941,10 +989,13 @@ revisions, so callers verify without saving.
 
 `actor.set_property` takes `McpActorPropertySet { ActorId, Property,
 Bool?, Number?, Text, ExpectedSceneRevision, LeaseId, IdempotencyKey }`.
-`Property` must exactly equal one allowlist entry — `Light.Color`,
+At v28 `Property` had to exactly equal one allowlist entry — `Light.Color`,
 `Light.Brightness`, `Camera.FieldOfView`, `StaticModel.Model`,
-`Script.Enabled` — with no dotted-path parsing; anything else fails with
-`VALIDATION_FAILED` listing the allowlist. Each entry runs a direct typed
+`Script.Enabled` — with no dotted-path parsing, and anything else failed with
+`VALIDATION_FAILED` listing the allowlist. (Superseded by bridge v33: any
+other name is now resolved as an editor-visible member, `Member` or
+`Type.Member`, and the allowlist survives as five aliases with unchanged
+behaviour; see "Bridge v33".) Each entry runs a direct typed
 setter inside `Undo.RecordAction` (the `UpdateActor` pattern) plus
 `MarkSceneEdited`: `Light.Color` (actor must be `FlaxEngine.Light`,
 Text color), `Light.Brightness` (number >= 0), `Camera.FieldOfView`
@@ -1262,27 +1313,69 @@ every new call site is additionally compile-probed by
   `DisableStreaming`, `Is3D`, `BitDepth` (`_8,_16,_24,_32`).
 - `FlaxEditor.Content.Import.{Texture,Model,Audio}ImportSettings` are
   classes with a public `Settings` field; the typed settings object is
-  passed straight to `Reimport`. `AudioClipItem` is internal to the
-  editor assembly (CS0122), so audio assets are classified by registry
-  type name `FlaxEngine.AudioClip` while texture/model use the public
-  `TextureAssetItem` / `ModelItem` / `SkinnedModeItem` subclasses.
+  passed straight to `Reimport`. The importer replaces its options
+  wholesale with that object
+  (`TextureImportEntry`/`ModelImportEntry`/`AudioImportEntry`
+  `.TryOverrideSettings`).
+- Classification uses the exact registry type name only:
+  `FlaxEngine.Texture` → `texture`; `FlaxEngine.Model` and
+  `FlaxEngine.SkinnedModel` → `model`; `FlaxEngine.AudioClip` → `audio`.
+  `BinaryAssetProxy.ConstructItem` builds a `TextureAssetItem` for every
+  `TextureBase` (`CubeTexture`, `SpriteAtlas`, `IESProfile`), so the item
+  subclass alone is not enough; those types are refused. The public
+  `TextureAssetItem` / `ModelItem` / `SkinnedModeItem` subclasses are a
+  cross-check for texture and model (`AudioClipItem` is internal, CS0122).
 
 Wire shape: settings travel as explicit key/scalar entries with exact C#
 option field names (bool/integer/number/string exactly-one-of), never
-anonymous types. `asset.get_import_settings` returns `{asset, type:
-texture|model|audio, restored, settings}` with a bounded read-only
-projection; unknown asset types fail `VALIDATION_FAILED`.
-`asset.set_import_settings` clones the current options, mutates the
-allowlist only (strict ranges: texture `MaxSize` 1-16384, `Scale`
-(0,8]; model `Scale` 0.001-1000, smoothing angles 0-180, `BaseLOD`
-0-16, `LODCount` 1-16; audio `Quality` 0-1; enums exact-match:
-`Format` is `Raw|Vorbis`, `BitDepth` is `_8|_16|_24|_32`), rejects
-unknown/duplicate keys with `VALIDATION_FAILED`, and applies through
+anonymous types. `asset.get_import_settings` returns `{Asset, Type:
+texture|model|audio, Restored, Settings}` with a bounded read-only
+projection. An unsupported asset type fails `VALIDATION_FAILED` with
+`{TypeName}` details; the check runs on the registry record, before the
+editor item lookup, `Content.Load`, or any source check.
+`asset.get` sets `ImportSettingsAvailable` from the same classification.
+
+`asset.set_import_settings` restores the current options once and derives
+`Before`, `After`, and the object handed to `Reimport` from that single
+value. It mutates the allowlist only and rejects unknown or duplicate
+keys, a value with more or fewer than one scalar, NaN and infinities, and
+out-of-range values with `VALIDATION_FAILED`. Ranges are the engine's own
+`Limit` attributes (`TextureTool.h`, `ModelTool.h`, `AudioTool.h`) except
+where noted: texture `MaxSize` 1-16384 (bridge policy, no engine limit),
+`Scale` 0.0001-8 (engine minimum, tighter bridge maximum); model `Scale`
+0.001-1000 (bridge policy), `SmoothingNormalsAngle` 0-175,
+`SmoothingTangentsAngle` 0-45, `BaseLOD` 0-5, `LODCount` 1-6; audio
+`Quality` 0-1; enums exact-match (`Format` is `Raw|Vorbis`, `BitDepth` is
+`_8|_16|_24|_32`). A float option also accepts an `Integer`-typed value;
+Node always sends floats as `Number`.
+
+When the current options cannot be restored (`Restored:false`) the write
+fails `IMPORT_FAILED` and nothing is reimported: defaults would replace
+every option the caller did not name. `asset.reimport_start` with
+`ModelImportType` refuses for the same reason.
+
+The write applies through
 `ContentImporting.Reimport(item, settings, skipSettingsDialog:true)` on
 the shared `"reimport"` operation records, so `asset_reimport_status`
-polls settings writes like ordinary reimports. `dry_run` returns
-`{would_change, before, after}` without touching the importer; a
-no-change write finishes `succeeded` without reimporting.
+polls settings writes like ordinary reimports. That `Reimport` overload
+only queues a request, and queues nothing when `item.GetImportPath` fails
+or the import path no longer exists, in which case `ImportFileEnd` never
+fires. The bridge therefore runs the same two public checks first
+(`QueueAssetReimport`, shared with `asset.reimport_start`) and fails
+`IMPORT_FAILED` instead of leaving an operation `running` forever.
+
+Result: `{Operation, WouldChange, Before, After, Adopted}`. `DryRun`
+returns the preview without touching the importer; a no-change write
+finishes `succeeded` with `WouldChange:false` and queues no reimport. The
+bridge stores each operation's preview for as long as its operation
+record lives; a request that reuses a known `OperationId` gets that stored
+result with `Adopted:true`. `WouldChange`, `Before`, and `After` are
+`null` when the first call failed before a preview existed, which means
+"unknown", never "no change"; the failure is in `Operation.Phase` /
+`Operation.ErrorCode`. A failed operation record keeps its real error
+code (`VALIDATION_FAILED`, `EDITOR_BUSY`, `ASSET_NOT_FOUND`,
+`IMPORT_SOURCE_NOT_ALLOWED`, `FILE_EXISTS`); Node maps any other code to
+`IMPORT_FAILED`.
 
 Explicitly missing (not claimed): dry-run validate-only import (no
 `PreviewImport`/`ValidateOptions` in the managed API); standalone
@@ -1305,7 +1398,8 @@ API truth comes from the Flax 1.12 C++ headers under `Source/` and a
 decompile of the shipped `FlaxEngine.CSharp.dll` (the install ships no
 `.cpp` and no Editor C# sources). Every call site is compiled by
 `test/flax-api-smoke/BridgeCompileSmoke.csproj`, and the surface was run
-against a real Flax 1.12 Editor (see `docs/TESTING.md`).
+against a real Flax 1.12 Editor except for the gaps listed under "Not
+exercised live" in `docs/TESTING.md`.
 
 Design rule: a method exists only where it follows the path the Editor
 itself uses. Input injection therefore stays the v26 stub
@@ -1344,10 +1438,54 @@ dispatching into `RootControl.GameRoot` would reach GUI only and leave
   `vector2/3/4` (Vector, Float, Double, Int), `color`, `quaternion`
   (`"x,y,z,w"`), `rectangle` (`"x,y,width,height"`), `margin`
   (`"left,right,top,bottom"`), `localized_string`, `layers_mask`
-  (integer), `asset` and `json_asset` (GUID or `Content/` path, `""`
-  clears; `JsonAssetReference<T>` also checks `DataTypeName`), `actor` and
-  `script` (GUID, `""` clears). Asset references resolve through the
-  project Content registry, so engine-content assets cannot be assigned.
+  (integer), `asset` and `json_asset` (`""` clears;
+  `JsonAssetReference<T>` also checks `DataTypeName`), `brush`, `font`,
+  `actor` and `script` (GUID, `""` clears).
+- Asset references are a GUID, a `Content/` path, or `engine:<internal path>`
+  (the `Content.LoadAsyncInternal` form: relative to the engine Content
+  folder, no extension, e.g. `engine:Editor/Primitives/Cube`). Project
+  assets resolve first; engine assets resolve only from the engine asset
+  registry under `Globals.EngineContentFolder` and are loaded by ID and
+  type-checked like project assets. No file path is composed from caller
+  input: an `engine:` path with `\`, `:`, `.`/`..` segments, a `.flax`
+  suffix, or control characters fails `VALIDATION_FAILED`. Assets of other
+  referenced projects are not resolvable (`ASSET_NOT_FOUND`). Asset values
+  read back as `{Kind: "asset", AssetId, Text}` where `Text` is the
+  `Content/` or `engine:` form (null for other assets).
+- `brush` (`FlaxEngine.GUI.IBrush`): `"<kind>:<value>[;option=value]"`, `""`
+  clears. Kinds: `solid:<color>`, `gradient:<color>;end=<color>`,
+  `texture:<Texture>[;filter=linear|point]`,
+  `texture9:<Texture>[;filter][;border_size=<n>][;border=l,r,t,b]`,
+  `sprite:<SpriteAtlas>;sprite=<name>` (or `;index=<n>`) `[;filter]`,
+  `sprite9:` with the texture9 options, `material:<MaterialBase>`,
+  `ui_brush:<JsonAsset of UIBrushAsset>`,
+  `video:<VideoPlayer actor GUID>[;filter]`. These are the entries of
+  `FlaxEditor.CustomEditors.Editors.IBrushEditor` except `GPUTextureBrush`
+  (a runtime GPU texture, not an asset). Omitted options take the brush
+  constructor defaults; unknown or repeated options, a bad filter, an
+  out-of-range border, and an unknown sprite fail `VALIDATION_FAILED`.
+  Read-back is `{Kind: "brush", Text, AssetId, TypeName}` with every
+  option spelled out, so writing `Text` back is a no-op; a brush type
+  without a string form has `Text` null and a member `Reason`.
+- `font` (`FlaxEngine.FontReference`): `"<FontAsset>;size=<points>"` (size
+  1-500, the engine `[Limit]`). `""` yields an empty reference (no asset,
+  size 30), never null, because `Label.DrawSelf` dereferences it.
+  Read-back is `{Kind: "font", Text, AssetId, Number}`.
+- `actor.set_property` / `ui.set_control_property` results add `Warnings`
+  for values the engine accepts but would not draw: a `BackgroundBrush`
+  set while `BackgroundColor` alpha is 0, a non-GUI material in a
+  `MaterialBrush`, a font reference without an asset. The Editor property
+  grid writes under `CustomEditor.IsSettingValue`, which makes
+  `Control.BackgroundBrush` switch a transparent `BackgroundColor` to
+  white; the bridge does not set that flag (its undo action reverts one
+  member only), so it warns instead of writing a second member.
+- Brushes compare through their string form (`Sprite9SlicingBrush.Equals`
+  ignores its border fields). `McpMemberUndo` keeps private copies of
+  brushes and font references, since the property grid mutates them in
+  place; a video brush is kept as the player's ID.
+- The `StaticModel.Model` alias sends an engine reference through the
+  generic member path (its own loader resolves project assets only), so
+  that call returns the generic result shape.
 - The write is `ScriptMemberInfo.SetValue` (the property-grid wrapper)
   inside `McpMemberUndo`, registered with `Editor.Undo.AddAction`;
   scene-object references are stored by ID and re-resolved on undo. It
@@ -1395,8 +1533,11 @@ dispatching into `RootControl.GameRoot` would reach GUI only and leave
   `GameSettings.Load<T>()`, save through `GameSettings.Save<T>()`
   (`Editor.SaveJsonAsset`), then call `GameSettings.Apply()`.
 - `DryRun` defaults to `true` on the bridge; a real write needs
-  `Confirm`. Results report `Saved`, `WouldChange`, and before/after. A
-  request that matches the current settings saves nothing.
+  `Confirm`. The Node tools always send `DryRun` explicitly: their `dry_run`
+  defaults to false, and a call with neither `dry_run:true` nor `confirm:true`
+  is rejected before it reaches the bridge. Results report `Saved`,
+  `WouldChange`, and before/after. A request that matches the current settings
+  saves nothing.
 - Refusals: play mode or requested play (`INVALID_STATE`), compiling or
   reloading scripts (`EDITOR_BUSY`), and the settings asset being open in
   an Editor window (`EDITOR_BUSY`, via `WindowsModule.FindEditor`).
@@ -1435,6 +1576,14 @@ dispatching into `RootControl.GameRoot` would reach GUI only and leave
   refreshes the Content database through `ContentDatabase.RefreshFolder`,
   and reads the ID of a new binary asset from its header because the
   registry lists it a moment later. There is no Editor undo record.
+- `asset.create` and `scene.create` query `Content.GetAssetInfo` with
+  `StringUtils.NormalizePath(Path.Combine(Globals.ProjectFolder, path))`,
+  the spelling the Editor content database itself uses as the registry
+  key. An OS-spelled path names the same file but misses that key, so the
+  engine registered the new file a second time and logged "Founded
+  duplicated asset" followed by "Cannot modify duplicated asset ID" after
+  every binary `asset.create` (seen in the first v33 live run; fixed and
+  re-verified live).
 
 ### Particle parameters
 - `particle.get_parameters` `{ActorId}` lists `ParticleEffect.Parameters`
@@ -1465,6 +1614,26 @@ dispatching into `RootControl.GameRoot` would reach GUI only and leave
   from one of those cannot be instantiated: `script.attach` and
   `actor.create` with a game type failed with a `NullReferenceException`
   after any recompile in the same Editor session.
+
+### Headless refusals and timeouts (Node mapping)
+- Every headless refusal is raised as `INVALID_STATE` with "headless" in
+  the message and no details, and only when the Editor is headless
+  (`RequireEditTime`, graph inspect/edit/undo, editor selection, viewport
+  capture, play start). The shared Node mapper (`mapBridgeError`,
+  `isHeadlessRefusal`) therefore reads the message as well as the details
+  and reports `HEADLESS_MODE`; before this, material and graph tools
+  reported a headless refusal as `EDITOR_BUSY`, and play start as
+  `INVALID_PLAY_STATE`. `viewport_capture` keeps its own
+  `CAPTURE_UNAVAILABLE`. Any other `INVALID_STATE` stays `EDITOR_BUSY`, or
+  `INVALID_PLAY_STATE` for play-scoped and domain tools.
+- `actor.create`, `actor.update`, `actor.delete`, `script.attach`,
+  `script.detach`, and `edit.undo` carry no headless gate and work in a
+  headless Editor.
+- A `TIMEOUT` on a write means the outcome is unknown: the bridge checks
+  the deadline only before it starts a request and cannot cancel one that
+  is already running. Read the state back before retrying. For
+  `graph.add_parameter` a blind retry is safe, because a duplicate name is
+  refused with `VALIDATION_FAILED`.
 
 ### Progress notifications (Node only)
 A `tools/call` carrying `_meta.progressToken` receives

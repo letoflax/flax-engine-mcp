@@ -14,10 +14,12 @@ import {
   handleInputMouseClick,
   handlePlayRunFor,
   handlePlaySetTimeScale,
+  handlePlayStartScenes,
   handlePlayStepFrame,
   InputKeyPressSchema,
   InputMouseClickSchema,
   PlaySetTimeScaleSchema,
+  PlayStartScenesSchema,
   PlayStepFrameSchema,
   PlayRunForSchema,
 } from './runtimeLive.js';
@@ -385,6 +387,37 @@ test('play_step_frame maps bridge INVALID_STATE to INVALID_PLAY_STATE', async ()
     await respondFailure(f, request, 'INVALID_STATE', 'Editor is not paused.');
     const result = await pending;
     assert.equal((result.structuredContent as Record<string, any>).error.code, 'INVALID_PLAY_STATE');
+  } finally { await f.cleanup(); }
+});
+
+test('play start reports a headless refusal as HEADLESS_MODE and any other invalid state as INVALID_PLAY_STATE', async () => {
+  const f = await fixture();
+  try {
+    const refuse = async (message: string): Promise<Record<string, any>> => {
+      const pending = handlePlayStartScenes(PlayStartScenesSchema.parse({ wait: false }), f.ctx);
+      let request = await nextRequest(f);
+      assert.equal(request.body.method, 'code.status');
+      await respond(f, request, { OperationId: 'previous', Phase: 'idle', IsReady: true, IsCompiling: false, CompilationsCount: 1 });
+      request = await nextRequest(f, request.name);
+      assert.equal(request.body.method, 'play.status');
+      await respond(f, request, { State: 'stopped', IsPlayMode: false, IsPaused: false, IsPlayModeRequested: false, HasDirtyScenes: false });
+      request = await nextRequest(f, request.name);
+      assert.equal(request.body.method, 'play.start_scenes');
+      await respondFailure(f, request, 'INVALID_STATE', message);
+      const result = await pending;
+      assert.equal(result.isError, true);
+      assert.deepEqual(await fs.readdir(f.requests), []);
+      return (result.structuredContent as Record<string, any>).error;
+    };
+
+    // The message a headless Flax 1.12 Editor sends (no details): a retry cannot help.
+    const headlessMessage = 'Flax 1.12 headless play is unavailable because the editor cannot guarantee play cleanup.';
+    const headless = await refuse(headlessMessage);
+    assert.equal(headless.code, 'HEADLESS_MODE');
+    assert.equal(headless.message, headlessMessage);
+
+    // Any other INVALID_STATE from a play method is still a wrong play state.
+    assert.equal((await refuse('Play mode is already requested.')).code, 'INVALID_PLAY_STATE');
   } finally { await f.cleanup(); }
 });
 

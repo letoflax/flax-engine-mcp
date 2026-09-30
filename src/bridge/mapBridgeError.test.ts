@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ToolDomainError } from '../errors.js';
-import { mapBridgeError } from './mapBridgeError.js';
+import { isHeadlessRefusal, mapBridgeError } from './mapBridgeError.js';
 import { BridgeRpcError } from './protocol.js';
 
 function remote(code: string, details?: unknown, message = `${code} from bridge.`): ToolDomainError {
@@ -67,6 +67,40 @@ test('mapBridgeError splits headless INVALID_STATE from editor-busy INVALID_STAT
 
   const busy = remote('INVALID_STATE', { NotReady: false }, 'Still loading.');
   assert.equal(busy.code, 'EDITOR_BUSY');
+});
+
+test('mapBridgeError reads headless evidence from the remote message, which is all a real Editor sends', () => {
+  // Every headless refusal in the bridge is INVALID_STATE with "headless" in
+  // the message and no details (observed against a headless Flax 1.12 Editor).
+  for (const message of [
+    'material.set_parameters is unavailable in headless editor mode.',
+    'Graph inspection is unavailable in headless editor mode because the surface is a GUI control.',
+    'Graph undo is unavailable in headless editor mode.',
+    'Editor selection is unavailable in headless editor mode.',
+    'Flax 1.12 headless play is unavailable because the editor cannot guarantee play cleanup.',
+  ]) {
+    const mapped = remote('INVALID_STATE', undefined, message);
+    assert.equal(mapped.code, 'HEADLESS_MODE', message);
+    assert.equal(mapped.message, message);
+    assert.equal(mapped.details, undefined);
+  }
+
+  // A play-mode refusal from the same edit-time gate is not headless.
+  const playMode = remote('INVALID_STATE', undefined, 'material.set_parameters is an edit-time operation and is unavailable while the editor is in play mode or play was requested.');
+  assert.equal(playMode.code, 'EDITOR_BUSY');
+
+  // Only INVALID_STATE is reinterpreted: another code keeps its own mapping
+  // even when its message mentions headless mode.
+  assert.equal(remote('NOT_FOUND', undefined, 'Actor not found in headless editor mode.').code, 'NOT_FOUND');
+  assert.equal(remote('EDITOR_BUSY', undefined, 'Busy in headless editor mode.').code, 'EDITOR_BUSY');
+});
+
+test('isHeadlessRefusal accepts message or details evidence and nothing else', () => {
+  const make = (message: string, details?: unknown) => new BridgeRpcError('BRIDGE_REMOTE_ERROR', message, { code: 'INVALID_STATE', details });
+  assert.equal(isHeadlessRefusal(make('x is unavailable in headless editor mode.')), true);
+  assert.equal(isHeadlessRefusal(make('No surface.', { Reason: 'Headless editor has no GUI surface.' })), true);
+  assert.equal(isHeadlessRefusal(make('Editor must be running to pause.', { NotReady: false })), false);
+  assert.equal(isHeadlessRefusal(make('Editor must be running to pause.')), false);
 });
 
 test('mapBridgeError maps UNSUPPORTED_FLAX_VERSION and EDITOR_BUSY remote codes', () => {

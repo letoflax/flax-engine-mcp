@@ -1,5 +1,7 @@
 # Kế hoạch bridge v33 — bổ sung các chức năng còn thiếu
 
+> **Trạng thái (2026-09-30): đã triển khai** trong bridge v33 / server 1.11.0 (170 tool); giữ làm hồ sơ kế hoạch, kết quả nằm ở mục 5. Việc điều chỉnh sau v33 nằm ở `docs/PLAN_BRIDGE_V33_FOLLOWUP.md`. Mô tả hiện hành: `README.md`, mục "Bridge v33" của `bridge/PROTOCOL.md`, và `docs/TESTING.md` (lần chạy Editor thật).
+
 > Phạm vi: sáu khoảng trống đã nêu khi rà soát MCP ở bridge v32 (152 tool).
 > Nguồn kiểm chứng API: header C++ trong `Flax_1.12/Source` và bản decompile
 > `FlaxEngine.CSharp.dll` (bản cài Flax 1.12 không kèm `.cpp` lẫn mã C# của
@@ -44,7 +46,7 @@ Các trường hợp dưới đây bị loại hoặc giữ nguyên stub:
 - `settings_set_input_action`, `settings_set_input_axis`,
   `settings_remove_input_mapping`
 - `settings_set_layer_name`, `settings_add_tag`, `settings_set_first_scene`
-- Mặc định `dry_run`; ghi thật cần `confirm:true` vì không có undo.
+- Bridge mặc định `DryRun=true`; tool phía Node mặc định `dry_run:false` nhưng từ chối lời gọi thiếu cả `dry_run:true` lẫn `confirm:true`. Ghi thật cần `confirm:true` vì không có undo.
 
 ### 2.4 Vòng đời scene và content
 - `scene_create` (`SceneModule.CreateSceneFile`), `scene_close`
@@ -61,7 +63,7 @@ Các trường hợp dưới đây bị loại hoặc giữ nguyên stub:
 
 ### 2.6 Progress notification (chỉ phía Node)
 - Khi client gửi `_meta.progressToken`, các vòng poll (compile, generate
-  project, play, import, capture) và mọi RPC chờ lâu gửi
+  project, play, import, build, capture) và mọi RPC chờ lâu gửi
   `notifications/progress`. Giá trị `progress` là mili-giây đã trôi qua nên
   luôn tăng, đúng yêu cầu của spec.
 

@@ -57,50 +57,78 @@ export const AssetGetImportSettingsSchema = z.object({
   ...AssetSelectorShape,
 }).strict().superRefine(exactlyOneSelector);
 
-const TEXTURE_SETTING_KEYS = ['srgb', 'compress', 'max_size', 'scale', 'generate_mipmaps', 'never_stream'] as const;
-const MODEL_SETTING_KEYS = [
-  'scale', 'calculate_normals', 'smoothing_normals_angle', 'flip_normals', 'calculate_tangents',
-  'smoothing_tangents_angle', 'reverse_winding_order', 'optimize_meshes', 'merge_meshes',
-  'import_lods', 'import_vertex_colors', 'base_lod', 'lod_count',
-] as const;
-const AUDIO_SETTING_KEYS = ['format', 'quality', 'disable_streaming', 'is_3d', 'bit_depth'] as const;
-const IMPORT_SETTINGS_ALLOWLIST = new Set<string>([...TEXTURE_SETTING_KEYS, ...MODEL_SETTING_KEYS, ...AUDIO_SETTING_KEYS]);
+type ImportSettingWireField = 'Boolean' | 'Integer' | 'Number' | 'Text';
+interface ImportSettingSpec {
+  /** Exact bridge (C# option field) key. */
+  key: string;
+  /** Which exactly-one-of scalar slot of the bridge value carries it. */
+  field: ImportSettingWireField;
+  schema: z.ZodTypeAny;
+}
 
-/** Node snake_case to exact bridge (C# option field) key mapping. */
-const IMPORT_SETTINGS_BRIDGE_KEYS: Record<string, string> = {
-  type: 'Type',
-  srgb: 'sRGB',
-  compress: 'Compress',
-  max_size: 'MaxSize',
-  scale: 'Scale',
-  generate_mipmaps: 'GenerateMipMaps',
-  never_stream: 'NeverStream',
-  calculate_normals: 'CalculateNormals',
-  smoothing_normals_angle: 'SmoothingNormalsAngle',
-  flip_normals: 'FlipNormals',
-  calculate_tangents: 'CalculateTangents',
-  smoothing_tangents_angle: 'SmoothingTangentsAngle',
-  reverse_winding_order: 'ReverseWindingOrder',
-  optimize_meshes: 'OptimizeMeshes',
-  merge_meshes: 'MergeMeshes',
-  import_lods: 'ImportLODs',
-  import_vertex_colors: 'ImportVertexColors',
-  base_lod: 'BaseLOD',
-  lod_count: 'LODCount',
-  format: 'Format',
-  quality: 'Quality',
-  disable_streaming: 'DisableStreaming',
-  is_3d: 'Is3D',
-  bit_depth: 'BitDepth',
+const flag = (key: string, description: string): ImportSettingSpec =>
+  ({ key, field: 'Boolean', schema: z.boolean().describe(description) });
+const integer = (key: string, min: number, max: number, description: string): ImportSettingSpec =>
+  ({ key, field: 'Integer', schema: z.number().int().min(min).max(max).describe(description) });
+// Float-typed options always travel as Number. Sending a whole value such as
+// 1e19 as Integer would overflow the bridge's 64-bit slot while it
+// deserializes the request, which surfaces as INTERNAL_ERROR.
+const float = (key: string, min: number, max: number, description: string): ImportSettingSpec =>
+  ({ key, field: 'Number', schema: z.number().min(min).max(max).describe(description) });
+const choice = (key: string, values: [string, ...string[]], description: string): ImportSettingSpec =>
+  ({ key, field: 'Text', schema: z.enum(values).describe(description) });
+
+/**
+ * The writable import settings: snake_case tool key to bridge key, wire slot,
+ * and published type/range. Numeric ranges are the Flax 1.12 engine limits
+ * (TextureTool.h / ModelTool.h / AudioTool.h) or the bridge's tighter policy;
+ * the bridge enforces the same ranges per asset type. `scale` is shared by
+ * textures and models, so its schema is the union of both ranges.
+ */
+const IMPORT_SETTING_SPECS = {
+  srgb: flag('sRGB', 'Texture: load the source image as sRGB.'),
+  compress: flag('Compress', 'Texture: compress the texture.'),
+  max_size: integer('MaxSize', 1, 16384, 'Texture: maximum width and height in pixels, 1-16384.'),
+  scale: float('Scale', 0.0001, 1000, 'Texture: size scale, 0.0001-8. Model: import scale, 0.001-1000.'),
+  generate_mipmaps: flag('GenerateMipMaps', 'Texture: generate the mip map chain.'),
+  never_stream: flag('NeverStream', 'Texture: disable dynamic texture streaming.'),
+  calculate_normals: flag('CalculateNormals', 'Model: recalculate normals.'),
+  smoothing_normals_angle: float('SmoothingNormalsAngle', 0, 175, 'Model: normals smoothing angle in degrees, 0-175.'),
+  flip_normals: flag('FlipNormals', 'Model: flip normals.'),
+  calculate_tangents: flag('CalculateTangents', 'Model: recalculate tangents.'),
+  smoothing_tangents_angle: float('SmoothingTangentsAngle', 0, 45, 'Model: tangents smoothing angle in degrees, 0-45.'),
+  reverse_winding_order: flag('ReverseWindingOrder', 'Model: reverse the triangle winding order.'),
+  optimize_meshes: flag('OptimizeMeshes', 'Model: optimize meshes.'),
+  merge_meshes: flag('MergeMeshes', 'Model: merge meshes that share a material.'),
+  import_lods: flag('ImportLODs', 'Model: import LODs from the source file.'),
+  import_vertex_colors: flag('ImportVertexColors', 'Model: import vertex colors.'),
+  base_lod: integer('BaseLOD', 0, 5, 'Model: base LOD index, 0-5.'),
+  lod_count: integer('LODCount', 1, 6, 'Model: LOD count, 1-6.'),
+  format: choice('Format', ['Raw', 'Vorbis'], 'Audio: stored audio format.'),
+  quality: float('Quality', 0, 1, 'Audio: compression quality, 0-1.'),
+  disable_streaming: flag('DisableStreaming', 'Audio: load the whole clip instead of streaming.'),
+  is_3d: flag('Is3D', 'Audio: import as mono spatial (3D) audio.'),
+  bit_depth: choice('BitDepth', ['_8', '_16', '_24', '_32'], 'Audio: sample bit depth (8, 16, 24, or 32 bits).'),
+} satisfies Record<string, ImportSettingSpec>;
+
+const IMPORT_SETTING_ENTRIES = Object.entries(IMPORT_SETTING_SPECS) as Array<[string, ImportSettingSpec]>;
+
+/** Bridge (C# option field) key back to the snake_case tool key; `Type` is read-only. */
+const IMPORT_SETTINGS_SNAKE_KEYS: Record<string, string> = {
+  Type: 'type',
+  ...Object.fromEntries(IMPORT_SETTING_ENTRIES.map(([snake, spec]) => [spec.key, snake])),
 };
 
-const IMPORT_SETTINGS_SNAKE_KEYS: Record<string, string> = Object.fromEntries(
-  Object.entries(IMPORT_SETTINGS_BRIDGE_KEYS).map(([snake, pascal]) => [pascal, snake]),
-);
+const ImportSettingsSchema = z.object(
+  Object.fromEntries(IMPORT_SETTING_ENTRIES.map(([snake, spec]) => [snake, spec.schema.optional()])),
+).strict().refine(
+  value => Object.values(value).some(entry => entry !== undefined),
+  { message: 'Provide at least one import setting.' },
+).describe('Import options to change; every other option keeps its current value. Use only the keys of the asset type (texture, model, or audio): a key of another type fails VALIDATION_FAILED.');
 
 export const AssetSetImportSettingsSchema = z.object({
   ...AssetSelectorShape,
-  settings: z.record(z.string(), z.union([z.boolean(), z.number(), z.string()])),
+  settings: ImportSettingsSchema,
   dry_run: z.boolean().optional().default(false),
   operation_id: OperationId.optional(),
   idempotency_key: IdempotencyKey.optional(),
@@ -188,22 +216,39 @@ async function maybeWait(
   return { data: last, bridge };
 }
 
-function response(kind: 'import' | 'reimport', data: AssetOperation, bridge: unknown, pending = false): ToolResponse {
-  if (String(data.Phase).toLowerCase() === 'failed') {
-    return toolError(new ToolDomainError(
-      data.ErrorCode === 'IMPORT_SOURCE_NOT_ALLOWED' ? 'IMPORT_SOURCE_NOT_ALLOWED'
-        : data.ErrorCode === 'FILE_EXISTS' ? 'FILE_EXISTS'
-          : 'IMPORT_FAILED',
-      typeof data.Error === 'string' ? data.Error : `${kind} asset operation failed.`,
-      { operationId: data.OperationId },
-    ));
-  }
-  const output = { operation: data, bridge, ...(pending ? { pending: true } : {}) };
+/** Error codes a failed operation record may carry that map one-to-one onto tool error codes. */
+const OPERATION_ERROR_CODES = ['IMPORT_SOURCE_NOT_ALLOWED', 'FILE_EXISTS', 'VALIDATION_FAILED', 'EDITOR_BUSY', 'ASSET_NOT_FOUND'] as const;
+
+function operationFailure(kind: 'import' | 'reimport', data: AssetOperation, adopted = false): ToolResponse {
+  const code = OPERATION_ERROR_CODES.find(candidate => candidate === data.ErrorCode) ?? 'IMPORT_FAILED';
+  const message = typeof data.Error === 'string' ? data.Error : `${kind} asset operation failed.`;
+  return toolError(new ToolDomainError(
+    code,
+    adopted ? `${message} (This operation_id belongs to an earlier attempt that failed; retry with a new operation_id.)` : message,
+    { operationId: data.OperationId, ...(adopted ? { adopted: true } : {}) },
+  ));
+}
+
+interface ResponseExtras {
+  /** Extra result fields merged next to `operation`. */
+  data?: Record<string, unknown>;
+  warnings?: string[];
+  /** False when a succeeded operation is known not to have reimported anything. */
+  reimported?: boolean;
+}
+
+function response(kind: 'import' | 'reimport', data: AssetOperation, bridge: unknown, pending = false, extras: ResponseExtras = {}): ToolResponse {
+  if (String(data.Phase).toLowerCase() === 'failed') return operationFailure(kind, data);
+  const output = { operation: data, ...(extras.data ?? {}), bridge, ...(pending ? { pending: true } : {}) };
+  const succeeded = terminal(data) && String(data.Phase).toLowerCase() === 'succeeded';
   return toolResult(JSON.stringify(output, null, 2), {
     mode: 'editor-connected',
     data: output,
-    warnings: pending ? ['Import is still running; poll the matching asset operation status tool with operation_id.'] : [],
-    changes: terminal(data) && String(data.Phase).toLowerCase() === 'succeeded' ? [{ kind: `${kind}-asset`, operationId: data.OperationId }] : [],
+    warnings: [
+      ...(pending ? ['Import is still running; poll the matching asset operation status tool with operation_id.'] : []),
+      ...(extras.warnings ?? []),
+    ],
+    changes: succeeded && extras.reimported !== false ? [{ kind: `${kind}-asset`, operationId: data.OperationId }] : [],
   });
 }
 
@@ -294,10 +339,13 @@ interface ImportSettingsBridgeResult {
 }
 
 interface SetImportSettingsBridgeResult {
-  Operation: AssetOperation;
-  WouldChange: boolean;
+  Operation: AssetOperation | null;
+  /** Null when the bridge has no preview for an adopted operation. */
+  WouldChange: boolean | null;
   Before: ImportSettingsBridgeResult | null;
   After: ImportSettingsBridgeResult | null;
+  /** True when the bridge replayed the result of an already-known operation ID. */
+  Adopted?: boolean;
 }
 
 type ImportSettingsScalar = boolean | number | string;
@@ -333,44 +381,46 @@ export async function handleAssetGetImportSettings(args: z.infer<typeof AssetGet
     return toolResult(JSON.stringify({ ...data, bridge: response.bridge }, null, 2), {
       mode: 'editor-connected',
       data: { ...data, bridge: response.bridge },
+      warnings: data && !data.restored
+        ? ['The asset has no restorable import metadata: these settings are engine defaults, not the values the asset was imported with, and asset_set_import_settings will refuse to write to it.']
+        : [],
     });
   } catch (error) {
     return toolError(importError(error));
   }
 }
 
-function validatedSettingsEntries(settings: Record<string, unknown>): Array<{ Key: string; Value: Record<string, unknown> }> {
-  if (Array.isArray(settings) || typeof settings !== 'object' || settings === null) {
-    throw new ToolDomainError('VALIDATION_FAILED', 'Settings must be an object with allowlisted scalar keys.');
+const IMPORT_SETTING_KEYS = new Set(IMPORT_SETTING_ENTRIES.map(([snake]) => snake));
+
+/**
+ * Maps parsed settings to bridge entries, each in the wire slot its option
+ * type requires. AssetSetImportSettingsSchema already rejects unknown keys,
+ * wrong types, and out-of-range numbers; the checks here only keep the handler
+ * safe for a caller that skips the schema.
+ */
+function settingsEntries(settings: Record<string, unknown>): Array<{ Key: string; Value: Record<string, unknown> }> {
+  if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) {
+    throw new ToolDomainError('VALIDATION_FAILED', 'Settings must be an object of import settings.');
   }
-  const keys = Object.keys(settings);
-  if (keys.length < 1 || keys.length > 16) {
-    throw new ToolDomainError('VALIDATION_FAILED', 'Settings must contain between 1 and 16 entries.');
-  }
-  const unknown = keys.filter(key => !IMPORT_SETTINGS_ALLOWLIST.has(key));
+  const unknown = Object.keys(settings).filter(key => !IMPORT_SETTING_KEYS.has(key));
   if (unknown.length > 0) {
-    throw new ToolDomainError(
-      'VALIDATION_FAILED',
-      `Unknown import setting(s): ${unknown.join(', ')}. Allowed texture keys: ${TEXTURE_SETTING_KEYS.join(', ')}. ` +
-      `Allowed model keys: ${MODEL_SETTING_KEYS.join(', ')}. Allowed audio keys: ${AUDIO_SETTING_KEYS.join(', ')}.`,
-    );
+    throw new ToolDomainError('VALIDATION_FAILED', `Unknown import setting(s): ${unknown.join(', ')}. Allowed: ${[...IMPORT_SETTING_KEYS].join(', ')}.`);
   }
-  return keys.map(key => {
-    const value = (settings as Record<string, unknown>)[key];
-    const bridgeKey = IMPORT_SETTINGS_BRIDGE_KEYS[key];
-    if (typeof value === 'boolean') return { Key: bridgeKey, Value: { Boolean: value } };
-    if (typeof value === 'number') {
-      if (!Number.isFinite(value)) throw new ToolDomainError('VALIDATION_FAILED', `Import setting "${key}" must be a finite number.`);
-      return Number.isInteger(value)
-        ? { Key: bridgeKey, Value: { Integer: value } }
-        : { Key: bridgeKey, Value: { Number: value } };
+  const entries: Array<{ Key: string; Value: Record<string, unknown> }> = [];
+  for (const [snake, spec] of IMPORT_SETTING_ENTRIES) {
+    const value = settings[snake];
+    if (value === undefined) continue;
+    const valid = spec.field === 'Boolean' ? typeof value === 'boolean'
+      : spec.field === 'Integer' ? Number.isSafeInteger(value)
+        : spec.field === 'Number' ? typeof value === 'number' && Number.isFinite(value)
+          : typeof value === 'string';
+    if (!valid) {
+      throw new ToolDomainError('VALIDATION_FAILED', `Import setting "${snake}" has the wrong type; expected ${spec.field === 'Text' ? 'a string' : spec.field === 'Boolean' ? 'a boolean' : spec.field === 'Integer' ? 'an integer' : 'a finite number'}.`);
     }
-    if (typeof value === 'string') {
-      if (value.length > 64) throw new ToolDomainError('VALIDATION_FAILED', `Import setting "${key}" must be at most 64 characters.`);
-      return { Key: bridgeKey, Value: { Text: value } };
-    }
-    throw new ToolDomainError('VALIDATION_FAILED', `Import setting "${key}" must be a boolean, number, or string scalar.`);
-  });
+    entries.push({ Key: spec.key, Value: { [spec.field]: value } });
+  }
+  if (entries.length === 0) throw new ToolDomainError('VALIDATION_FAILED', 'Settings must contain at least one import setting.');
+  return entries;
 }
 
 async function startSetImportSettings(params: Record<string, unknown>, ctx: ProjectMeta): Promise<{ data: SetImportSettingsBridgeResult; bridge: unknown }> {
@@ -381,7 +431,7 @@ async function startSetImportSettings(params: Record<string, unknown>, ctx: Proj
 
 export async function handleAssetSetImportSettings(args: z.infer<typeof AssetSetImportSettingsSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
-    const entries = validatedSettingsEntries(args.settings as Record<string, unknown>);
+    const entries = settingsEntries(args.settings as Record<string, unknown>);
     const policy = assetImportPolicyForContext(ctx);
     if (policy.roots.length === 0) {
       throw new ToolDomainError('IMPORT_SOURCE_NOT_ALLOWED', 'Asset import-settings changes are disabled because no --asset-import-root is configured.');
@@ -396,16 +446,35 @@ export async function handleAssetSetImportSettings(args: z.infer<typeof AssetSet
       AllowedImportRoots: policy.roots,
       MaxSourceBytes: policy.maxSourceBytes,
     }, ctx));
-    const before = projectImportSettings(started.data.Before);
-    const after = projectImportSettings(started.data.After);
+    const raw = started.data;
+    const operation = safeOperation(raw.Operation ?? {});
+    const before = projectImportSettings(raw.Before ?? null);
+    const after = projectImportSettings(raw.After ?? null);
+    // A bridge that adopts an earlier operation it holds no preview for sends
+    // no Before/After (older v32/v33 bridges also sent WouldChange:false
+    // there). That means "unknown", never "no change".
+    const previewKnown = before !== null && after !== null && typeof raw.WouldChange === 'boolean';
+    const adopted = raw.Adopted === true || !previewKnown;
+    // An adopted operation may be one whose first attempt failed; report that
+    // failure instead of a success-shaped result.
+    if (String(operation.Phase).toLowerCase() === 'failed') return operationFailure('reimport', operation, adopted);
+    const extra = {
+      ...(previewKnown ? { would_change: raw.WouldChange, before, after } : {}),
+      ...(adopted ? { adopted: true } : {}),
+    };
+    const warnings = previewKnown ? [] : ['The bridge adopted an earlier operation with this operation_id and holds no preview for it, so would_change is unknown. Use a new operation_id for a fresh result.'];
     if (args.dry_run) {
-      const data = { would_change: started.data.WouldChange === true, before, after };
-      return toolResult(JSON.stringify({ ...data, bridge: started.bridge }, null, 2), { mode: 'editor-connected', data });
+      const data = previewKnown ? extra : { ...extra, operation };
+      return toolResult(JSON.stringify({ ...data, bridge: started.bridge }, null, 2), { mode: 'editor-connected', data, warnings });
     }
+    // The bridge queues a reimport only when a requested value differs from
+    // the current one; a no-op write finishes "succeeded" without reimporting.
+    const reimportQueued = previewKnown && raw.WouldChange === true;
+    if (previewKnown && !reimportQueued) warnings.push('No reimport was queued: every requested setting already has the requested value.');
     // Settings writes share the "reimport" operation records, so
     // asset_reimport_status polls them like ordinary reimports.
-    const waited = await maybeWait('reimport', started.data.Operation, args.wait, args.timeout_ms, ctx);
-    return response('reimport', waited.data, waited.bridge ?? started.bridge, !terminal(waited.data));
+    const waited = await maybeWait('reimport', operation, args.wait, args.timeout_ms, ctx);
+    return response('reimport', waited.data, waited.bridge ?? started.bridge, !terminal(waited.data), { data: extra, warnings, reimported: reimportQueued });
   } catch (error) {
     return toolError(importError(error));
   }

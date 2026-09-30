@@ -431,6 +431,59 @@ test('script_instance_get delegates bridge errors through the shared mapper', as
   }
 });
 
+test('editor live tools report a headless refusal as HEADLESS_MODE and keep other invalid states EDITOR_BUSY', async () => {
+  const f = await fixture(33);
+  // The bridge edit-time gate (RequireEditTime) names headless mode in the message and sends
+  // no details. These are the exact messages it raises for actor.set_property.
+  const headlessMessage = 'actor.set_property is unavailable in headless editor mode.';
+  const playMessage = 'actor.set_property is an edit-time operation and is unavailable while the editor is in play mode or play was requested.';
+  const refuse = (message: string, errorDetails?: string) => (body: Record<string, unknown>) => ({
+    id: body.id, ok: false, errorCode: 'INVALID_STATE', error: message,
+    ...(errorDetails === undefined ? {} : { errorDetails }),
+    resultJson: null, timestamp: Date.now(),
+  });
+  try {
+    // A real write.
+    let pending = handleActorSetProperty(ActorSetPropertySchema.parse({ target_id: ACTOR_ID, property: 'Mass', value: 2 }), f.ctx);
+    await respond(f, refuse(headlessMessage));
+    let error = ((await pending).structuredContent as any).error;
+    assert.equal(error.code, 'HEADLESS_MODE');
+    assert.equal(error.message, headlessMessage);
+
+    // The dry-run preview shares the mapper.
+    pending = handleActorSetProperty(ActorSetPropertySchema.parse({ target_id: ACTOR_ID, property: 'Mass', value: 2, dry_run: true }), f.ctx);
+    await respond(f, refuse(headlessMessage));
+    assert.equal(((await pending).structuredContent as any).error.code, 'HEADLESS_MODE');
+
+    // So do the selection tools, which are gated the same way.
+    pending = handleEditorSetSelection(EditorSetSelectionSchema.parse({ actor_ids: [ACTOR_ID] }), f.ctx);
+    await respond(f, refuse('Editor selection is unavailable in headless editor mode.'));
+    assert.equal(((await pending).structuredContent as any).error.code, 'HEADLESS_MODE');
+
+    // Headless evidence in the details still maps through the shared mapper.
+    pending = handleActorSetProperty(ActorSetPropertySchema.parse({ target_id: ACTOR_ID, property: 'Mass', value: 2 }), f.ctx);
+    await respond(f, refuse('The editor cannot do that right now.', JSON.stringify({ Reason: 'headless' })));
+    assert.equal(((await pending).structuredContent as any).error.code, 'HEADLESS_MODE');
+
+    // A play-mode refusal is not headless: it stays EDITOR_BUSY.
+    pending = handleActorSetProperty(ActorSetPropertySchema.parse({ target_id: ACTOR_ID, property: 'Mass', value: 2 }), f.ctx);
+    await respond(f, refuse(playMessage));
+    error = ((await pending).structuredContent as any).error;
+    assert.equal(error.code, 'EDITOR_BUSY');
+    assert.equal(error.message, playMessage);
+
+    // The message match applies to INVALID_STATE only.
+    pending = handleActorSetProperty(ActorSetPropertySchema.parse({ target_id: ACTOR_ID, property: 'Mass', value: 2 }), f.ctx);
+    await respond(f, body => ({
+      id: body.id, ok: false, errorCode: 'NOT_FOUND', error: 'Actor not found in headless editor mode.', resultJson: null, timestamp: Date.now(),
+    }));
+    assert.equal(((await pending).structuredContent as any).error.code, 'NOT_FOUND');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('revision-aware live writes fail closed on a pre-v7 bridge before creating a request', async () => {
   const f = await fixture(6);
   try {

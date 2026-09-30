@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
+import { isHeadlessRefusal } from '../bridge/mapBridgeError.js';
 import { BridgeRpcError, type BridgeMethod } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, type ToolResponse } from '../errors.js';
 import type { ProjectMeta } from '../projectContext.js';
@@ -105,13 +106,7 @@ function domainError(error: unknown): ToolDomainError {
   if (remote?.code === 'NOT_FOUND') return new ToolDomainError('NOT_FOUND', error.message, remote.details);
   if (remote?.code === 'TIMEOUT' || remote?.code === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, remote.details);
   if (remote?.code === 'INVALID_STATE') {
-    let serialized = '';
-    try {
-      serialized = `${error.message} ${JSON.stringify(error.details) ?? ''}`;
-    } catch {
-      serialized = error.message;
-    }
-    if (/headless/i.test(serialized)) return new ToolDomainError('HEADLESS_MODE', error.message, remote.details);
+    if (isHeadlessRefusal(error)) return new ToolDomainError('HEADLESS_MODE', error.message, remote.details);
     return new ToolDomainError('INVALID_PLAY_STATE', error.message, remote.details);
   }
   return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });

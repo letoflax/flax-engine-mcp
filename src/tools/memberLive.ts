@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
-import { FlaxId, RevisionedLiveWrite, ScalarValue, callLive, splitScalarValue } from './liveToolSupport.js';
+import { FlaxId, MEMBER_VALUE_SHAPES, RevisionedLiveWrite, ScalarValue, callLive, splitScalarValue } from './liveToolSupport.js';
 
 // Bridge v33 editor-visible member surface for actors, UI controls, and
 // particle parameter overrides. "Editor-visible" means the member would show
@@ -16,10 +16,7 @@ const MemberList = {
 };
 const MemberName = z.string().min(1).max(128)
   .regex(/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/, 'Expected Member or Type.Member.');
-const MemberValue = ScalarValue.describe(
-  'Coerced strictly to the member type: boolean, finite number, or string. Strings carry enum names ("A, B" for flags), '
-  + 'vectors ("x,y[,z[,w]]"), colors ("#rrggbb[aa]" or "r,g,b[,a]"), rectangles ("x,y,width,height"), margins ("left,right,top,bottom"), '
-  + 'and references: an asset GUID or Content/ path, an actor or script GUID, or "" to clear a reference.');
+const MemberValue = ScalarValue.describe(MEMBER_VALUE_SHAPES);
 
 export const ActorGetPropertiesSchema = z.object({ actor_id: FlaxId, ...MemberList });
 export const UiControlGetPropertiesSchema = z.object({
@@ -37,7 +34,7 @@ export const UiControlCreateSchema = z.object({
 });
 export const UiControlSetPropertySchema = z.object({
   actor_id: FlaxId.describe('GUID of the FlaxEngine.UIControl actor that owns the control.'),
-  property: MemberName.describe('Control member, for example Text, Width, Height, Location, AnchorPreset, BackgroundColor, Visible.'),
+  property: MemberName.describe('Control member, for example Text, Width, Height, Location, AnchorPreset, BackgroundColor, Visible, Font (text size and font asset), Brush (Image), BackgroundBrush.'),
   value: MemberValue,
   dry_run: z.boolean().optional().default(false)
     .describe('Preview the coercion and report would_change plus before/after without writing.'),

@@ -27,6 +27,22 @@ export const ContentPath = z.string().min(9).max(512).superRefine((value, ctx) =
 export const ScalarValue = z.union([z.boolean(), z.number().finite(), z.string().max(4096)]);
 export type ScalarValueInput = z.infer<typeof ScalarValue>;
 
+/**
+ * String shapes the bridge member path accepts. The *_get_properties tools
+ * return every reference, brush, and font in the same shape (Value.Text), so
+ * a value can be read, edited, and written back.
+ */
+export const MEMBER_VALUE_SHAPES =
+  'Coerced strictly to the member type: boolean, finite number, or string. Strings carry enum names ("A, B" for flags), '
+  + 'vectors ("x,y[,z[,w]]"), colors ("#rrggbb[aa]" or "r,g,b[,a]"), rectangles ("x,y,width,height"), margins ("left,right,top,bottom"), '
+  + 'and references: an actor or script GUID, or an asset as a GUID, a project "Content/..." path, or engine content as "engine:<path>" '
+  + '(path below the engine Content folder without extension, for example "engine:Editor/Primitives/Cube"); "" clears a reference. '
+  + 'Brush members (kind brush) take "<kind>:<value>[;option=value]": "solid:<color>", "gradient:<color>;end=<color>", '
+  + '"texture:<asset>[;filter=linear|point]", "texture9:<asset>[;filter=...][;border_size=<n>][;border=left,right,top,bottom]", '
+  + '"sprite:<atlas asset>;sprite=<name>" (or ";index=<n>") with the same filter option, "sprite9:..." with the texture9 options, '
+  + '"material:<asset>", "ui_brush:<asset>", "video:<VideoPlayer actor GUID>[;filter=...]"; "" clears the brush. '
+  + 'Font members (kind font) take "<font asset>;size=<points>", for example "engine:Editor/Fonts/Roboto-Regular;size=24".';
+
 export function splitScalarValue(value: ScalarValueInput): { Bool?: boolean; Number?: number; Text?: string } {
   if (typeof value === 'boolean') return { Bool: value };
   if (typeof value === 'number') return { Number: value };
@@ -61,17 +77,15 @@ export function mapLiveError(error: unknown, playScoped = false): ToolDomainErro
     const remote = error.details as { code?: unknown; details?: unknown } | undefined;
     if (remote?.code === 'SCENE_REVISION_CONFLICT') return new ToolDomainError('SCENE_REVISION_CONFLICT', error.message, remote.details);
     if (remote?.code === 'FILE_EXISTS') return new ToolDomainError('FILE_EXISTS', error.message, remote.details);
-    if (remote?.code === 'INVALID_STATE') {
-      // Play-mode tools report a wrong play state, not a busy editor.
-      if (playScoped) return new ToolDomainError('INVALID_PLAY_STATE', error.message, remote.details);
-      // The bridge edit-time gate names headless mode in its message and sends no details.
-      if (/headless/i.test(error.message)) return new ToolDomainError('HEADLESS_MODE', error.message, remote.details);
-    }
+    // Play-mode tools report a wrong play state, not a busy editor.
+    if (remote?.code === 'INVALID_STATE' && playScoped) return new ToolDomainError('INVALID_PLAY_STATE', error.message, remote.details);
   }
+  // The shared mapper turns a headless edit-time refusal into HEADLESS_MODE.
   return mapBridgeError(error);
 }
 
-function bridgeWarnings(value: unknown): string[] {
+/** Warnings a bridge result DTO carries in its own `Warnings` field. */
+export function bridgeWarnings(value: unknown): string[] {
   if (typeof value !== 'object' || value === null) return [];
   const warnings = (value as { Warnings?: unknown }).Warnings;
   return Array.isArray(warnings) ? warnings.filter((entry): entry is string => typeof entry === 'string') : [];

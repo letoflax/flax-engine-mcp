@@ -8,7 +8,13 @@ import { assertWritePathWithinRoot } from './writeSafety.js';
 const AUDIT_DIR = '.flax-mcp';
 const AUDIT_FILE = 'audit.jsonl';
 
-export type AuditOperation = 'write_script' | 'apply_script_patch' | 'asset_move' | 'asset_rename' | 'asset_duplicate' | 'asset_delete';
+export const AUDIT_OPERATIONS = ['write_script', 'apply_script_patch', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete'] as const;
+export type AuditOperation = typeof AUDIT_OPERATIONS[number];
+
+/** Legacy/tampered rows fall back to write_script, the only operation the first audit format recorded. */
+export function auditOperationOf(value: unknown): AuditOperation {
+  return AUDIT_OPERATIONS.find(operation => operation === value) ?? 'write_script';
+}
 
 export interface ScriptAuditEntry {
   timestamp: string;
@@ -71,7 +77,7 @@ export async function appendAssetOrganizationAudit(
 
 export const GetAuditEntriesSchema = z.object({
   limit: z.number().int().min(1).max(100).optional().default(25).describe('Maximum most-recent entries to return (1-100).'),
-  operation: z.enum(['write_script', 'apply_script_patch', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete']).optional().describe('Optional mutation operation filter.'),
+  operation: z.enum(AUDIT_OPERATIONS).optional().describe('Optional mutation operation filter.'),
 });
 
 export async function handleGetAuditEntries(
@@ -94,9 +100,7 @@ export async function handleGetAuditEntries(
         // safe public fields rather than echoing arbitrary JSONL payloads.
         const entry: ScriptAuditEntry = {
           timestamp: typeof value.timestamp === 'string' ? value.timestamp : '',
-          operation: value.operation === 'apply_script_patch' || value.operation === 'asset_move' || value.operation === 'asset_rename' || value.operation === 'asset_duplicate' || value.operation === 'asset_delete'
-            ? value.operation
-            : 'write_script',
+          operation: auditOperationOf(value.operation),
           target: typeof value.target === 'string' ? value.target : '',
           dry_run: value.dry_run === true,
           success: value.success === true,

@@ -67,6 +67,24 @@ export function classifiedToolNames(): string[] {
   return [...TOOL_FAMILY_BY_NAME.keys()];
 }
 
+export function toolFamily(name: string): ToolFamily | undefined {
+  return TOOL_FAMILY_BY_NAME.get(name);
+}
+
+/**
+ * Profile-level check for one capability family, for the rare tool whose
+ * operations span two families (a read tool with one mutating op). Per-tool
+ * allow/deny overrides do not apply here: they name tools, not operations.
+ */
+export function isFamilyAllowed(family: ToolFamily, policy: PermissionPolicy): boolean {
+  if (family === 'read') return true;
+  if (policy.emergencyReadOnly) return false;
+  if (policy.profile === 'full') return true;
+  if (policy.profile === 'read-only') return false;
+  if (policy.profile === 'code-edit') return family === 'code';
+  return family === 'scene' || family === 'runtime';
+}
+
 export function parsePermissionPolicy(argv: readonly string[]): PermissionPolicy {
   let profile: PermissionProfile = 'full';
   const allowTools: string[] = [];

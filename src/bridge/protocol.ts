@@ -129,9 +129,22 @@ export type AnimationBridgeMethod =
   | 'animation.set_graph_parameter'
    | 'animation.validate_bindings';
 
-/** Bridge v15 motion-matching tuning surface (read ops + weight presets). */
+/**
+ * Motion-matching tuning surface (read ops + weight presets). Local-bridge-only:
+ * the bundled bridge/FlaxMcpBridge.cs does not implement it and answers
+ * METHOD_NOT_ALLOWED, which the shared mapper reports as UNSUPPORTED_FLAX_VERSION.
+ */
 export type MMTuningBridgeMethod =
   | 'mm.tuning';
+
+/**
+ * Bridge v26 input methods. Both validate their arguments and the play state
+ * and then answer UNSUPPORTED_FLAX_VERSION: Flax 1.12 exposes no managed
+ * input-injection API.
+ */
+export type InputBridgeMethod =
+  | 'input.key_press'
+  | 'input.mouse_click';
 
 /** Bridge v16 window-backed Visject node-graph surface (AnimGraph/Material/ParticleEmitter). Bridge v18 adds the bounded removal pair, v20 the value/move pair, v21 the BaseModel bind. */
 export type GraphBridgeMethod =
@@ -192,6 +205,7 @@ export type BridgeMethod =
   | MaterialBridgeMethod
   | AnimationBridgeMethod
   | MMTuningBridgeMethod
+  | InputBridgeMethod
   | GraphBridgeMethod
   | AnimgraphBridgeMethod
   | DomainBridgeMethod;
