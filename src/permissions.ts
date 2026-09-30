@@ -26,7 +26,7 @@ const TOOL_FAMILIES = {
     'code_get_diagnostics', 'play_get_status', 'log_get_recent', 'log_search',
     'log_get_runtime_errors', 'get_project_info', 'get_game_settings', 'get_project_summary',
     'list_scripts', 'read_script', 'get_audit_entries', 'get_script_classes',
-    'find_references', 'list_networked_scripts', 'search_in_files', 'get_scene_actors',
+    'find_references', 'list_networked_scripts', 'search_in_files', 'search_tools', 'get_scene_actors',
     'get_asset_info', 'list_assets', 'asset_search', 'asset_get', 'asset_dependencies', 'asset_find_references', 'asset_import_status', 'asset_reimport_status', 'prefab_get_instances', 'prefab_get_overrides', 'material_get_parameters', 'animation_list_clips', 'animation_get_graph_parameters', 'animation_validate_bindings', 'graph_inspect', 'read_settings', 'get_input_actions',
     'get_physics_settings', 'get_compiler_errors', 'validate_project', 'operation_get_status', 'build_list_targets', 'build_validate', 'build_get_status', 'build_get_result',
     'physics_validate_colliders', 'physics_raycast', 'physics_get_layer_matrix', 'physics_find_overlaps', 'navigation_get_status', 'navigation_validate_agents', 'navigation_query_path',
