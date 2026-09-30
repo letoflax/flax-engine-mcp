@@ -26,6 +26,7 @@ import { allowedToolNames, assertPermissionRegistryCoverage, parsePermissionPoli
 import { createAssetImportPolicy } from './assetImportPolicy.js';
 import { recordToolCall } from './observability.js';
 import { runDoctor } from './doctor.js';
+import { createProgressReporter, runWithProgress } from './progress.js';
 
 export function parseProjectPath(argv = process.argv): string {
   const idx = argv.indexOf('--project-path');
@@ -122,9 +123,13 @@ async function main(): Promise<void> {
     })),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
-    const response = await dispatchToolCall(tools, name, args, ctx);
+    const progressToken = request.params._meta?.progressToken;
+    const reporter = progressToken === undefined
+      ? undefined
+      : createProgressReporter(progressToken, params => extra.sendNotification({ method: 'notifications/progress', params }));
+    const response = await runWithProgress(reporter, () => dispatchToolCall(tools, name, args, ctx));
     subscriptions.afterTool(name, response);
     return response;
   });

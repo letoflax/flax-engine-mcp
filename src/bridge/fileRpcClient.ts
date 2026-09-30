@@ -4,6 +4,7 @@ import path from 'node:path';
 import { ProjectMeta } from '../projectContext.js';
 import { EditorBridgeStatus, inspectEditorBridge } from '../tools/serverStatus.js';
 import { recordIpcFailure } from '../observability.js';
+import { reportProgress } from '../progress.js';
 import {
   BRIDGE_CACHE_DIRECTORY,
   BRIDGE_REQUESTS_DIRECTORY,
@@ -23,6 +24,7 @@ const MAX_DEADLINE_MS = 60_000;
 const DEFAULT_MAX_MESSAGE_BYTES = 1_048_576;
 const DEFAULT_POLL_INTERVAL_MS = 20;
 const MAX_PARAMS_BYTES = 64 * 1024;
+const PROGRESS_AFTER_MS = 1_000;
 
 export interface FileRpcClientOptions {
   deadlineMs?: number;
@@ -204,7 +206,7 @@ export class FileRpcClient {
       await fs.mkdir(paths.requests, { recursive: true });
       await fs.mkdir(paths.responses, { recursive: true });
       await this.atomicJsonWrite(requestPath, request);
-      const response = await this.waitForResponse(responsePath, requestId, token, deadlineMs);
+      const response = await this.waitForResponse(responsePath, requestId, token, deadlineMs, method);
       if (!response.ok) {
         let details: unknown;
         if (response.errorDetails) {
@@ -267,9 +269,14 @@ export class FileRpcClient {
     requestId: string,
     expectedToken: string,
     deadlineMs: number,
+    method: string,
   ): Promise<BridgeResponse> {
-    const end = Date.now() + deadlineMs;
+    const startedAt = Date.now();
+    const end = startedAt + deadlineMs;
     while (Date.now() <= end) {
+      // Most calls answer within a frame or two. Only a call the editor is
+      // still working on (navmesh build, probe bake, asset load) reports.
+      if (Date.now() - startedAt >= PROGRESS_AFTER_MS) reportProgress(`Waiting for Flax Editor (${method})`);
       try {
         const raw = await this.readBounded(responsePath);
         let parsed: unknown;

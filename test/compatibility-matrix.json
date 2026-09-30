@@ -6,10 +6,27 @@
       "os": "Windows",
       "flax": "1.12",
       "role": "recommended-and-current",
-      "status": "fixture-transport-covered",
-      "coverage": ["bridge status", "DTO/IPC", "malformed response", "timeout/disconnect", "stale file", "duplicate retry", "remote permission denied"],
-      "headedEditor": "manual required",
-      "headless": "status/compile/diagnostics/logs only; play is unsupported"
+      "status": "fixture-transport-covered; bridge v33 live-verified on a disposable project",
+      "coverage": [
+        "bridge status",
+        "DTO/IPC",
+        "malformed response",
+        "timeout/disconnect",
+        "stale file",
+        "duplicate retry",
+        "remote permission denied"
+      ],
+      "headedEditor": "bridge v33 surface run manually on 2026-09-30 (see docs/TESTING.md); older surfaces still manual required",
+      "headless": "status/compile/diagnostics/logs, member reads, settings writes, scene/content creation, domain queries; play and edit-time writes are unsupported",
+      "liveVerified": {
+        "date": "2026-09-30",
+        "flaxBuild": "1.12.6912",
+        "bridgeVersion": 33,
+        "notExercised": [
+          "particle_set_parameter with a real parameter",
+          "settings refusal while the settings window is open"
+        ]
+      }
     },
     {
       "os": "Linux",

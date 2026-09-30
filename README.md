@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 120 tools for reading and patching code, editing live scenes, searching/importing assets, working with safe live-prefab primitives, inspecting materials and animation state, physics/navigation/lighting diagnostics, compiling, running bounded play-mode checks, inspecting logs, and local diagnostics.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 170 tools for reading and patching code, editing live scenes and actor properties, building UI, searching/importing/creating assets, working with safe live-prefab primitives, editing materials, animation graphs, and project settings, physics/navigation/lighting diagnostics, compiling, running and driving bounded play-mode checks, inspecting logs, and local diagnostics.
 
 ## Requirements
 
@@ -126,6 +126,8 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `play_run_for` | Run for seconds, frames, or until a session-correlated log match, then request stop |
 | `test_run_scenario` | Run a bounded gameplay smoke scenario for `run_seconds` and assert `log_contains`/`log_absent`/`no_errors`/`viewport_captured` conditions, always stopping play |
 | `runtime_inspect_actor` | Read a bounded, allowlisted actor snapshot during play mode |
+| `runtime_set_script_value` | During play mode, write one editor-visible field or property of a game script (members declared in game code only). No undo; the value is discarded when play stops (bridge v33) |
+| `runtime_invoke_script_method` | During play mode, invoke one public, non-generic method declared in game code with up to four scalar arguments and return its result. A game exception comes back as data (`Threw`, `ExceptionType`), not as a tool error (bridge v33) |
 | `perf_get_snapshot` | Read one instantaneous engine performance snapshot (FPS, frame time, draw calls, triangles, managed memory, actor count, GPU adapter/renderer). Works outside play mode (editor viewport rate) and in play mode; GPU fields are null when headless; single sample, no averaging (bridge v27) |
 | `viewport_capture` | Capture the game viewport (requires play mode) or the editor viewport (bridge v22, works outside play mode) and return a readable temporary `flax://capture/<id>` PNG resource |
 | `capture_compare` | Diff two viewport capture PNGs (`flax://capture/<id>` URIs or bare 32-hex ids) per pixel against a `threshold` fraction, with an optional red-overlay `emit_diff` PNG readable as a new capture resource |
@@ -151,10 +153,13 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `scene_get_tree` | Read a loaded scene's live actor hierarchy |
 | `scene_save` | Save one loaded scene |
 | `scene_open` | Open one Content scene asset by GUID or project-relative path (async — poll `scene_list_loaded`; an already-loaded scene is a no-op; refuses play mode, compiling scripts, active edit leases, and edited scenes unless `allow_dirty_scenes:true`) (bridge v25) |
+| `scene_create` | Create a new `Content/.../*.scene` file from the Editor default template (Sun, Sky, SkyLight, Floor, Camera). Never overwrites and does not open it; `dry_run` previews, a real write needs `confirm:true` (bridge v33) |
+| `scene_close` | Unload one loaded scene through the Editor scene state machine without the modal save prompt (async — poll `scene_list_loaded`). Refuses play mode, compiling scripts, active edit leases, and unsaved edits unless `allow_dirty:true`, which discards them (bridge v33) |
 | `project_save_all` | Ask Flax Editor to save all edited project content |
 | `actor_get` / `actor_find` | Read or search live actors; v7 snapshots include bounded hierarchy, local/world-transform, tags, and layer metadata |
 | `actor_create` / `actor_update` | Create or patch allowlisted actor fields with dry-run support |
-| `actor_set_property` | Set one allowlisted component property (`Light.Color`, `Light.Brightness`, `Camera.FieldOfView`, `StaticModel.Model` by asset GUID, `Script.Enabled`) via a direct typed setter with editor undo; unknown properties fail listing the allowlist (bridge v28) |
+| `actor_get_properties` | List the editor-visible members of a live actor (the same selection the Flax property grid shows) with type, value, enum names, editor limits, and writability; works in play mode too (bridge v33) |
+| `actor_set_property` | Set one editor-visible member of a live actor (`Mass`, `RigidBody.IsKinematic`, `BoxCollider.Size`, `AudioSource.Clip`, ...) through the Editor property wrapper with editor undo and a `dry_run` preview. Asset references take a GUID or `Content/` path, actor references a GUID, `""` clears (bridge v33). The aliases `Light.Color`, `Light.Brightness`, `Camera.FieldOfView`, `StaticModel.Model`, `Script.Enabled` work from bridge v28 |
 | `actor_delete` / `actor_duplicate` | Delete or duplicate an actor with editor undo support |
 | `actor_reparent` | Reparent an actor while preserving its world transform by default |
 | `script_attach` / `script_detach` | Attach or detach a script with editor undo support |
@@ -183,6 +188,8 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `asset_rename` | Rename one registry asset without changing its extension, with bounded reference impact (bridge v10) |
 | `asset_duplicate` | Duplicate one registry asset to a named Content destination; existing references remain on the source (bridge v10) |
 | `asset_delete` | Move one asset to an existing quarantine folder after explicit, current reference-count confirmation; it never permanently deletes data (bridge v13) |
+| `asset_create` | Create one new empty asset the way the Editor Content window does: a binary `.flax` asset by kind (`Material`, `MaterialInstance`, `MaterialFunction`, `ParticleEmitter`, `ParticleEmitterFunction`, `ParticleSystem`, `AnimationGraph`, `AnimationGraphFunction`, `Animation`, `SceneAnimation`, `SkeletonMask`, `BehaviorTree`, `CollisionData`) or a `.json` data asset of a class (`kind: "JsonAsset"` plus `type_name`). Never overwrites; `dry_run` previews, a real write needs `confirm:true` (bridge v33) |
+| `content_create_folder` | Create a folder below `Content/` (missing parents included) and refresh the Editor Content database; an existing folder is a no-op (bridge v33) |
 
 For example, first preview a move and then repeat the same request without
 `dry_run` after confirmation:
@@ -213,6 +220,21 @@ both. The name excludes the extension, which remains the source extension.
 | `prefab_apply_overrides` | Push the whole-instance diff into the prefab asset via `PrefabManager.ApplyAll` with `confirm:true` + before-snapshot; the asset save cannot be undone by `edit_undo` (bridge v30) |
 | `prefab_break_link` | Break one actor's prefab link via the reviewed `BreakPrefabLinkAction` undo path with `confirm:true`; revertible with `edit_undo` (bridge v30) |
 
+### UI
+| Tool | What it does |
+|------|-------------|
+| `ui_control_create` | Create a `UIControl` actor owning a new GUI control (`FlaxEngine.GUI.Button`, `Label`, `Image`, `TextBox`, `Panel`, ...) under a `UICanvas` or a container `UIControl`, the way the Editor scene tree spawns it, with editor undo and `dry_run`. Create the canvas first with `actor_create` type `FlaxEngine.UICanvas` (bridge v33) |
+| `ui_control_get_properties` | List the editor-visible members of the control owned by a `UIControl` actor, including the layout members the Editor's dedicated UI editor exposes (`AnchorPreset`, `AnchorMin`, `AnchorMax`, `LocalX`, `LocalY`, `Width`, `Height`, `Offsets`) (bridge v33) |
+| `ui_control_set_property` | Set one of those control members through the Editor property wrapper with editor undo and a `dry_run` preview (bridge v33) |
+
+### Particles
+| Tool | What it does |
+|------|-------------|
+| `particle_get_parameters` | List the parameters a `ParticleEffect` actor exposes from its `ParticleSystem`: emitter track, name, type, value, default (bridge v33) |
+| `particle_set_parameter` | Override one public parameter on a `ParticleEffect` actor through `ParticleEffect.SetParameterValue` with editor undo and `dry_run` (bridge v33) |
+
+Audio needs no dedicated tools: `AudioSource.Clip`, `Volume`, `IsLooping`, `PlayOnStart` and the rest are editor-visible members, so `actor_create` plus `actor_set_property` configure them. The same goes for `ParticleEffect.ParticleSystem`.
+
 ### Build & Cook
 | Tool | What it does |
 |------|-------------|
@@ -233,7 +255,28 @@ both. The name excludes the extension, which remains the source extension.
 | animation_get_graph_parameters | Read live graph parameters from one loaded AnimatedModel (bridge v13) |
 | animation_set_graph_parameter | Stable unsupported capability until an Editor-safe persistence, undo, and preview path is verified (bridge v13) |
 | animation_validate_bindings | Compare a loaded AnimatedModel's public SkinnedModel, AnimationGraph, and graph BaseModel references (bridge v13) |
-| graph_set_model | Bind a registry SkinnedModel as an AnimationGraph BaseModel via the window save path; dry-run by default, the bind pushes no undo action (graph.undo cannot restore it) and saving cannot be undone (bridge v21) |
+
+### Visject graphs
+All graph writes go through the asset's Editor window and its save path; they are dry-run by default and saving cannot be undone.
+
+| Tool | What it does |
+|------|-------------|
+| `graph_inspect` | Read a window-backed Visject graph (AnimationGraph, Material, or ParticleEmitter) as nodes, boxes, and parameters, optionally with sub-contexts (bridge v16, sub-contexts v19) |
+| `graph_set_default_parameter` / `graph_add_parameter` | Persist one surface parameter default, or add one surface parameter (bridge v16) |
+| `graph_undo` | Undo one step on the window-local undo stack for unsaved edits (bridge v16) |
+| `graph_remove_node` / `graph_disconnect` | Delete one root-context node, or break one wire between two boxes (bridge v18) |
+| `graph_set_node_values` / `graph_move_node` | Set value slots on one root node, or move it on the canvas (bridge v20) |
+| `graph_set_model` | Bind a registry SkinnedModel as an AnimationGraph BaseModel; the bind pushes no undo action (bridge v21) |
+| `animgraph_add_state` / `animgraph_add_transition` | Add one state or one state-to-state transition to an AnimationGraph state machine (bridge v17) |
+| `animgraph_set_state_clip` | Assign an animation clip to a state by spawning a sampler and wiring Pose to State Output (bridge v20) |
+| `mm_tuning` | Motion-matching tuning reads: live telemetry snapshot, top-N cost ranking from a trace, deterministic replay verify, or native search self-test (bridge v15 with `mm.tuning`) |
+| `mm_apply_preset` | Apply a motion-matching weight preset (baseline, pose, turn) to live scene weights without rebaking |
+
+### Operations
+| Tool | What it does |
+|------|-------------|
+| `operation_get_status` | Read one persisted bridge operation by its exact handle (bridge v11; raw handles, not MCP Tasks) |
+| `operation_cancel` | Request cancellation when the backend advertises a safe cancellation checkpoint (bridge v11) |
 
 ### Settings & Config
 | Tool | What it does |
@@ -241,6 +284,14 @@ both. The name excludes the extension, which remains the source extension.
 | `read_settings` | Read any settings file by partial name — `"Input"`, `"Physics"`, `"Graphics"`, etc. |
 | `get_input_actions` | All input action and axis mappings from `Input Settings.json` |
 | `get_physics_settings` | Gravity, bounce, and layer masks from `Physics Settings.json` |
+| `settings_set_input_action` | Add or replace an input action binding (key, mouse button, or gamepad button) in the project Input settings (bridge v33) |
+| `settings_set_input_axis` | Add or replace an input axis mapping (mouse, gamepad stick, or a keyboard button pair) (bridge v33) |
+| `settings_remove_input_mapping` | Remove every action or axis mapping with a given name (bridge v33) |
+| `settings_set_layer_name` | Name one of the 32 project layers; duplicate names are rejected (bridge v33) |
+| `settings_add_tag` | Add one tag to the project Layers and Tags settings (bridge v33) |
+| `settings_set_first_scene` | Set `GameSettings.FirstScene` to a Content scene asset (bridge v33) |
+
+The `settings_*` writes go through the Editor's own `GameSettings.Load`/`Save` followed by `GameSettings.Apply`. `dry_run` returns before/after; a real write needs `confirm:true`, persists to disk immediately, and has no Editor undo record. They are refused in play mode, while scripts compile, and while the settings asset is open in an Editor window (the window keeps its own copy and would overwrite the change). Saving re-serializes the whole settings asset in the current engine format, exactly as saving from the Editor window does.
 
 ### Advanced domain queries
 `physics_validate_colliders`, `physics_raycast`, `physics_get_layer_matrix`,
@@ -252,6 +303,9 @@ completion or `timeout_ms` (a timeout reports `TIMEOUT` while the build
 continues — Flax exposes no navmesh cancel API). `lighting_bake` (bridge v31)
 starts, cancels, or polls lightmap baking via the `BakeLightmapsOrCancel`
 toggle (`End(failed:true)` conflates failure and cancellation).
+`lighting_validate` reads bounded lightmap-related actor state in loaded
+scenes, and `lighting_get_status` reads the bridge-tracked lightmap bake
+phase without starting a bake.
 `environment_probe_bake` (bridge v31) bakes one `EnvironmentProbe`/`SkyLight`
 and polls `HasContentLoaded` (no progress or cancel API).
 `terrain_get_summary` and `foliage_get_summary` are bounded read-only actor
@@ -301,12 +355,16 @@ Teams can drop project-local workflow guides in `<project>/mcp-prompts/*.md`. Fi
 
 - **Bounded build/cook workflows** -- `build_list_targets`, `build_validate`, `build_cook`, `build_get_status`, `build_get_result`, and `build_cancel` require bridge v13. They invoke only public Flax 1.12 `GameCooker.Build`, `GameCooker.Cancel`, event, and progress APIs. Output must be a non-empty project-relative directory below `Builds/`; non-empty destinations, arbitrary command lines, presets, package settings, and paths outside the project are rejected. Validation is deliberately preflight-only because Flax does not expose a reviewed managed API for toolchain availability. Build cancellation is asynchronous: acknowledgement means the request reached GameCooker, while a terminal cancellation requires later polling.
 
+- **Editor-visible members (bridge v33)** -- `actor_get_properties`, `actor_set_property`, and the `ui_control_*` tools reach only members the Flax property grid would show: public or `[ShowInEditor]`, never `[HideInEditor]` (the selection rule of the Editor's `GenericEditor.GetItemsForType`). Writes additionally refuse `[ReadOnly]` and `[NoSerialize]` members, numeric values outside a member's `[Limit]`/`[Range]` bounds, and the Actor base members that `actor_update` owns (name, active, transform, layer, tags). The one exception to `[HideInEditor]` is the UI control layout set (`AnchorPreset`, `AnchorMin`, `AnchorMax`, `LocalX`, `LocalY`, `Width`, `Height`, `Offsets`), which the Editor edits through its dedicated UI control editor instead of the generic grid. Supported value types: bool, numbers, string, enum (names, comma-separated for flags), Guid, Vector/Float/Double/Int 2-4, Color, Quaternion, Rectangle, Margin, LocalizedString, LayersMask, asset references, `JsonAssetReference<T>`, and actor/script references. Values are written through `ScriptMemberInfo.SetValue`, the wrapper the property grid uses, inside a bridge undo action. All of these are edit-time only: headless editors and play mode are refused.
+- **Driving gameplay in play mode (bridge v33)** -- Flax 1.12 binds no managed key or mouse injection (`Keyboard::OnKeyDown` and `Mouse::OnMouseDown` are not exposed to C#), so `input_key_press` and `input_mouse_click` stay validated stubs. Gameplay is driven through the game's own scripts instead: `runtime_set_script_value` writes an editor-visible script member and `runtime_invoke_script_method` calls a public, non-generic method declared in game code (never an engine method or a property accessor). Both require play mode, record no undo, and never mark a scene edited; Flax restores the edit-time scene when play stops.
+- **Scene and content creation (bridge v33)** -- `scene_create`, `asset_create`, and `content_create_folder` never overwrite, reject paths that resolve outside `Content/` (symlinks and junctions included), and refresh the Editor Content database so the result is visible to `asset_get` immediately. `asset_create` accepts the asset tags the Editor's own asset proxies pass to `Editor.CreateAsset`, and for `JsonAsset` exactly the classes the Editor "Json Asset" dialog accepts, plus types with a registered spawnable JSON proxy such as `FlaxEngine.PhysicalMaterial`. Creation has no Editor undo record; remove an unwanted file with `asset_delete`.
+- **Progress notifications** -- a `tools/call` request carrying `_meta.progressToken` receives `notifications/progress` while the server waits: compile and project-generation polls, play-state waits, `play_run_for`, asset import waits, build waits, viewport captures, and any single bridge call the Editor has not answered within a second. `progress` is milliseconds elapsed since the call started (so it always increases), `total` is the call's timeout when one applies, and `message` names the current phase. Requests without a token are unaffected.
 - **Foundation contracts** — every tool validates arguments, advertises an output schema and annotations, and returns structured results with operation metadata.
 - **Validation rules** — `validate_project` keeps its legacy text summary, while `structuredContent.data.findings` exposes stable rule IDs, severities, project-relative locations, suggested fixes, auto-fix metadata, filters (`rule_ids`, `severities`), per-call suppressions, and cursor pagination (maximum 200 findings/page). Offline rules cover missing first scenes/assets, compiler log failures, duplicate input mappings, statically suspicious network attributes, optional required-camera checks, invalid Flax headers, settings, and scene JSON. Editor/cooker-only checks are explicitly reported as capability gaps rather than inferred.
 - **Editor status** — `get_server_capabilities` and `editor_get_status` validate a matching live heartbeat at `Cache/MCP/bridge.json`; otherwise the server reports offline mode. Project identity includes an explicit project ID when present and an opaque SHA-256 path fingerprint, never the full project path.
 - **Bridge installation** — preview with `install_editor_bridge` using `dry_run:true`; replacement requires the installed `expected_hash` or explicit `force:true`. Restart/open Flax Editor and wait for C# compilation after installation. Installer changes have a separate redacted local audit at `.flax-mcp/bridge-install-audit.jsonl`.
 - **Live editor operations** — scene/actor/script operations require bridge v5 or newer. Compile, play, live-log, capture, and runtime-inspection tools require bridge v6; the `editor` viewport selector for `viewport_capture` requires bridge v22. Revisions, edit leases, idempotency keys, local-transform/layer actor patches, and extended actor-find filters require bridge v7. Editor API mutations execute on Flax's main thread, and actor/script mutations integrate with the Undo stack. Transactions and atomic batches are not advertised.
-- **Safe actor and script surface** — v7 actor snapshots expose parent ID, sibling order, child count, active-in-hierarchy, local and world transforms, tags (up to 64), layer index/name, static flags, and attached scripts. `actor_update` only patches name, active, one transform space per call (world or local), and the actor's layer; it never applies arbitrary reflected properties. `script_instance_update` is an optional-patch API with exactly one supported field, `enabled`; arbitrary serialized script fields/properties and asset-reference patching remain deferred because no verified public typed Editor setter is used. `script_instance_get` with `include_values:true` returns a bounded read-only projection of whitelisted public script field values (bool/int/float/string/enum/Guid/Vector2-4/Color, max 64 alphabetically, strings capped at 512 chars; unsupported types are null with a reason; live asset references are excluded). The projection never mutates the script and stays under the bridge 512 KiB response cap.
+- **Safe actor and script surface** — v7 actor snapshots expose parent ID, sibling order, child count, active-in-hierarchy, local and world transforms, tags (up to 64), layer index/name, static flags, and attached scripts. `actor_update` only patches name, active, one transform space per call (world or local), and the actor's layer; component and engine-actor members go through `actor_set_property` (bridge v33), which is limited to editor-visible members. `script_instance_update` is an optional-patch API with exactly one supported field, `enabled`; script field values are written with `script_instance_set_value` at edit time (bridge v28) or `runtime_set_script_value` during play (bridge v33). `script_instance_get` with `include_values:true` returns a bounded read-only projection of whitelisted public script field values (bool/int/float/string/enum/Guid/Vector2-4/Color, max 64 alphabetically, strings capped at 512 chars; unsupported types are null with a reason; live asset references are excluded). The projection never mutates the script and stays under the bridge 512 KiB response cap.
 - **Bridge v7 revisions** — status, loaded-scene/tree/actor/script reads, and scene actor/script mutation results include `ProjectRevision`; scene-scoped values also include `SceneRevision`. These counters live for the connected bridge Editor session and advance only for mutations made through this bridge. They do not detect unsaved manual Editor edits because no verified Flax 1.12 editor event is used for that purpose. Pass `expected_scene_revision` to a live write to reject a stale bridge-known scene with `SCENE_REVISION_CONFLICT` and the current revision in error details. For guarded `actor_create`, provide `parent_id` in the target scene so the bridge can identify the scene before spawning.
 - **Edit leases are not transactions** — `edit_begin_lease` creates a TTL-bound, scene-scoped coordination lease. The holder supplies `lease_id` on writes; other bridge writes to that scene are rejected while it is active, and play start is gated until the lease expires, is committed, or is released. Mutations remain visible immediately. `edit_commit_lease` and `edit_release_lease` only end the lease; neither commits an atomic batch nor rolls changes back. `TransactionsSupported` remains `false`.
 - **Idempotent retries** — live mutations accept an optional `idempotency_key`; v7 caches a matching method/request result for ten minutes (up to 512 entries) and replays it without repeating the mutation or revision increment. Reusing a key for different input returns `IDEMPOTENCY_KEY_REUSED`. Create, duplicate, and script-attach operations are the main recommended uses.

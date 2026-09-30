@@ -7,6 +7,7 @@ import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
 import { startHeavyOperation } from '../operations.js';
+import { reportProgress } from '../progress.js';
 
 type RuntimeBridgeMethod =
   | 'code.status' | 'code.compile_start' | 'code.diagnostics'
@@ -137,7 +138,7 @@ function runtimeError(error: unknown): ToolDomainError {
   const remote = (error.details as { code?: unknown } | undefined)?.code;
   if (remote === 'NOT_FOUND') return new ToolDomainError('NOT_FOUND', error.message, error.details);
   if (remote === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, error.details);
-  if (remote === 'COMPILATION_IN_PROGRESS' || remote === 'PLAY_BUSY') return new ToolDomainError('EDITOR_BUSY', error.message, error.details);
+  if (remote === 'COMPILATION_IN_PROGRESS' || remote === 'PLAY_BUSY' || remote === 'EDITOR_BUSY') return new ToolDomainError('EDITOR_BUSY', error.message, error.details);
   if (remote === 'INVALID_STATE') return new ToolDomainError('INVALID_PLAY_STATE', error.message, error.details);
   if (remote === 'PLAY_STATE_CONFLICT' || remote === 'DIRTY_SCENES' || remote === 'INVALID_REQUEST' || remote === 'VALIDATION_FAILED') return new ToolDomainError('VALIDATION_FAILED', error.message, error.details);
   if (remote === 'UNSUPPORTED_FLAX_VERSION') return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, error.details);
@@ -174,6 +175,7 @@ async function pollOperation(
     try {
       const response = await callRuntime(ctx, method, operationId ? { OperationId: operationId } : {}, Math.min(10_000, Math.max(250, end - Date.now())));
       const state = stateOf(response.data);
+      reportProgress(method === 'code.status' ? `Compiling scripts (${state})` : `Generating project files (${state})`, timeoutMs);
       const responseOperationId = operationIdOf(response.data);
       if (operationId && responseOperationId && responseOperationId !== operationId) {
         throw new ToolDomainError('OPERATION_NOT_FOUND', `Editor returned operation ${responseOperationId} while waiting for ${operationId}.`);
@@ -214,6 +216,7 @@ async function waitForCompilerQuiet(ctx: ProjectMeta, timeoutMs: number, quietMs
     try {
       latest = await callRuntime(ctx, 'code.status', {}, Math.min(10_000, Math.max(250, end - Date.now())));
       const state = stateOf(latest.data);
+      reportProgress(`Waiting for the script compiler to settle (${state})`, timeoutMs);
       const ready = record(latest.data).IsReady ?? record(latest.data).isReady;
       const compiling = record(latest.data).IsCompiling ?? record(latest.data).isCompiling;
       const quiet = !['requested', 'starting', 'compiling', 'reloading'].includes(state) && ready !== false && compiling !== true;
@@ -268,6 +271,7 @@ async function pollPlay(ctx: ProjectMeta, wanted: string, timeoutMs: number): Pr
   while (Date.now() <= end) {
     const response = await callRuntime(ctx, 'play.status', {}, Math.min(10_000, Math.max(250, end - Date.now())));
     if (terminalPlay(stateOf(response.data), wanted)) return response;
+    reportProgress(`Waiting for play state ${wanted} (currently ${stateOf(response.data)})`, timeoutMs);
     await sleep(100);
   }
   throw new BridgeRpcError('BRIDGE_TIMEOUT', `Play state did not become ${wanted} before timeout.`);
@@ -607,6 +611,7 @@ export async function handlePlayRunFor(args: z.infer<typeof PlayRunForSchema>, c
         stepped++;
       }
       else await sleep(25);
+      reportProgress(args.frames !== undefined ? `Running play session (${stepped}/${args.frames} frames)` : 'Running play session', args.timeout_ms);
       const status = await callRuntime(ctx, 'play.status', {});
       bridge = status.bridge;
       if (stateOf(status.data) === 'stopped') throw new ToolDomainError('OPERATION_CANCELLED', 'Simulation stopped before play_run_for completed.');

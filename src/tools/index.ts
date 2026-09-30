@@ -266,6 +266,50 @@ import {
   handleNavigationBuild, handleNavigationGetStatus, handleNavigationQueryPath, handleNavigationValidateAgents,
   handlePhysicsFindOverlaps, handlePhysicsGetLayerMatrix, handlePhysicsRaycast, handlePhysicsValidateColliders, handleTerrainGetSummary, handleTerrainPaint,
 } from './domainLive.js';
+import {
+  ActorGetPropertiesSchema,
+  ParticleGetParametersSchema,
+  ParticleSetParameterSchema,
+  UiControlCreateSchema,
+  UiControlGetPropertiesSchema,
+  UiControlSetPropertySchema,
+  handleActorGetProperties,
+  handleParticleGetParameters,
+  handleParticleSetParameter,
+  handleUiControlCreate,
+  handleUiControlGetProperties,
+  handleUiControlSetProperty,
+} from './memberLive.js';
+import {
+  RuntimeInvokeScriptMethodSchema,
+  RuntimeSetScriptValueSchema,
+  handleRuntimeInvokeScriptMethod,
+  handleRuntimeSetScriptValue,
+} from './runtimeScriptLive.js';
+import {
+  SettingsAddTagSchema,
+  SettingsRemoveInputMappingSchema,
+  SettingsSetFirstSceneSchema,
+  SettingsSetInputActionSchema,
+  SettingsSetInputAxisSchema,
+  SettingsSetLayerNameSchema,
+  handleSettingsAddTag,
+  handleSettingsRemoveInputMapping,
+  handleSettingsSetFirstScene,
+  handleSettingsSetInputAction,
+  handleSettingsSetInputAxis,
+  handleSettingsSetLayerName,
+} from './settingsLive.js';
+import {
+  AssetCreateSchema,
+  ContentCreateFolderSchema,
+  SceneCloseSchema,
+  SceneCreateSchema,
+  handleAssetCreate,
+  handleContentCreateFolder,
+  handleSceneClose,
+  handleSceneCreate,
+} from './contentLifecycleLive.js';
 
 export interface ToolDefinition {
   name: string;
@@ -431,6 +475,24 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   list_docs: ListDocsSchema,
   read_doc: ReadDocSchema,
   get_latest_log: GetLatestLogSchema,
+  actor_get_properties: ActorGetPropertiesSchema,
+  ui_control_create: UiControlCreateSchema,
+  ui_control_get_properties: UiControlGetPropertiesSchema,
+  ui_control_set_property: UiControlSetPropertySchema,
+  particle_get_parameters: ParticleGetParametersSchema,
+  particle_set_parameter: ParticleSetParameterSchema,
+  runtime_set_script_value: RuntimeSetScriptValueSchema,
+  runtime_invoke_script_method: RuntimeInvokeScriptMethodSchema,
+  settings_set_input_action: SettingsSetInputActionSchema,
+  settings_set_input_axis: SettingsSetInputAxisSchema,
+  settings_remove_input_mapping: SettingsRemoveInputMappingSchema,
+  settings_set_layer_name: SettingsSetLayerNameSchema,
+  settings_add_tag: SettingsAddTagSchema,
+  settings_set_first_scene: SettingsSetFirstSceneSchema,
+  scene_create: SceneCreateSchema,
+  scene_close: SceneCloseSchema,
+  content_create_folder: ContentCreateFolderSchema,
+  asset_create: AssetCreateSchema,
 };
 
 const TOOL_OUTPUT_SCHEMA = zodToJsonSchema(z.object({
@@ -525,6 +587,21 @@ const WRITE_TOOL_NAMES = new Set([
   'input_mouse_click',
   'play_run_for',
   'test_run_scenario',
+  'ui_control_create',
+  'ui_control_set_property',
+  'particle_set_parameter',
+  'runtime_set_script_value',
+  'runtime_invoke_script_method',
+  'settings_set_input_action',
+  'settings_set_input_axis',
+  'settings_remove_input_mapping',
+  'settings_set_layer_name',
+  'settings_add_tag',
+  'settings_set_first_scene',
+  'scene_create',
+  'scene_close',
+  'content_create_folder',
+  'asset_create',
 ]);
 
 function annotationsFor(name: string): ToolAnnotations {
@@ -540,7 +617,9 @@ function annotationsFor(name: string): ToolAnnotations {
       name === 'script_detach' ||
       name === 'prefab_apply_overrides' ||
       name === 'prefab_revert_overrides' ||
-      name === 'prefab_break_link',
+      name === 'prefab_break_link' ||
+      name === 'scene_close' ||
+      name === 'settings_remove_input_mapping',
     idempotentHint: !writes,
     openWorldHint: false,
   };
@@ -652,7 +731,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'actor_set_property',
-      description: 'Sets one allowlisted live component property (Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model by asset GUID, Script.Enabled) via a direct typed setter with editor undo. Unknown properties fail with VALIDATION_FAILED listing the allowlist. Requires bridge v28.',
+      description: 'Sets one editor-visible member of a live actor (anything the Flax property grid shows: collider, rigid body, light, camera, audio source, model and other component settings) through the Editor property wrapper with editor undo and a dry_run preview. Accepts Member or Type.Member; asset and actor references are GUIDs. Requires bridge v33; the aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled work from bridge v28. Name, active, transform, and layer stay with actor_update.',
       inputSchema: zodToJsonSchema(ActorSetPropertySchema),
       handler: (a, c) => handleActorSetProperty(a as Parameters<typeof handleActorSetProperty>[0], c),
     },
@@ -827,7 +906,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     { name: 'navigation_validate_agents', description: 'Lists bounded NavMesh agent settings in loaded scenes; dynamic agent mutation is not exposed.', inputSchema: zodToJsonSchema(NavigationValidateAgentsSchema), handler: (a, c) => handleNavigationValidateAgents(a as Parameters<typeof handleNavigationValidateAgents>[0], c) },
     { name: 'navigation_query_path', description: 'Runs one bounded read-only Navigation.FindPath query against the active global navmesh.', inputSchema: zodToJsonSchema(NavigationQueryPathSchema), handler: (a, c) => handleNavigationQueryPath(a as Parameters<typeof handleNavigationQueryPath>[0], c) },
     { name: 'lighting_bake', description: 'Starts, cancels, or polls Flax lightmap baking via the BakeLightmapsOrCancel toggle with step/total progress from LightmapsBakeProgress; start returns phase baking for status polling and LightmapsBakeEnd(failed:true) conflates failure with cancellation. Requires bridge v31.', inputSchema: zodToJsonSchema(LightingBakeSchema), handler: (a, c) => handleLightingBake(a as Parameters<typeof handleLightingBake>[0], c) },
-    { name: 'lighting_get_status', description: 'Reports the intentionally unsupported bridge-owned lightmap/probe bake lifecycle.', inputSchema: zodToJsonSchema(LightingGetStatusSchema), handler: (a, c) => handleLightingGetStatus(a as Parameters<typeof handleLightingGetStatus>[0], c) },
+    { name: 'lighting_get_status', description: 'Reads the bridge-tracked lightmap bake phase (idle or baking) and the last bake outcome without starting a bake.', inputSchema: zodToJsonSchema(LightingGetStatusSchema), handler: (a, c) => handleLightingGetStatus(a as Parameters<typeof handleLightingGetStatus>[0], c) },
     { name: 'lighting_validate', description: 'Reads bounded public lightmap-related actor state in loaded scenes; it does not estimate quality or bake.', inputSchema: zodToJsonSchema(LightingValidateSchema), handler: (a, c) => handleLightingValidate(a as Parameters<typeof handleLightingValidate>[0], c) },
     { name: 'environment_probe_bake', description: 'Bakes one EnvironmentProbe or SkyLight actor and polls HasContentLoaded until timeout_ms; reports TIMEOUT while a bake may still complete in the background (no progress or cancel API). Requires bridge v31.', inputSchema: zodToJsonSchema(EnvironmentProbeBakeSchema), handler: (a, c) => handleEnvironmentProbeBake(a as Parameters<typeof handleEnvironmentProbeBake>[0], c) },
     { name: 'terrain_get_summary', description: 'Lists bounded read-only metadata for loaded Terrain actors; rect paint stays a validated unsupported stub (terrain_paint).', inputSchema: zodToJsonSchema(TerrainGetSummarySchema), handler: (a, c) => handleTerrainGetSummary(a as Parameters<typeof handleTerrainGetSummary>[0], c) },
@@ -1401,6 +1480,122 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Reads the most recent Flax Engine log file. Supports tail mode (last N lines) and text filtering. Use all_logs:true to list all log files.',
       inputSchema: zodToJsonSchema(GetLatestLogSchema),
       handler: (a, c) => handleGetLatestLog(a as Parameters<typeof handleGetLatestLog>[0], c),
+    },
+
+    // ── Bridge v33: editor-visible members, UI, particles ─────────────────────
+    {
+      name: 'actor_get_properties',
+      description: 'Lists the editor-visible members of a live actor (the same selection the Flax property grid shows) with type, current value, enum names, and whether actor_set_property can write each one. Bounded to 256 members; works in play mode too. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(ActorGetPropertiesSchema),
+      handler: (a, c) => handleActorGetProperties(a as Parameters<typeof handleActorGetProperties>[0], c),
+    },
+    {
+      name: 'ui_control_create',
+      description: 'Creates a FlaxEngine.UIControl actor owning a new GUI control (Button, Label, Image, TextBox, Panel, ...) under a UICanvas or a container UIControl, the way the Editor scene tree spawns it, with editor undo and dry_run. Create the canvas first with actor_create type FlaxEngine.UICanvas. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(UiControlCreateSchema),
+      handler: (a, c) => handleUiControlCreate(a as Parameters<typeof handleUiControlCreate>[0], c),
+    },
+    {
+      name: 'ui_control_get_properties',
+      description: 'Lists the editor-visible members of the GUI control owned by a UIControl actor (text, size, location, anchors, colors, ...) with type, current value, and writability. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(UiControlGetPropertiesSchema),
+      handler: (a, c) => handleUiControlGetProperties(a as Parameters<typeof handleUiControlGetProperties>[0], c),
+    },
+    {
+      name: 'ui_control_set_property',
+      description: 'Sets one editor-visible member of the GUI control owned by a UIControl actor through the Editor property wrapper with editor undo and a dry_run preview. Control hierarchy (Parent, IndexInParent) stays with actor_reparent. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(UiControlSetPropertySchema),
+      handler: (a, c) => handleUiControlSetProperty(a as Parameters<typeof handleUiControlSetProperty>[0], c),
+    },
+    {
+      name: 'particle_get_parameters',
+      description: 'Lists the parameters a ParticleEffect actor exposes from its ParticleSystem: emitter track, name, type, current value, and default value. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(ParticleGetParametersSchema),
+      handler: (a, c) => handleParticleGetParameters(a as Parameters<typeof handleParticleGetParameters>[0], c),
+    },
+    {
+      name: 'particle_set_parameter',
+      description: 'Overrides one public parameter on a ParticleEffect actor through ParticleEffect.SetParameterValue with editor undo and a dry_run preview. The override is stored on the actor and the scene is marked edited, not saved. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(ParticleSetParameterSchema),
+      handler: (a, c) => handleParticleSetParameter(a as Parameters<typeof handleParticleSetParameter>[0], c),
+    },
+
+    // ── Bridge v33: play-mode script drive ────────────────────────────────────
+    {
+      name: 'runtime_set_script_value',
+      description: 'During play mode, writes one editor-visible field or property of a game script (members declared in game code only, never engine members). No undo is recorded and the value is discarded when play stops. Use it to drive gameplay from tests, since Flax 1.12 has no managed key or mouse injection. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(RuntimeSetScriptValueSchema),
+      handler: (a, c) => handleRuntimeSetScriptValue(a as Parameters<typeof handleRuntimeSetScriptValue>[0], c),
+    },
+    {
+      name: 'runtime_invoke_script_method',
+      description: 'During play mode, invokes one public, non-generic instance method declared in game code on a live script, with up to four scalar arguments, and returns its result. An exception thrown by the game method is reported as data (Threw, ExceptionType), not as a tool error. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(RuntimeInvokeScriptMethodSchema),
+      handler: (a, c) => handleRuntimeInvokeScriptMethod(a as Parameters<typeof handleRuntimeInvokeScriptMethod>[0], c),
+    },
+
+    // ── Bridge v33: project settings writes ───────────────────────────────────
+    {
+      name: 'settings_set_input_action',
+      description: 'Adds or replaces an input action binding (key, mouse button, or gamepad button) in the project Input settings through the Editor GameSettings API, then applies it. dry_run previews before/after; a real write needs confirm:true, persists immediately, and has no undo. Refused in play mode and while the Input settings window is open. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(SettingsSetInputActionSchema),
+      handler: (a, c) => handleSettingsSetInputAction(a as Parameters<typeof handleSettingsSetInputAction>[0], c),
+    },
+    {
+      name: 'settings_set_input_axis',
+      description: 'Adds or replaces an input axis mapping (mouse, gamepad stick, or keyboard button pair) in the project Input settings through the Editor GameSettings API, then applies it. dry_run previews before/after; a real write needs confirm:true, persists immediately, and has no undo. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(SettingsSetInputAxisSchema),
+      handler: (a, c) => handleSettingsSetInputAxis(a as Parameters<typeof handleSettingsSetInputAxis>[0], c),
+    },
+    {
+      name: 'settings_remove_input_mapping',
+      description: 'Removes every input action or axis mapping with the given name from the project Input settings. dry_run lists what would be removed; a real write needs confirm:true, persists immediately, and has no undo. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(SettingsRemoveInputMappingSchema),
+      handler: (a, c) => handleSettingsRemoveInputMapping(a as Parameters<typeof handleSettingsRemoveInputMapping>[0], c),
+    },
+    {
+      name: 'settings_set_layer_name',
+      description: 'Names one of the 32 project layers in the Layers and Tags settings through the Editor GameSettings API. Duplicate names are rejected. dry_run previews; a real write needs confirm:true, persists immediately, and has no undo. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(SettingsSetLayerNameSchema),
+      handler: (a, c) => handleSettingsSetLayerName(a as Parameters<typeof handleSettingsSetLayerName>[0], c),
+    },
+    {
+      name: 'settings_add_tag',
+      description: 'Adds one tag to the project Layers and Tags settings through the Editor GameSettings API (an existing tag is a no-op). dry_run previews; a real write needs confirm:true, persists immediately, and has no undo. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(SettingsAddTagSchema),
+      handler: (a, c) => handleSettingsAddTag(a as Parameters<typeof handleSettingsAddTag>[0], c),
+    },
+    {
+      name: 'settings_set_first_scene',
+      description: 'Sets the project first scene (GameSettings.FirstScene) to a Content scene asset selected by GUID or path. dry_run previews; a real write needs confirm:true, persists immediately, and has no undo. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(SettingsSetFirstSceneSchema),
+      handler: (a, c) => handleSettingsSetFirstScene(a as Parameters<typeof handleSettingsSetFirstScene>[0], c),
+    },
+
+    // ── Bridge v33: scene and content lifecycle ───────────────────────────────
+    {
+      name: 'scene_create',
+      description: 'Creates a new scene file from the Editor default template (Sun, Sky, SkyLight, Floor, Camera) at a Content/.../*.scene path. Never overwrites and does not open the scene; follow with scene_open. dry_run previews; a real write needs confirm:true and has no undo. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(SceneCreateSchema),
+      handler: (a, c) => handleSceneCreate(a as Parameters<typeof handleSceneCreate>[0], c),
+    },
+    {
+      name: 'scene_close',
+      description: 'Unloads one loaded scene through the Editor scene state machine without the modal save prompt. The unload is async: Phase closing means poll scene_list_loaded. Refuses play mode, compiling scripts, active edit leases, and a scene with unsaved edits unless allow_dirty is explicit (its edits are then discarded). Requires bridge v33.',
+      inputSchema: zodToJsonSchema(SceneCloseSchema),
+      handler: (a, c) => handleSceneClose(a as Parameters<typeof handleSceneClose>[0], c),
+    },
+    {
+      name: 'content_create_folder',
+      description: 'Creates a folder below Content/ (missing parents included) and refreshes the Editor Content database. An existing folder is a no-op. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(ContentCreateFolderSchema),
+      handler: (a, c) => handleContentCreateFolder(a as Parameters<typeof handleContentCreateFolder>[0], c),
+    },
+    {
+      name: 'asset_create',
+      description: 'Creates one new empty asset the way the Editor Content window does: a binary .flax asset by kind (Material, ParticleSystem, AnimationGraph, BehaviorTree, ...) or a .json data asset of a given class (kind JsonAsset plus type_name, for example FlaxEngine.PhysicalMaterial). Never overwrites. dry_run previews; a real write needs confirm:true and has no undo. Requires bridge v33.',
+      inputSchema: zodToJsonSchema(AssetCreateSchema),
+      handler: (a, c) => handleAssetCreate(a as Parameters<typeof handleAssetCreate>[0], c),
     },
   ];
 

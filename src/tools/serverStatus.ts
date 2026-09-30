@@ -222,6 +222,7 @@ export async function handleGetServerCapabilities(
     const navigationBuild = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
     const lightingBake = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
     const environmentProbeBake = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 31;
+    const bridgeV33 = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 33;
     const assetImportPolicy = assetImportPolicyForContext(ctx);
     const data = {
       serverVersion: SERVER_VERSION,
@@ -248,10 +249,25 @@ export async function handleGetServerCapabilities(
         editLeases: phase3,
         idempotentEditorWrites: phase3,
         safeActorSurface: phase3,
+        // Still false on v33: writes reach editor-visible members only
+        // (what the property grid shows), never arbitrary reflected ones.
         arbitraryActorProperties: false,
         scriptInstanceEnabledPatch: editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 5,
         scriptFieldWrite,
         actorPropertyWrite,
+        actorPropertyRead: bridgeV33,
+        editorVisibleActorProperties: bridgeV33,
+        uiControls: bridgeV33,
+        particleParameters: bridgeV33,
+        runtimeScriptDrive: bridgeV33,
+        settingsWrite: bridgeV33,
+        sceneCreate: bridgeV33,
+        sceneClose: bridgeV33,
+        contentFolderCreate: bridgeV33,
+        assetCreate: bridgeV33,
+        // Node-side: tools/call requests carrying _meta.progressToken receive
+        // notifications/progress from long polls, with or without a bridge.
+        progressNotifications: true,
         arbitrarySerializedScriptProperties: false,
         assetSearch: phase4Assets,
         assetRegistryMetadata: phase4Assets,

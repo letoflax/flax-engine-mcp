@@ -138,7 +138,7 @@ test('the packaged bridge resolver finds the real version 32 artifact', async ()
     assert.equal(path.basename(bundledPath), 'FlaxMcpBridge.cs');
     const info = await inspectEditorBridgeInstallation(f.ctx);
     assert.equal(info.bundled.available, true);
-    assert.equal(info.bundled.version, '32');
+    assert.equal(info.bundled.version, '33');
     assert.match(info.bundled.hash ?? '', /^[a-f0-9]{64}$/);
     assert.equal(info.installed.present, false);
   } finally {

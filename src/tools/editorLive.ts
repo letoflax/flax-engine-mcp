@@ -144,12 +144,18 @@ export const ScriptInstanceSetValueSchema = z.object({
     .describe('Preview the coercion and report would_change plus before/after without writing. Requires bridge v28.'),
   ...RevisionedLiveWrite,
 });
+// The five bridge v28 aliases keep their dedicated typed setters and stay
+// wire-identical. Any other name is a bridge v33 editor-visible member.
+const LEGACY_ACTOR_PROPERTIES = new Set(['Light.Color', 'Light.Brightness', 'Camera.FieldOfView', 'StaticModel.Model', 'Script.Enabled']);
+
 export const ActorSetPropertySchema = z.object({
-  target_id: FlaxId.describe('Actor GUID for component properties (Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model) or script GUID for Script.Enabled.'),
+  target_id: FlaxId.describe('Actor GUID. Script.Enabled alone takes a script GUID.'),
   property: z.string().min(1).max(128)
-    .describe('Exactly one allowlisted property: Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, or Script.Enabled. Unknown properties fail with VALIDATION_FAILED listing the allowlist.'),
+    .describe('Member or Type.Member of an editor-visible actor member, for example Mass, RigidBody.IsKinematic, BoxCollider.Size, AudioSource.Clip (bridge v33; list them with actor_get_properties). The v28 aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled still work on older bridges. Name, active, transform, and layer belong to actor_update.'),
   value: z.union([z.boolean(), z.number().finite(), z.string()])
-    .describe('New value: Text color ("#rrggbb[aa]" or "r,g,b[,a]") for Light.Color, finite number for Light.Brightness (>= 0) and Camera.FieldOfView (0-180 exclusive), 32-hex model asset GUID for StaticModel.Model, boolean for Script.Enabled.'),
+    .describe('Coerced strictly to the member type: boolean, finite number, or string. Strings carry enum names ("A, B" for flags), vectors ("x,y[,z[,w]]"), colors ("#rrggbb[aa]" or "r,g,b[,a]"), and references: an asset GUID or Content/ path, an actor or script GUID, or "" to clear a reference.'),
+  dry_run: z.boolean().optional().default(false)
+    .describe('Preview the coercion and report would_change plus before/after without writing. Requires bridge v33.'),
   ...RevisionedLiveWrite,
 });
 export const EditUndoSchema = z.object({});
@@ -211,7 +217,8 @@ async function liveCall(
   ctx: ProjectMeta,
   method: BridgeMethod,
   params: AnyRecord,
-  changes: unknown[] = [],
+  // A function receives the bridge result, so a no-op write can report no change.
+  changes: unknown[] | ((result: unknown) => unknown[]) = [],
   minimumBridgeVersion?: number,
 ): Promise<ToolResponse> {
   try {
@@ -225,7 +232,7 @@ async function liveCall(
       mode: response.mode,
       data,
       warnings: response.warnings,
-      changes,
+      changes: typeof changes === 'function' ? changes(response.data) : changes,
     });
   } catch (error) {
     return toolError(bridgeError(error));
@@ -448,20 +455,27 @@ export async function handleActorSetProperty(
   args: z.infer<typeof ActorSetPropertySchema>,
   ctx: ProjectMeta,
 ): Promise<ToolResponse> {
+  // DryRun is sent only when requested so alias writes stay wire-identical
+  // to bridge v28. Dry runs never consume idempotency keys.
   const params = {
     ActorId: args.target_id,
     Property: args.property,
     ...splitScalarValue(args.value),
+    ...(args.dry_run ? { DryRun: true } : {}),
     ExpectedSceneRevision: args.expected_scene_revision,
     LeaseId: args.lease_id,
-    IdempotencyKey: args.idempotency_key,
+    IdempotencyKey: args.dry_run ? undefined : args.idempotency_key,
   };
   return liveCall(
     ctx,
     'actor.set_property',
     params,
-    [{ kind: 'actor.property_set', id: args.target_id, property: args.property }],
-    28,
+    // A v33 bridge reports WouldChange:false when the member already held
+    // the value; it then writes nothing. Older bridges omit the field.
+    result => (args.dry_run || (result as { WouldChange?: unknown } | null)?.WouldChange === false
+      ? []
+      : [{ kind: 'actor.property_set', id: args.target_id, property: args.property }]),
+    LEGACY_ACTOR_PROPERTIES.has(args.property) && !args.dry_run ? 28 : 33,
   );
 }
 

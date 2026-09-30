@@ -159,8 +159,24 @@ export type DomainBridgeMethod =
   | 'terrain.get_summary' | 'foliage.get_summary'
   | 'terrain.paint' | 'foliage.add_instances' | 'foliage.remove_instances';
 
+/**
+ * Bridge v33: editor-visible member reads/writes (actors and UI controls),
+ * play-mode script drive, project-settings writes, scene/content lifecycle,
+ * and particle parameter overrides. `actor.set_property` (v28) gains the
+ * generic member path and a dry-run preview on v33 bridges.
+ */
+export type V33BridgeMethod =
+  | 'actor.get_properties'
+  | 'ui.create_control' | 'ui.get_control_properties' | 'ui.set_control_property'
+  | 'runtime.set_script_value' | 'runtime.invoke_script_method'
+  | 'settings.set_input_action' | 'settings.set_input_axis' | 'settings.remove_input_mapping'
+  | 'settings.set_layer_name' | 'settings.add_tag' | 'settings.set_first_scene'
+  | 'scene.create' | 'scene.close' | 'content.create_folder' | 'asset.create'
+  | 'particle.get_parameters' | 'particle.set_parameter';
+
 export type BridgeMethod =
   | 'status'
+  | V33BridgeMethod
   | SceneBridgeMethod
   | ActorBridgeMethod
   | ScriptBridgeMethod

@@ -42,3 +42,58 @@ whole bridge source with FLAX_EDITOR against the same artifact. Neither starts
 Flax or validates Editor Undo behavior; that is why v12 keeps
 override/revert/apply/break-link and v13 keeps material/animation mutations
 explicitly unsupported.
+
+## Bridge v33 live run (Windows, Flax 1.12.6912, 2026-09-30)
+
+Bridge v33 was exercised against a real Flax 1.12 Editor on a disposable
+copy of a small template project (one scene with lights, a camera, two
+static models with box colliders). The bridge was installed into
+`Source/Game/MCP/`, compiled by the Editor's own script build, and driven
+through the built Node tool registry (`dispatchToolCall`), so every call
+went through the real file-RPC transport.
+
+Headless Editor (`-headless -std`):
+
+- bridge v33 compiles, starts, and hot-reloads through `code_compile`
+- `actor_get_properties` on collider, light, camera, static model, sky,
+  UI canvas, and particle effect actors
+- all six `settings_*` writes: dry-run, save, no-op detection, refusals;
+  the saved JSON and the reloaded settings were read back
+- `scene_create`, `scene_open`, `scene_close`, `content_create_folder`
+- `asset_create` for all 13 binary kinds and for `JsonAsset`
+  (`FlaxEngine.PhysicalMaterial`, a settings class, and four rejected
+  types)
+- the eleven v14 domain queries (empty objects before the named-DTO fix,
+  real data after it), error details, and idempotency key reuse
+- edit-time writes are refused in headless mode as designed
+
+Headed Editor (window minimized):
+
+- generic `actor_set_property`: bool, float, int, vector, color, enum,
+  flags enum, asset reference, `JsonAssetReference<T>`, actor reference,
+  clearing a reference, editor-limit refusal, type-mismatch refusals,
+  dry-run, idempotent replay, stale-revision conflict
+- `edit_undo` / `edit_redo` over those writes
+- `ui_control_create` under a `UICanvas` and under a container control,
+  `ui_control_get_properties`, `ui_control_set_property` for text, color,
+  and the layout members; the saved scene kept the layout across an
+  Editor restart
+- `script_attach` after several script reloads (this is what exposed the
+  stale-assembly type lookup)
+- play mode: `runtime_set_script_value` (float, string, enum, vector,
+  actor reference, a `[NoSerialize]` field), `runtime_invoke_script_method`
+  (return values, a thrown exception, arity, generic, accessor, and
+  engine-method refusals); values reverted when play stopped
+- `scene_close` refusals (dirty scene, active lease) and the
+  `allow_dirty` discard path
+- a real MCP stdio session calling `code_compile` with a progress token
+  received five `notifications/progress` messages
+
+Not exercised live:
+
+- `particle_set_parameter` with a real parameter. No tool can author a
+  particle system with emitter tracks, and the project had none, so only
+  the empty-system read, the not-found path, and the edit-time gate ran.
+- The settings refusal while the settings asset window is open (it needs
+  a person to open the window).
+- Linux and macOS.

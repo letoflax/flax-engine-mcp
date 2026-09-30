@@ -4,6 +4,7 @@ import { callEditorBridge } from '../bridge/fileRpcClient.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ProjectMeta } from '../projectContext.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
+import { reportProgress } from '../progress.js';
 
 type Row = Record<string, unknown>;
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
@@ -239,6 +240,7 @@ export async function handleViewportCapture(args: z.infer<typeof ViewportCapture
         return ok(data, [...started.warnings, ...statusResponse.warnings]);
       }
       if (state === 'failed' || state === 'cancelled') throw new ToolDomainError('CAPTURE_UNAVAILABLE', String(val(status, 'Error', 'error') ?? `Capture ${state}.`));
+      reportProgress('Waiting for the viewport capture', args.timeout_ms);
       await delay(Math.min(args.poll_interval_ms, Math.max(0, deadline - Date.now())));
     }
     throw new ToolDomainError('TIMEOUT', `Capture did not complete within ${args.timeout_ms} ms.`);

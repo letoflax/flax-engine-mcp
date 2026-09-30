@@ -5,6 +5,7 @@ import { BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, type ToolResponse } from '../errors.js';
 import type { ProjectMeta } from '../projectContext.js';
 import { isTerminalOperation, startHeavyOperation, type OperationHandle } from '../operations.js';
+import { reportProgress } from '../progress.js';
 
 const OperationId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character operation ID.');
 const OutputPath = z.string().min(8).max(512).superRefine((value, ctx) => {
@@ -76,6 +77,7 @@ async function waitForBuild(ctx: ProjectMeta, operationId: string, timeoutMs: nu
   while (Date.now() <= end) {
     last = await buildStatus(ctx, operationId);
     if (isTerminalOperation(last.operation)) return { ...last, pending: false };
+    reportProgress('Cooking build', timeoutMs);
     await new Promise<void>(resolve => setTimeout(resolve, 150));
   }
   if (!last) last = await buildStatus(ctx, operationId);

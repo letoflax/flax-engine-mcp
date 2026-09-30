@@ -32,6 +32,7 @@ const TOOL_FAMILIES = {
     'physics_validate_colliders', 'physics_raycast', 'physics_get_layer_matrix', 'physics_find_overlaps', 'navigation_get_status', 'navigation_validate_agents', 'navigation_query_path',
     'lighting_get_status', 'lighting_validate', 'terrain_get_summary', 'foliage_get_summary', 'list_docs',
     'read_doc', 'capture_compare', 'get_latest_log', 'mm_tuning', 'perf_get_snapshot',
+    'actor_get_properties', 'ui_control_get_properties', 'particle_get_parameters',
   ],
   code: [
     'install_editor_bridge', 'code_compile', 'code_generate_project', 'operation_cancel', 'write_script',
@@ -43,11 +44,16 @@ const TOOL_FAMILIES = {
     'script_instance_update', 'script_instance_set_value', 'edit_undo', 'edit_redo', 'edit_begin_lease', 'edit_commit_lease', 'edit_release_lease', 'editor_set_selection', 'create_actor', 'modify_actor',
     'prefab_instantiate', 'prefab_revert_overrides', 'prefab_break_link', 'material_assign_to_actor', 'animation_set_graph_parameter', 'graph_undo', 'mm_apply_preset',
     'terrain_paint', 'foliage_add_instances', 'foliage_remove_instances',
+    'ui_control_create', 'ui_control_set_property', 'particle_set_parameter', 'scene_close',
   ],
-  asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_set_import_settings', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete', 'prefab_create_from_actor', 'prefab_apply_overrides', 'material_set_parameters', 'material_create_instance', 'graph_set_default_parameter', 'graph_add_parameter', 'animgraph_add_state', 'animgraph_add_transition', 'graph_remove_node', 'graph_disconnect', 'graph_set_node_values', 'graph_move_node', 'graph_set_model', 'animgraph_set_state_clip'],
+  asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_set_import_settings', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete', 'prefab_create_from_actor', 'prefab_apply_overrides', 'material_set_parameters', 'material_create_instance', 'graph_set_default_parameter', 'graph_add_parameter', 'animgraph_add_state', 'animgraph_add_transition', 'graph_remove_node', 'graph_disconnect', 'graph_set_node_values', 'graph_move_node', 'graph_set_model', 'animgraph_set_state_clip',
+    // Project settings and new Content files persist to disk without an Editor undo record.
+    'settings_set_input_action', 'settings_set_input_axis', 'settings_remove_input_mapping', 'settings_set_layer_name', 'settings_add_tag', 'settings_set_first_scene',
+    'scene_create', 'content_create_folder', 'asset_create'],
   runtime: [
     'play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume',
     'play_step_frame', 'play_set_time_scale', 'input_key_press', 'input_mouse_click', 'play_run_for', 'test_run_scenario', 'viewport_capture', 'runtime_inspect_actor', 'build_cook', 'build_cancel', 'navigation_build', 'lighting_bake', 'environment_probe_bake',
+    'runtime_set_script_value', 'runtime_invoke_script_method',
   ],
 } as const;
 

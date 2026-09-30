@@ -1290,3 +1290,186 @@ metadata write without reimport; direct conversion outside (re)import.
 The bridge never returns importer source paths; the set path revalidates
 the source against the configured import roots and the `Editor.CanImport`
 gate before mutating.
+
+## Bridge v33: editor-visible members, UI, runtime script drive, settings, content lifecycle (170-tool contract)
+Bridge v33 keeps protocol v1 and the full v32 surface and adds 18 tools for
+a 170-tool contract. `status` adds `ActorPropertyReadSupported`,
+`GenericActorPropertyWriteSupported`, `UiControlWorkflowsSupported`,
+`RuntimeScriptDriveSupported`, `SettingsWriteSupported`,
+`SceneCreateSupported`, `SceneCloseSupported`,
+`ContentFolderCreateSupported`, `AssetCreateSupported`, and
+`ParticleParameterWorkflowsSupported`. Node version-gates every new method
+(and the generic and dry-run paths of `actor.set_property`) at bridge v33.
+
+API truth comes from the Flax 1.12 C++ headers under `Source/` and a
+decompile of the shipped `FlaxEngine.CSharp.dll` (the install ships no
+`.cpp` and no Editor C# sources). Every call site is compiled by
+`test/flax-api-smoke/BridgeCompileSmoke.csproj`, and the surface was run
+against a real Flax 1.12 Editor (see `docs/TESTING.md`).
+
+Design rule: a method exists only where it follows the path the Editor
+itself uses. Input injection therefore stays the v26 stub
+(`Keyboard::OnKeyDown` and `Mouse::OnMouseDown` carry no `API_FUNCTION`;
+dispatching into `RootControl.GameRoot` would reach GUI only and leave
+`FlaxEngine.Input` disagreeing with it).
+
+### Editor-visible members
+- `actor.get_properties` `{ActorId, Filter?, IncludeUnsupported, Limit}`
+  returns `{ActorId, Target: "actor", TypeName, Members[], TotalCount,
+  UnsupportedSkipped, Truncated, ProjectRevision, SceneRevision,
+  Warnings}`. Each member is `{Name, DeclaringType, Type, Kind, Group,
+  Writable, Value, EnumValues, Min, Max, Reason, Tooltip}`. `Limit` is
+  1-256 (default 128); members sort by name. It is a read with no
+  edit-time gate, so it also works headless and in play mode.
+- Member selection mirrors
+  `FlaxEditor.CustomEditors.Editors.GenericEditor.GetItemsForType`:
+  properties need a getter plus a setter or `[ShowInEditor]`, public
+  visibility or `[ShowInEditor]`, and no `[HideInEditor]`; fields need
+  public visibility or `[ShowInEditor]` and no `[HideInEditor]`. Indexers
+  and static members are skipped.
+- `actor.set_property` gains `DryRun` and the generic path: `Property` is
+  `Member` or `Type.Member` (the prefix must name a type in the hierarchy
+  of the target). The five v28 aliases keep their dedicated setters; a
+  dry-run of the four actor aliases uses the generic path, and
+  `Script.Enabled` has no dry-run. The result adds `Type`, `DryRun`,
+  `WouldChange`.
+- Writes refuse: `[ReadOnly]` or setter-less members; `[NoSerialize]`
+  members (an edit-time write would not persist); members declared on
+  `FlaxEngine.Object` or `SceneObject`; members declared on `Actor` except
+  `StaticFlags` (name, active, transform, layer, tags belong to
+  `actor.update`); unsupported value types; numeric values outside the
+  `[Limit]`/`[Range]` bounds of the member.
+- Value kinds: `boolean`, `integer`, `number`, `string`, `enum` (names,
+  comma-separated for `[Flags]`, or a defined numeric value), `guid`,
+  `vector2/3/4` (Vector, Float, Double, Int), `color`, `quaternion`
+  (`"x,y,z,w"`), `rectangle` (`"x,y,width,height"`), `margin`
+  (`"left,right,top,bottom"`), `localized_string`, `layers_mask`
+  (integer), `asset` and `json_asset` (GUID or `Content/` path, `""`
+  clears; `JsonAssetReference<T>` also checks `DataTypeName`), `actor` and
+  `script` (GUID, `""` clears). Asset references resolve through the
+  project Content registry, so engine-content assets cannot be assigned.
+- The write is `ScriptMemberInfo.SetValue` (the property-grid wrapper)
+  inside `McpMemberUndo`, registered with `Editor.Undo.AddAction`;
+  scene-object references are stored by ID and re-resolved on undo. It
+  requires edit time (`RequireEditTime`: headless and play mode fail
+  `INVALID_STATE`) and honors `ExpectedSceneRevision`, `LeaseId`, and
+  `IdempotencyKey`; dry-runs never consume the key.
+
+### UI controls
+- `ui.create_control` `{ParentId, ControlType, Name?, DryRun, ...}` spawns
+  `new UIControl { Control, Name, StaticFlags }` through
+  `SceneEditing.Spawn`, as the Editor scene tree does. The parent must be
+  a `UICanvas` or a `UIControl` whose control is a `ContainerControl`.
+  `ControlType` must be a visible, non-abstract `FlaxEngine.GUI.Control`
+  with a parameterless constructor; `FlaxEditor.*` controls (absent from a
+  cooked game) and `RootControl` types are rejected.
+- `ui.get_control_properties` and `ui.set_control_property` apply the
+  member surface to `UIControl.Control` (`Target: "control"`). In addition
+  to the grid-visible members they reach exactly the `[HideInEditor]`
+  layout members that
+  `FlaxEditor.CustomEditors.Dedicated.UIControlControlEditor` edits:
+  `AnchorPreset`, `AnchorMin`, `AnchorMax`, `LocalX`, `LocalY`, `Width`,
+  `Height`, plus `Offsets`. Several of these are `[NoSerialize]` views
+  over the serialized anchors and offsets, so they are exempt from the
+  `[NoSerialize]` refusal. `Parent` and `IndexInParent` stay with
+  `actor.reparent`.
+
+### Play-mode script drive
+- `runtime.set_script_value` `{ScriptId, Member, Bool|Number|Text}` and
+  `runtime.invoke_script_method` `{ScriptId, Method, Args[]}` require play
+  mode (`INVALID_STATE` otherwise; Node reports `INVALID_PLAY_STATE`).
+- Both reach game code only: members and methods declared on
+  `FlaxEngine.*`, `FlaxEditor.*`, `System.*`, or `Microsoft.*` types are
+  refused. Invocation needs a public, non-generic instance method that is
+  not a special name (no property accessors), at most four arguments of
+  supported kinds, and a unique overload for the argument count.
+- An exception thrown by the game method is returned as data (`Invoked`,
+  `Threw`, `ExceptionType`, `ExceptionMessage`), because the call did
+  happen. Neither method records undo, marks a scene edited, or advances
+  a scene revision; Flax restores the edit-time scene when play stops.
+
+### Project settings
+- `settings.set_input_action`, `settings.set_input_axis`,
+  `settings.remove_input_mapping`, `settings.set_layer_name`,
+  `settings.add_tag`, and `settings.set_first_scene` load through
+  `GameSettings.Load<T>()`, save through `GameSettings.Save<T>()`
+  (`Editor.SaveJsonAsset`), then call `GameSettings.Apply()`.
+- `DryRun` defaults to `true` on the bridge; a real write needs
+  `Confirm`. Results report `Saved`, `WouldChange`, and before/after. A
+  request that matches the current settings saves nothing.
+- Refusals: play mode or requested play (`INVALID_STATE`), compiling or
+  reloading scripts (`EDITOR_BUSY`), and the settings asset being open in
+  an Editor window (`EDITOR_BUSY`, via `WindowsModule.FindEditor`).
+  Headless editors are allowed.
+- Saving re-serializes the whole asset in the current engine format, as
+  the Editor window does. Axis mappings have no engine defaults, so
+  omitted fields use `DeadZone` 0.1, `Sensitivity` 1, `Gravity` 1,
+  `Scale` 1.
+
+### Scene and content lifecycle
+- `scene.create` `{Path, DryRun, Confirm, IdempotencyKey?}` calls
+  `SceneModule.CreateSceneFile` (the Editor default template) at a new
+  `Content/.../*.scene`; it does not open the scene.
+- `scene.close` `{SceneId, AllowDirty}` mirrors edit-mode
+  `SceneModule.CloseScene` without its modal dialog:
+  `ClearRefsToSceneObjects` then `ChangingScenesState.UnloadScene`. It
+  needs `CurrentState.CanChangeScene`, refuses active edit leases
+  (`EDIT_LEASE_ACTIVE`) and an edited scene unless `AllowDirty`
+  (`DIRTY_SCENE`), and returns `Phase: "closing"`; poll
+  `scene.list_loaded`.
+- `content.create_folder` `{Path, DryRun}` creates a folder below
+  `Content/`; an existing folder is a no-op.
+- `asset.create` `{Kind, Path, TypeName?, DryRun, Confirm,
+  IdempotencyKey?}` calls `Editor.CreateAsset(tag, path)` for `Material`,
+  `MaterialInstance`, `MaterialFunction`, `ParticleEmitter`,
+  `ParticleEmitterFunction`, `ParticleSystem`, `AnimationGraph`,
+  `AnimationGraphFunction`, `Animation`, `SceneAnimation`,
+  `SkeletonMask`, `BehaviorTree`, `CollisionData`, or
+  `Editor.SaveJsonAsset(path, new T())` for `JsonAsset`. JSON types follow
+  `GenericJsonCreateEntry`: visible, non-abstract, non-generic classes
+  with a parameterless constructor that are not `Attribute`,
+  `FlaxEngine.Object`, or `Control`, plus types with a registered
+  `SpawnableJsonAssetProxy<T>` (for example `FlaxEngine.PhysicalMaterial`).
+- Creation never overwrites (`FILE_EXISTS`), canonicalizes the nearest
+  existing parent so a symlink or junction cannot leave `Content/`,
+  refreshes the Content database through `ContentDatabase.RefreshFolder`,
+  and reads the ID of a new binary asset from its header because the
+  registry lists it a moment later. There is no Editor undo record.
+
+### Particle parameters
+- `particle.get_parameters` `{ActorId}` lists `ParticleEffect.Parameters`
+  as `{Track, Name, Type, IsPublic, Writable, Value, DefaultValue}`.
+- `particle.set_parameter` `{ActorId, Track?, Name, Bool|Number|Text,
+  DryRun, ...}` calls `ParticleEffect.SetParameterValue` inside
+  `McpLambdaUndo`. `Track` is needed only when the name exists on several
+  emitter tracks. Undo restores the previous value as an explicit
+  override.
+
+### Serialization and type-resolution fixes shipped with v33
+- `FlaxEngine.Json` serializes public fields and settable properties
+  only, so a C# anonymous type becomes `{}`. The v14 domain queries
+  (`physics.*`, `navigation.get_status`, `navigation.validate_agents`,
+  `navigation.query_path`, `lighting.get_status`, `lighting.validate`,
+  `terrain.get_summary`, `foliage.get_summary`) returned anonymous types
+  and were therefore empty in a real Editor. They now return named DTOs
+  with the same field names.
+- Error details and idempotency fingerprint inputs are still written as
+  anonymous types in the source; `PlainForJson` projects them to
+  dictionaries at every serialization site. Details such as
+  `CurrentSceneRevision` now reach the client, and the asset import,
+  reimport, and import-settings fingerprints distinguish requests again.
+- `ResolveType` and the JSON asset type lookup use
+  `FlaxEngine.Utils.GetAssemblies()` (default context plus the current
+  scripting context). `AppDomain.GetAssemblies()` also returns game
+  assemblies from contexts unloaded by earlier script reloads, and a type
+  from one of those cannot be instantiated: `script.attach` and
+  `actor.create` with a game type failed with a `NullReferenceException`
+  after any recompile in the same Editor session.
+
+### Progress notifications (Node only)
+A `tools/call` carrying `_meta.progressToken` receives
+`notifications/progress` with `progress` in milliseconds since the call
+started, `total` equal to the timeout of the call when one applies, and a
+`message`. Sources: the compile, generate, play, import, build, and
+capture polling loops, and any bridge request still pending after one
+second.

@@ -6,6 +6,7 @@ import { BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, type ToolResponse } from '../errors.js';
 import type { ProjectMeta } from '../projectContext.js';
 import { startHeavyOperation } from '../operations.js';
+import { reportProgress } from '../progress.js';
 
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
 const OperationId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character operation ID.');
@@ -181,6 +182,7 @@ async function maybeWait(
     const next = await getStatus(kind, id, ctx);
     last = next.data;
     bridge = next.bridge;
+    reportProgress(`Waiting for asset ${kind} (${String(last.Phase ?? 'running')})`, timeoutMs);
     if (terminal(last)) return { data: last, bridge };
   }
   return { data: last, bridge };
