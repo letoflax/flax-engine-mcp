@@ -910,7 +910,7 @@ separate from the global `edit.undo`.
 
 | Method | Lives on | Node tool | Notes |
 |---|---|---|---|
-| `mm.tuning` / `mm_apply_preset` | local dev bridge | `mm_tuning`, `mm_apply_preset` | Missing method answers `METHOD_NOT_ALLOWED` → shared mapper reports `UNSUPPORTED_FLAX_VERSION` with capability hint. |
+| `mm.tuning` (`Op: "preset"`) | local dev bridge | `mm_apply_preset` | Missing method answers `METHOD_NOT_ALLOWED` → shared mapper reports `UNSUPPORTED_FLAX_VERSION` with capability hint. The `mm_tuning` tool (tuning reads and the database rebuild ops of the same method) was removed from the server: it is specific to one game's motion-matching system, not a general engine operation. |
 
 Capability checks must use the `*Supported` status flags (e.g.
 `GraphSetModelSupported`, `ScriptFieldValuesReadSupported`,
@@ -1386,7 +1386,8 @@ gate before mutating.
 
 ## Bridge v33: editor-visible members, UI, runtime script drive, settings, content lifecycle (170-tool contract)
 Bridge v33 keeps protocol v1 and the full v32 surface and adds 18 tools for
-a 170-tool contract. `status` adds `ActorPropertyReadSupported`,
+a 170-tool contract. The follow-up to v33 removed the game-specific
+`mm_tuning` tool (no bridge change), so the server now registers 169 tools. `status` adds `ActorPropertyReadSupported`,
 `GenericActorPropertyWriteSupported`, `UiControlWorkflowsSupported`,
 `RuntimeScriptDriveSupported`, `SettingsWriteSupported`,
 `SceneCreateSupported`, `SceneCloseSupported`,

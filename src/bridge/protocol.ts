@@ -130,7 +130,7 @@ export type AnimationBridgeMethod =
    | 'animation.validate_bindings';
 
 /**
- * Motion-matching tuning surface (read ops + weight presets). Local-bridge-only:
+ * Motion-matching method behind mm_apply_preset (weight presets). Local-bridge-only:
  * the bundled bridge/FlaxMcpBridge.cs does not implement it and answers
  * METHOD_NOT_ALLOWED, which the shared mapper reports as UNSUPPORTED_FLAX_VERSION.
  */

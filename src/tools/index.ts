@@ -94,7 +94,7 @@ import {
 } from './materialAnimationLive.js';
 import { GetScriptClassesSchema, FindReferencesSchema, ListNetworkedScriptsSchema, handleGetScriptClasses, handleFindReferences, handleListNetworkedScripts } from './codeAnalysis.js';
 import { GenerateScriptSchema, handleGenerateScript } from './codeGen.js';
-import { MMTuningSchema, MMApplyPresetSchema, handleMMTuning, handleMMApplyPreset } from './mmTuning.js';
+import { MMApplyPresetSchema, handleMMApplyPreset } from './mmTuning.js';
 import {
   AnimgraphAddStateSchema,
   AnimgraphAddTransitionSchema,
@@ -465,7 +465,6 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   animgraph_add_state: AnimgraphAddStateSchema,
   animgraph_add_transition: AnimgraphAddTransitionSchema,
   animgraph_set_state_clip: AnimgraphSetStateClipSchema,
-  mm_tuning: MMTuningSchema,
   mm_apply_preset: MMApplyPresetSchema,
   read_settings: ReadSettingsSchema,
   get_input_actions: GetInputActionsSchema,
@@ -1413,12 +1412,6 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Adds one state-to-state transition to an AnimationGraph state machine via the window save path, using default rule data like an editor drop-connect. Dry-run by default and saving cannot be undone. Requires bridge v17.',
       inputSchema: zodToJsonSchema(AnimgraphAddTransitionSchema),
       handler: (a, c) => handleAnimgraphAddTransition(a as Parameters<typeof handleAnimgraphAddTransition>[0], c),
-    },
-    {
-      name: 'mm_tuning',
-      description: 'Motion-matching tuning reads (M6): live telemetry snapshot, top-N cost ranking from a trace file, deterministic replay verify, or native search self-test. op:"rebuild_start" is the one non-read op: it queues a full database rebuild and is refused under the read-only and code-edit permission profiles. Requires a local bridge that implements mm.tuning (the bundled bridge does not).',
-      inputSchema: zodToJsonSchema(MMTuningSchema),
-      handler: (a, c) => handleMMTuning(a as Parameters<typeof handleMMTuning>[0], c),
     },
     {
       name: 'mm_apply_preset',

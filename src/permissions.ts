@@ -31,7 +31,7 @@ const TOOL_FAMILIES = {
     'get_physics_settings', 'get_compiler_errors', 'validate_project', 'operation_get_status', 'build_list_targets', 'build_validate', 'build_get_status', 'build_get_result',
     'physics_validate_colliders', 'physics_raycast', 'physics_get_layer_matrix', 'physics_find_overlaps', 'navigation_get_status', 'navigation_validate_agents', 'navigation_query_path',
     'lighting_get_status', 'lighting_validate', 'terrain_get_summary', 'foliage_get_summary', 'list_docs',
-    'read_doc', 'capture_compare', 'get_latest_log', 'mm_tuning', 'perf_get_snapshot',
+    'read_doc', 'capture_compare', 'get_latest_log', 'perf_get_snapshot',
     'actor_get_properties', 'ui_control_get_properties', 'particle_get_parameters',
   ],
   code: [
@@ -69,20 +69,6 @@ export function classifiedToolNames(): string[] {
 
 export function toolFamily(name: string): ToolFamily | undefined {
   return TOOL_FAMILY_BY_NAME.get(name);
-}
-
-/**
- * Profile-level check for one capability family, for the rare tool whose
- * operations span two families (a read tool with one mutating op). Per-tool
- * allow/deny overrides do not apply here: they name tools, not operations.
- */
-export function isFamilyAllowed(family: ToolFamily, policy: PermissionPolicy): boolean {
-  if (family === 'read') return true;
-  if (policy.emergencyReadOnly) return false;
-  if (policy.profile === 'full') return true;
-  if (policy.profile === 'read-only') return false;
-  if (policy.profile === 'code-edit') return family === 'code';
-  return family === 'scene' || family === 'runtime';
 }
 
 export function parsePermissionPolicy(argv: readonly string[]): PermissionPolicy {

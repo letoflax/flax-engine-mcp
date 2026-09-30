@@ -48,8 +48,9 @@ không có API), transaction/rollback, CI, Linux/macOS.
 ## 5. Kết quả (2026-09-30)
 
 Cả năm gói đã xong và đã gộp vào working tree; chưa commit. Bản gộp:
-`npm test` 368 test (364 pass, 4 skip, 0 fail), compile smoke 0 warning, vẫn
-170 tool, bridge v33, server 1.11.0. Chi tiết lần chạy Editor thật nằm ở mục
+`npm test` 367 test (363 pass, 4 skip, 0 fail), compile smoke 0 warning,
+bridge v33, server 1.11.0. Số tool giảm từ 170 xuống 169 vì `mm_tuning` bị gỡ
+(xem mục 6). Chi tiết lần chạy Editor thật nằm ở mục
 "Bridge v33 follow-up live run" của `docs/TESTING.md`.
 
 | Gói | Kết quả |
@@ -57,7 +58,7 @@ Cả năm gói đã xong và đã gộp vào working tree; chưa commit. Bản g
 | A | Sửa 12 phát hiện (2–13), phát hiện 14 sửa một phần. Ghi import settings bị từ chối khi không khôi phục được options hiện tại; chỉ nhận đúng `Texture`, `Model`, `SkinnedModel`, `AudioClip`; khoảng giá trị theo engine; reimport không xếp hàng được thì lỗi ngay; gọi lại `operation_id` cũ trả đúng kết quả lần đầu (`adopted:true`). Không làm: gộp DTO và gộp ba hàm restore/project/mutate (phát hiện 14) |
 | B | Member kiểu asset nhận `engine:<path>`; member `IBrush` nhận chuỗi `<kind>:<value>[;option=value]` (9 loại của brush picker, trừ `GPUTextureBrush`); `FontReference` nhận `<font>;size=<points>`. Giá trị đọc ra dùng lại được làm giá trị ghi |
 | C | `test_run_scenario` có `steps` (`set_script_value`, `invoke_script_method` với `expect`); 5 prompt viết lại theo tool hiện có; hằng số phiên bản bridge gom về một chỗ |
-| D | Sửa các chỗ tài liệu lệch code; các lỗi code nó phát hiện đã sửa sau khi gộp (`animgraph_set_state_clip` bị đánh dấu read-only, resource subscription bỏ sót tool ghi mới, nhãn audit sai, mô tả `reimport_asset`/`actor_update`, tên file request chỉ ASCII, `mm_tuning rebuild_start` bị chặn ở profile chỉ đọc) |
+| D | Sửa các chỗ tài liệu lệch code; các lỗi code nó phát hiện đã sửa sau khi gộp (`animgraph_set_state_clip` bị đánh dấu read-only, resource subscription bỏ sót tool ghi mới, nhãn audit sai, mô tả `reimport_asset`/`actor_update`, tên file request chỉ ASCII) |
 | E | Chạy lại toàn bộ trên Editor thật. Tìm và sửa hai lỗi: tool material/graph/play-start báo `EDITOR_BUSY` hoặc `INVALID_PLAY_STATE` khi Editor headless từ chối (giờ là `HEADLESS_MODE` cho mọi tool); mỗi lần `asset_create` nhị phân làm engine ghi lỗi "duplicated asset ID" |
 
 Chưa xử lý, ghi lại để quyết định sau (đều ngoài phạm vi đợt này):
@@ -71,7 +72,15 @@ Chưa xử lý, ghi lại để quyết định sau (đều ngoài phạm vi đ�
   được).
 - Vài tool ghi `changes` cho thao tác không đổi gì (`scene_open` khi scene đã
   mở, `play_stop` khi đã dừng, poll một lần ghi import settings no-op).
-- Profile `scene-edit` vẫn cho phép `build_cook`, `build_cancel` và các tool
-  bake; `mm_tuning` vẫn mang `readOnlyHint:true` dù có op `rebuild_start`.
 - Chưa chạy thật: tham số particle kiểu asset, brush không có dạng chuỗi,
   `restored:false` cho Model/AudioClip, Linux/macOS.
+
+## 6. Quyết định sau khi báo cáo
+
+- Gỡ tool `mm_tuning`: MCP chỉ nên chứa tool tổng quát thao tác với engine,
+  còn `mm_tuning` là tool riêng cho hệ motion matching của một game. Op
+  `rebuild_start` của nó (việc ghi duy nhất mang nhãn "chỉ đọc") đi theo.
+  `mm_apply_preset` cùng loại nhưng chưa được yêu cầu gỡ nên còn nguyên.
+- Profile `scene-edit` giữ nguyên: vẫn gồm `build_cook`, `build_cancel` và
+  các tool bake.
+- Các phát hiện ở cuối mục 5 chưa làm.

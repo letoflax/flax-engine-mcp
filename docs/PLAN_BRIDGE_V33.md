@@ -1,6 +1,6 @@
 # Kế hoạch bridge v33 — bổ sung các chức năng còn thiếu
 
-> **Trạng thái (2026-09-30): đã triển khai** trong bridge v33 / server 1.11.0 (170 tool); giữ làm hồ sơ kế hoạch, kết quả nằm ở mục 5. Việc điều chỉnh sau v33 nằm ở `docs/PLAN_BRIDGE_V33_FOLLOWUP.md`. Mô tả hiện hành: `README.md`, mục "Bridge v33" của `bridge/PROTOCOL.md`, và `docs/TESTING.md` (lần chạy Editor thật).
+> **Trạng thái (2026-09-30): đã triển khai** trong bridge v33 / server 1.11.0 (170 tool); giữ làm hồ sơ kế hoạch, kết quả nằm ở mục 5. Việc điều chỉnh sau v33 (trong đó có việc gỡ `mm_tuning`, còn 169 tool) nằm ở `docs/PLAN_BRIDGE_V33_FOLLOWUP.md`. Mô tả hiện hành: `README.md`, mục "Bridge v33" của `bridge/PROTOCOL.md`, và `docs/TESTING.md` (lần chạy Editor thật).
 
 > Phạm vi: sáu khoảng trống đã nêu khi rà soát MCP ở bridge v32 (152 tool).
 > Nguồn kiểm chứng API: header C++ trong `Flax_1.12/Source` và bản decompile

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createProjectContext, ProjectMeta } from '../projectContext.js';
-import { handleMMTuning, MMTuningSchema } from './mmTuning.js';
+import { handleMMApplyPreset, MMApplyPresetSchema } from './mmTuning.js';
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE';
 
@@ -45,16 +45,17 @@ async function respondFailure(f: Fixture, request: { name: string; body: Record<
   await fs.rename(`${target}.tmp`, target);
 }
 
-function errorCodeOf(result: Awaited<ReturnType<typeof handleMMTuning>>): string {
+function errorCodeOf(result: Awaited<ReturnType<typeof handleMMApplyPreset>>): string {
   return (result.structuredContent as Record<string, any>).error.code;
 }
 
-test('mm tuning keeps INVALID_PLAY_STATE for non-headless INVALID_STATE (pre-P2 behavior)', async () => {
+test('mm_apply_preset keeps INVALID_PLAY_STATE for non-headless INVALID_STATE (pre-P2 behavior)', async () => {
   const f = await fixture();
   try {
-    const pending = handleMMTuning(MMTuningSchema.parse({ op: 'status' }), f.ctx);
+    const pending = handleMMApplyPreset(MMApplyPresetSchema.parse({ preset: 'pose' }), f.ctx);
     const request = await nextRequest(f);
     assert.equal(request.body.method, 'mm.tuning');
+    assert.deepEqual(JSON.parse(String(request.body.paramsJson)), { Op: 'preset', Preset: 'pose' });
     await respondFailure(f, request, 'INVALID_STATE', 'No play session is active.', { PlayMode: false });
     const result = await pending;
     assert.equal(result.isError, true);
@@ -62,10 +63,10 @@ test('mm tuning keeps INVALID_PLAY_STATE for non-headless INVALID_STATE (pre-P2 
   } finally { await f.cleanup(); }
 });
 
-test('mm tuning delegates headless INVALID_STATE to HEADLESS_MODE via the shared mapper', async () => {
+test('mm_apply_preset delegates headless INVALID_STATE to HEADLESS_MODE via the shared mapper', async () => {
   const f = await fixture();
   try {
-    const pending = handleMMTuning(MMTuningSchema.parse({ op: 'clip_motion' }), f.ctx);
+    const pending = handleMMApplyPreset(MMApplyPresetSchema.parse({ preset: 'turn' }), f.ctx);
     const request = await nextRequest(f);
     await respondFailure(f, request, 'INVALID_STATE', 'No surface.', { Reason: 'Headless editor has no GUI surface.' });
     const result = await pending;

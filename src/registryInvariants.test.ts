@@ -4,15 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { ToolResponse } from './errors.js';
-import { isFamilyAllowed, PermissionPolicy, toolFamily } from './permissions.js';
+import { toolFamily } from './permissions.js';
 import { ProjectMeta } from './projectContext.js';
 import { auditOperationOf } from './audit.js';
 import { readFlaxResource } from './resources.js';
 import { ResourceSubscriptionManager } from './resourceSubscriptions.js';
 import { buildToolRegistry } from './tools/index.js';
-import { handleMMTuning, MMTuningSchema } from './tools/mmTuning.js';
 
-async function fixture(policy?: PermissionPolicy): Promise<{ root: string; ctx: ProjectMeta }> {
+async function fixture(): Promise<{ root: string; ctx: ProjectMeta }> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flax-mcp-registry-'));
   await fs.writeFile(path.join(root, 'fixture.flaxproj'), JSON.stringify({ Name: 'fixture', Version: '1.0.0' }));
   return {
@@ -25,13 +24,9 @@ async function fixture(policy?: PermissionPolicy): Promise<{ root: string; ctx: 
       sourceDir: path.join(root, 'Source'),
       logsDir: path.join(root, 'Logs'),
       settingsDir: path.join(root, 'Content', 'Settings'),
-      ...(policy ? { permissionPolicy: policy } : {}),
     },
   };
 }
-
-const policy = (profile: PermissionPolicy['profile'], emergencyReadOnly = false): PermissionPolicy =>
-  ({ profile, allowTools: [], denyTools: [], emergencyReadOnly });
 
 // Tools outside the read family that only read: a play-session inspection.
 const NonReadFamilyReaders = new Set(['runtime_inspect_actor']);
@@ -49,25 +44,11 @@ test('readOnlyHint agrees with the permission family of every tool', async () =>
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
-test('family-level permission check follows the four profiles', () => {
-  assert.equal(isFamilyAllowed('read', policy('read-only', true)), true);
-  assert.equal(isFamilyAllowed('runtime', policy('full')), true);
-  assert.equal(isFamilyAllowed('runtime', policy('full', true)), false);
-  assert.equal(isFamilyAllowed('runtime', policy('read-only')), false);
-  assert.equal(isFamilyAllowed('runtime', policy('code-edit')), false);
-  assert.equal(isFamilyAllowed('code', policy('code-edit')), true);
-  assert.equal(isFamilyAllowed('runtime', policy('scene-edit')), true);
-  assert.equal(isFamilyAllowed('asset', policy('scene-edit')), false);
-});
-
-test('mm_tuning rebuild_start is refused before any RPC when the profile forbids runtime tools', async () => {
-  const { root, ctx } = await fixture(policy('read-only'));
+test('the registry offers no tool for the game-specific motion-matching tuning reads', async () => {
+  const { root, ctx } = await fixture();
   try {
-    const result = await handleMMTuning(MMTuningSchema.parse({ op: 'rebuild_start' }), ctx);
-    assert.equal(result.isError, true);
-    assert.equal((result.structuredContent as { error?: { code?: string } }).error?.code, 'PERMISSION_DENIED');
-    // No request directory was created: the refusal happened in Node.
-    await assert.rejects(fs.stat(path.join(root, 'Cache', 'MCP', 'requests')));
+    assert.equal(buildToolRegistry(ctx).some(tool => tool.name === 'mm_tuning'), false);
+    assert.equal(toolFamily('mm_tuning'), undefined);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 

@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 170 tools for reading and patching code, editing live scenes and actor properties, building UI, searching/importing/creating assets, working with safe live-prefab primitives, editing materials, animation graphs, and project settings, physics/navigation/lighting diagnostics, compiling, running and driving bounded play-mode checks, inspecting logs, and local diagnostics.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 169 tools for reading and patching code, editing live scenes and actor properties, building UI, searching/importing/creating assets, working with safe live-prefab primitives, editing materials, animation graphs, and project settings, physics/navigation/lighting diagnostics, compiling, running and driving bounded play-mode checks, inspecting logs, and local diagnostics.
 
 ## Requirements
 
@@ -271,8 +271,7 @@ All graph writes go through the asset's Editor window and its save path; they ar
 | `graph_set_model` | Bind a registry SkinnedModel as an AnimationGraph BaseModel; the bind pushes no undo action (bridge v21) |
 | `animgraph_add_state` / `animgraph_add_transition` | Add one state or one state-to-state transition to an AnimationGraph state machine (bridge v17) |
 | `animgraph_set_state_clip` | Assign an animation clip to a state by spawning a sampler and wiring Pose to State Output (bridge v20) |
-| `mm_tuning` | Motion-matching tuning reads: live telemetry snapshot, top-N cost ranking from a trace, deterministic replay verify, or native search self-test (`op`: `status`, `top`, `replay`, `selftest`; the schema also accepts `rebuild_start` (queues a full database rebuild), `rebuild_status`, and `clip_motion`). Local-bridge-only: it needs the `mm.tuning` method, which the bundled `bridge/FlaxMcpBridge.cs` does not implement, so against a stock bridge it reports `UNSUPPORTED_FLAX_VERSION` |
-| `mm_apply_preset` | Apply a motion-matching weight preset (baseline, pose, turn) to live scene weights without rebaking. Local-bridge-only, same `mm.tuning` requirement as `mm_tuning` |
+| `mm_apply_preset` | Apply a motion-matching weight preset (baseline, pose, turn) to live scene weights without rebaking. Local-bridge-only: it needs the `mm.tuning` method, which the bundled `bridge/FlaxMcpBridge.cs` does not implement, so against a stock bridge it reports `UNSUPPORTED_FLAX_VERSION` |
 
 ### Operations
 | Tool | What it does |
