@@ -10,10 +10,31 @@ import { buildToolRegistry } from './index.js';
 import { dispatchToolCall } from '../index.js';
 import { CaptureCompareSchema, decodePng, encodePngRgba, handleCaptureCompare } from './captureCompare.js';
 
-// Real viewport captures. Copied read-only into temp fixtures; never modified.
-const REAL_CAPTURES = 'D:/Code/flax/flax-playback/Cache/MCP/captures';
-const REAL_WIDE = '5062dc72739a46af8053f38588e1b3d6.png'; // 1920x1048 RGBA
-const REAL_TALL = '62293ad3240b4322bfae755d51f0f25c.png'; // 1091x653 RGBA
+// Self-contained fixtures: deterministic gradient PNGs generated in-test.
+// (A previous revision copied real captures from another project; those files
+// expire via the 24h capture TTL, so tests must not depend on them.)
+const WIDE_W = 64;
+const WIDE_H = 48;
+const TALL_W = 40;
+const TALL_H = 30;
+
+function gradientRgba(width: number, height: number): Buffer {
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = (y * width + x) * 4;
+      rgba[i] = x % 256;
+      rgba[i + 1] = y % 256;
+      rgba[i + 2] = (x + y) % 256;
+      rgba[i + 3] = 255;
+    }
+  }
+  return rgba;
+}
+
+async function putPng(captures: string, id: string, width: number, height: number, rgba?: Buffer): Promise<void> {
+  await fs.writeFile(path.join(captures, `${id}.png`), encodePngRgba(width, height, rgba ?? gradientRgba(width, height)));
+}
 
 const ID_A = 'a'.repeat(32);
 const ID_B = 'b'.repeat(32);
@@ -35,15 +56,15 @@ function envelopeOf(result: Awaited<ReturnType<typeof handleCaptureCompare>>): R
 test('identical real captures match with zero diff', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_B}.png`));
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
+    await putPng(f.captures, ID_B, WIDE_W, WIDE_H);
     const result = await handleCaptureCompare(CaptureCompareSchema.parse({ base: ID_A, other: ID_B }), f.ctx);
     assert.equal(result.isError, undefined);
     const envelope = envelopeOf(result);
     assert.equal(envelope.ok, true);
     assert.equal(envelope.data.match, true);
-    assert.equal(envelope.data.width, 1920);
-    assert.equal(envelope.data.height, 1048);
+    assert.equal(envelope.data.width, WIDE_W);
+    assert.equal(envelope.data.height, WIDE_H);
     assert.equal(envelope.data.diff_pixels, 0);
     assert.equal(envelope.data.diff_fraction, 0);
     assert.equal(envelope.data.max_channel_diff, 0);
@@ -54,30 +75,22 @@ test('identical real captures match with zero diff', async () => {
 test('modified real capture reports sane diff counts and honours the threshold', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
-    const decoded = decodePng(await fs.readFile(path.join(REAL_CAPTURES, REAL_WIDE)));
-    const pixels = Buffer.from(decoded.pixels);
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
+    const rgba = gradientRgba(WIDE_W, WIDE_H);
     const changed = 7;
     for (let i = 0; i < changed; i += 1) {
-      pixels[i * decoded.channels] = 255 - pixels[i * decoded.channels];
-      pixels[i * decoded.channels + 1] = 255;
-      pixels[i * decoded.channels + 2] = 0;
+      rgba[i * 4] = 255 - rgba[i * 4];
+      rgba[i * 4 + 1] = 255;
+      rgba[i * 4 + 2] = 0;
     }
-    const rgba = Buffer.alloc(decoded.width * decoded.height * 4);
-    for (let i = 0; i < decoded.width * decoded.height; i += 1) {
-      rgba[i * 4] = pixels[i * decoded.channels];
-      rgba[i * 4 + 1] = pixels[i * decoded.channels + 1];
-      rgba[i * 4 + 2] = pixels[i * decoded.channels + 2];
-      rgba[i * 4 + 3] = decoded.channels === 4 ? pixels[i * 4 + 3] : 255;
-    }
-    await fs.writeFile(path.join(f.captures, `${ID_C}.png`), encodePngRgba(decoded.width, decoded.height, rgba));
+    await fs.writeFile(path.join(f.captures, `${ID_C}.png`), encodePngRgba(WIDE_W, WIDE_H, rgba));
     const strict = await handleCaptureCompare(CaptureCompareSchema.parse({ base: ID_A, other: ID_C, threshold: 0 }), f.ctx);
     const strictData = envelopeOf(strict).data;
     assert.equal(strictData.match, false);
-    assert.equal(strictData.width, 1920);
-    assert.equal(strictData.height, 1048);
+    assert.equal(strictData.width, WIDE_W);
+    assert.equal(strictData.height, WIDE_H);
     assert.equal(strictData.diff_pixels, changed);
-    assert.equal(strictData.diff_fraction, changed / (1920 * 1048));
+    assert.equal(strictData.diff_fraction, changed / (WIDE_W * WIDE_H));
     assert.ok(strictData.max_channel_diff > 0);
     const def = await handleCaptureCompare(CaptureCompareSchema.parse({ base: ID_A, other: ID_C }), f.ctx);
     assert.equal(envelopeOf(def).data.match, true); // 7 px is far below the default 1% threshold
@@ -89,15 +102,15 @@ test('modified real capture reports sane diff counts and honours the threshold',
 test('different-size real captures report dimension_mismatch', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_TALL), path.join(f.captures, `${ID_B}.png`));
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
+    await putPng(f.captures, ID_B, TALL_W, TALL_H);
     const result = await handleCaptureCompare(CaptureCompareSchema.parse({ base: ID_A, other: ID_B }), f.ctx);
     assert.equal(result.isError, undefined);
     assert.deepEqual(envelopeOf(result).data, {
       match: false,
       reason: 'dimension_mismatch',
-      base: { width: 1920, height: 1048 },
-      other: { width: 1091, height: 653 },
+      base: { width: WIDE_W, height: WIDE_H },
+      other: { width: TALL_W, height: TALL_H },
     });
   } finally { await f.cleanup(); }
 });
@@ -105,13 +118,13 @@ test('different-size real captures report dimension_mismatch', async () => {
 test('crafted minimal PNG of a different size reports dimension_mismatch', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
     await fs.writeFile(path.join(f.captures, `${ID_D}.png`), encodePngRgba(4, 3, Buffer.alloc(4 * 3 * 4, 128)));
     const result = await handleCaptureCompare(CaptureCompareSchema.parse({ base: ID_A, other: ID_D }), f.ctx);
     assert.deepEqual(envelopeOf(result).data, {
       match: false,
       reason: 'dimension_mismatch',
-      base: { width: 1920, height: 1048 },
+      base: { width: WIDE_W, height: WIDE_H },
       other: { width: 4, height: 3 },
     });
   } finally { await f.cleanup(); }
@@ -120,8 +133,8 @@ test('crafted minimal PNG of a different size reports dimension_mismatch', async
 test('URI and bare-id references are both accepted', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_B}.png`));
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
+    await putPng(f.captures, ID_B, WIDE_W, WIDE_H);
     const mixed = await handleCaptureCompare(
       CaptureCompareSchema.parse({ base: `flax://capture/${ID_A}`, other: ID_B }), f.ctx);
     assert.equal(envelopeOf(mixed).data.match, true);
@@ -134,8 +147,8 @@ test('URI and bare-id references are both accepted', async () => {
 test('truncated and non-PNG captures fail with clean errors', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
-    const full = await fs.readFile(path.join(REAL_CAPTURES, REAL_WIDE));
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
+    const full = await fs.readFile(path.join(f.captures, `${ID_A}.png`));
     await fs.writeFile(path.join(f.captures, `${ID_B}.png`), full.subarray(0, 200));
     const truncated = await handleCaptureCompare(CaptureCompareSchema.parse({ base: ID_A, other: ID_B }), f.ctx);
     assert.equal(truncated.isError, true);
@@ -151,8 +164,8 @@ test('truncated and non-PNG captures fail with clean errors', async () => {
 test('unsupported PNG encodings are rejected with a clear message', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
-    const bytes = Buffer.from(await fs.readFile(path.join(REAL_CAPTURES, REAL_WIDE)));
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
+    const bytes = Buffer.from(await fs.readFile(path.join(f.captures, `${ID_A}.png`)));
     bytes[25] = 0; // IHDR color type: RGBA -> grayscale (decoder skips CRC, so no recompute needed)
     await fs.writeFile(path.join(f.captures, `${ID_B}.png`), bytes);
     const result = await handleCaptureCompare(CaptureCompareSchema.parse({ base: ID_A, other: ID_B }), f.ctx);
@@ -165,7 +178,7 @@ test('unsupported PNG encodings are rejected with a clear message', async () => 
 test('malformed ids and thresholds are INVALID_ARGUMENT at the dispatch boundary', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
     const tools = buildToolRegistry(f.ctx);
     const badId = await dispatchToolCall(tools, 'capture_compare', { base: 'not-an-id', other: ID_A }, f.ctx);
     assert.equal(badId.isError, true);
@@ -183,8 +196,8 @@ test('malformed ids and thresholds are INVALID_ARGUMENT at the dispatch boundary
 test('expired captures report not-found', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_B}.png`));
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
+    await putPng(f.captures, ID_B, WIDE_W, WIDE_H);
     const backdated = new Date(Date.now() - 25 * 60 * 60 * 1000);
     await fs.utimes(path.join(f.captures, `${ID_B}.png`), backdated, backdated);
     const result = await handleCaptureCompare(CaptureCompareSchema.parse({ base: ID_A, other: ID_B }), f.ctx);
@@ -197,17 +210,10 @@ test('expired captures report not-found', async () => {
 test('emit_diff writes a red-overlay PNG readable as a capture resource', async () => {
   const f = await fixture();
   try {
-    await fs.copyFile(path.join(REAL_CAPTURES, REAL_WIDE), path.join(f.captures, `${ID_A}.png`));
-    const decoded = decodePng(await fs.readFile(path.join(REAL_CAPTURES, REAL_WIDE)));
-    const rgba = Buffer.alloc(decoded.width * decoded.height * 4);
-    for (let i = 0; i < decoded.width * decoded.height; i += 1) {
-      rgba[i * 4] = decoded.pixels[i * decoded.channels];
-      rgba[i * 4 + 1] = decoded.pixels[i * decoded.channels + 1];
-      rgba[i * 4 + 2] = decoded.pixels[i * decoded.channels + 2];
-      rgba[i * 4 + 3] = decoded.channels === 4 ? decoded.pixels[i * 4 + 3] : 255;
-    }
+    await putPng(f.captures, ID_A, WIDE_W, WIDE_H);
+    const rgba = gradientRgba(WIDE_W, WIDE_H);
     rgba[0] = 255 - rgba[0];
-    await fs.writeFile(path.join(f.captures, `${ID_C}.png`), encodePngRgba(decoded.width, decoded.height, rgba));
+    await fs.writeFile(path.join(f.captures, `${ID_C}.png`), encodePngRgba(WIDE_W, WIDE_H, rgba));
     const result = await handleCaptureCompare(
       CaptureCompareSchema.parse({ base: ID_A, other: ID_C, threshold: 0, emit_diff: true }), f.ctx);
     const data = envelopeOf(result).data;
@@ -217,8 +223,8 @@ test('emit_diff writes a red-overlay PNG readable as a capture resource', async 
     const read = await readFlaxResource(data.diff_uri, f.ctx);
     assert.equal(read.contents[0].mimeType, 'image/png');
     const diffDecoded = decodePng(Buffer.from(read.contents[0].blob, 'base64'));
-    assert.equal(diffDecoded.width, 1920);
-    assert.equal(diffDecoded.height, 1048);
+    assert.equal(diffDecoded.width, WIDE_W);
+    assert.equal(diffDecoded.height, WIDE_H);
     assert.deepEqual(Array.from(diffDecoded.pixels.subarray(0, 4)), [255, 0, 0, 255]);
   } finally { await f.cleanup(); }
 });
