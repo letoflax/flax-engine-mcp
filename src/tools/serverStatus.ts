@@ -201,6 +201,7 @@ export async function handleGetServerCapabilities(
     const phase6AssetOrganization = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 10;
     const operationHandles = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 11;
     const phase6Prefabs = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 12;
+    const prefabOverrideWorkflows = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 30;
     const assetQuarantineDelete = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const buildCook = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
     const materialAnimation = editor.connected && editor.protocolVersion === '1' && Number(editor.bridgeVersion) >= 13;
@@ -281,10 +282,10 @@ export async function handleGetServerCapabilities(
           create: phase6Prefabs,
           instantiate: phase6Prefabs,
           loadedSceneInstances: phase6Prefabs,
-          overrides: false,
-          applyOverrides: false,
-          revertOverrides: false,
-          breakLink: false,
+          overrides: prefabOverrideWorkflows,
+          applyOverrides: prefabOverrideWorkflows,
+          revertOverrides: prefabOverrideWorkflows,
+          breakLink: prefabOverrideWorkflows,
         },
         buildCook: {
           available: buildCook,

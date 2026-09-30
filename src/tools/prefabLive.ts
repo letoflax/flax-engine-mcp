@@ -82,7 +82,8 @@ export const PrefabGetInstancesSchema = z.object({
 
 export const PrefabGetOverridesSchema = z.object({ actor_id: FlaxId }).strict();
 export const PrefabRevertOverridesSchema = z.object({
-  actor_id: FlaxId,
+  actor_ids: z.array(FlaxId).min(1).max(32)
+    .describe('Linked actors whose overrides are reverted. List children explicitly; revert does not cascade.'),
   dry_run: z.boolean().optional().default(true),
   confirm: z.literal(true).optional(),
   ...RevisionedLiveWrite,
@@ -139,9 +140,10 @@ async function prefabCall(
   method: BridgeMethod,
   params: AnyRecord,
   changes: unknown[] = [],
+  minimumBridgeVersion = 12,
 ): Promise<ToolResponse> {
   try {
-    const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion: 12 });
+    const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion });
     const result = response.data as { Warnings?: unknown } | undefined;
     const warnings = Array.isArray(result?.Warnings)
       ? result.Warnings.filter((warning): warning is string => typeof warning === 'string')
@@ -197,15 +199,26 @@ export const handlePrefabGetInstances = (args: z.infer<typeof PrefabGetInstances
   });
 
 export const handlePrefabGetOverrides = (args: z.infer<typeof PrefabGetOverridesSchema>, ctx: ProjectMeta) =>
-  prefabCall(ctx, 'prefab.get_overrides', { ActorId: args.actor_id });
-
-function unsupportedMutationParams(args: z.infer<typeof PrefabRevertOverridesSchema>): AnyRecord {
-  return { ActorId: args.actor_id, DryRun: args.dry_run, Confirm: args.confirm === true, ...writeParams(args) };
-}
+  prefabCall(ctx, 'prefab.get_overrides', { ActorId: args.actor_id }, [], 30);
 
 export const handlePrefabRevertOverrides = (args: z.infer<typeof PrefabRevertOverridesSchema>, ctx: ProjectMeta) =>
-  prefabCall(ctx, 'prefab.revert_overrides', unsupportedMutationParams(args));
+  prefabCall(ctx, 'prefab.revert_overrides', {
+    ActorIds: args.actor_ids,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    ...writeParams(args),
+  }, args.dry_run ? [] : [{ kind: 'prefab.overrides_reverted', actorIds: args.actor_ids }], 30);
 export const handlePrefabApplyOverrides = (args: z.infer<typeof PrefabApplyOverridesSchema>, ctx: ProjectMeta) =>
-  prefabCall(ctx, 'prefab.apply_overrides', unsupportedMutationParams(args));
+  prefabCall(ctx, 'prefab.apply_overrides', {
+    ActorId: args.actor_id,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    ...writeParams(args),
+  }, args.dry_run ? [] : [{ kind: 'prefab.overrides_applied', actorId: args.actor_id }], 30);
 export const handlePrefabBreakLink = (args: z.infer<typeof PrefabBreakLinkSchema>, ctx: ProjectMeta) =>
-  prefabCall(ctx, 'prefab.break_link', unsupportedMutationParams(args));
+  prefabCall(ctx, 'prefab.break_link', {
+    ActorId: args.actor_id,
+    DryRun: args.dry_run,
+    Confirm: args.confirm === true,
+    ...writeParams(args),
+  }, args.dry_run ? [] : [{ kind: 'prefab.link_broken', actorId: args.actor_id }], 30);

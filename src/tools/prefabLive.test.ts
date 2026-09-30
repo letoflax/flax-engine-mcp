@@ -9,11 +9,14 @@ import {
   PrefabBreakLinkSchema,
   PrefabCreateFromActorSchema,
   PrefabGetInstancesSchema,
+  PrefabGetOverridesSchema,
   PrefabInstantiateSchema,
   PrefabRevertOverridesSchema,
   handlePrefabApplyOverrides,
+  handlePrefabBreakLink,
   handlePrefabCreateFromActor,
   handlePrefabGetInstances,
+  handlePrefabGetOverrides,
   handlePrefabInstantiate,
   handlePrefabRevertOverrides,
 } from './prefabLive.js';
@@ -31,7 +34,7 @@ interface Fixture {
   cleanup: () => Promise<void>;
 }
 
-async function fixture(bridgeVersion = 12): Promise<Fixture> {
+async function fixture(bridgeVersion = 30): Promise<Fixture> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flax-mcp-prefab-'));
   const cache = path.join(root, 'Cache', 'MCP');
   const requests = path.join(cache, 'requests');
@@ -72,20 +75,26 @@ async function respond(f: Fixture, body: Record<string, unknown>): Promise<{ bod
   return { body: request.body, params: JSON.parse(String(request.body.paramsJson)) as Record<string, unknown> };
 }
 
-test('prefab schemas enforce strict selectors, bounded transforms, pagination, and destructive dry-run confirmation', () => {
+test('prefab schemas enforce strict selectors, bounded actor lists, and destructive dry-run confirmation', () => {
   assert.equal(PrefabCreateFromActorSchema.safeParse({ actor_id: ACTOR_ID, destination_path: 'Content/Prefabs/Unit.prefab', unexpected: true }).success, false);
   assert.equal(PrefabCreateFromActorSchema.safeParse({ actor_id: ACTOR_ID, destination_path: 'Content/../Unit.prefab' }).success, false);
   assert.equal(PrefabInstantiateSchema.safeParse({ asset_id: PREFAB_ID }).success, false);
   assert.equal(PrefabInstantiateSchema.safeParse({ asset_id: PREFAB_ID, path: 'Content/Prefabs/Unit.prefab', parent_id: PARENT_ID }).success, false);
   assert.equal(PrefabInstantiateSchema.safeParse({ asset_id: PREFAB_ID, parent_id: PARENT_ID, position: { x: Infinity, y: 0, z: 0 } }).success, false);
   assert.equal(PrefabGetInstancesSchema.safeParse({ asset_id: PREFAB_ID, limit: 201 }).success, false);
-  assert.equal(PrefabRevertOverridesSchema.parse({ actor_id: ACTOR_ID }).dry_run, true);
+  assert.equal(PrefabGetOverridesSchema.safeParse({ actor_id: ACTOR_ID, unexpected: true }).success, false);
+  assert.equal(PrefabRevertOverridesSchema.parse({ actor_ids: [ACTOR_ID] }).dry_run, true);
+  assert.equal(PrefabRevertOverridesSchema.safeParse({ actor_ids: [] }).success, false);
+  assert.equal(PrefabRevertOverridesSchema.safeParse({ actor_ids: new Array(33).fill(ACTOR_ID) }).success, false);
+  assert.equal(PrefabRevertOverridesSchema.safeParse({ actor_id: ACTOR_ID }).success, false);
+  assert.equal(PrefabRevertOverridesSchema.safeParse({ actor_ids: [ACTOR_ID], dry_run: false }).success, false);
+  assert.equal(PrefabRevertOverridesSchema.safeParse({ actor_ids: [ACTOR_ID], dry_run: false, confirm: true }).success, true);
   assert.equal(PrefabApplyOverridesSchema.safeParse({ actor_id: ACTOR_ID, dry_run: false }).success, false);
   assert.equal(PrefabBreakLinkSchema.safeParse({ actor_id: ACTOR_ID, dry_run: false, confirm: true }).success, true);
 });
 
 test('prefab create marshals PascalCase mutation gates and returns a structured change', async () => {
-  const f = await fixture();
+  const f = await fixture(12);
   try {
     const pending = handlePrefabCreateFromActor(PrefabCreateFromActorSchema.parse({
       actor_id: ACTOR_ID,
@@ -115,7 +124,7 @@ test('prefab create marshals PascalCase mutation gates and returns a structured 
 });
 
 test('prefab instantiate marshals strict parent/transform and get_instances preserves pagination cursor casing', async () => {
-  const f = await fixture();
+  const f = await fixture(12);
   try {
     const instantiate = handlePrefabInstantiate(PrefabInstantiateSchema.parse({
       path: 'Content/Prefabs/Unit.prefab',
@@ -152,39 +161,120 @@ test('prefab instantiate marshals strict parent/transform and get_instances pres
   }
 });
 
-test('unsupported prefab override/revert capabilities are stable remote errors and default destructive calls to dry-run', async () => {
+test('prefab get_overrides marshals the v30 read and surfaces synthesized diff entries', async () => {
   const f = await fixture();
   try {
-    const pending = handlePrefabRevertOverrides(PrefabRevertOverridesSchema.parse({ actor_id: ACTOR_ID }), f.ctx);
+    const pending = handlePrefabGetOverrides(PrefabGetOverridesSchema.parse({ actor_id: ACTOR_ID }), f.ctx);
     const request = await respond(f, {
-      ok: false,
-      errorCode: 'UNSUPPORTED_FLAX_VERSION',
-      error: 'prefab_revert_overrides is intentionally unavailable.',
-      errorDetails: JSON.stringify({ Capability: 'prefab_revert_overrides', BridgeVersion: 12, DryRun: true }),
-      resultJson: null,
+      ok: true,
+      resultJson: JSON.stringify({
+        DryRun: false,
+        ActorId: ACTOR_ID,
+        HasPrefabLink: true,
+        IsPrefabRoot: true,
+        PrefabId: PREFAB_ID,
+        Entries: [{ ActorId: ACTOR_ID, Path: 'Unit', Property: 'Name', InstanceValue: { Kind: 'string', Text: 'Unit Renamed' }, PrefabValue: { Kind: 'string', Text: 'Unit' } }],
+        Truncated: false,
+        ActorCount: 3,
+      }),
     });
-    assert.equal(request.body.method, 'prefab.revert_overrides');
-    assert.deepEqual(request.params, {
-      ActorId: ACTOR_ID,
-      DryRun: true,
-      Confirm: false,
-    });
+    assert.equal(request.body.method, 'prefab.get_overrides');
+    assert.deepEqual(request.params, { ActorId: ACTOR_ID });
     const result = await pending;
-    assert.equal(result.isError, true);
-    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
-    assert.deepEqual((result.structuredContent as any).error.details, { Capability: 'prefab_revert_overrides', BridgeVersion: 12, DryRun: true });
+    assert.equal(result.isError, undefined);
+    assert.equal((result.structuredContent as any).data.result.Entries.length, 1);
   } finally {
     await f.cleanup();
   }
 });
 
-test('prefab methods fail closed before writing a request to a bridge older than v12', async () => {
-  const f = await fixture(11);
+test('prefab revert marshals the bounded actor list with revision guards and reports a structured change', async () => {
+  const f = await fixture();
   try {
-    const result = await handlePrefabApplyOverrides(PrefabApplyOverridesSchema.parse({ actor_id: ACTOR_ID }), f.ctx);
-    assert.equal(result.isError, true);
-    assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    const pending = handlePrefabRevertOverrides(PrefabRevertOverridesSchema.parse({
+      actor_ids: [ACTOR_ID],
+      dry_run: false,
+      confirm: true,
+      expected_scene_revision: 7,
+      idempotency_key: 'prefab-revert-1',
+    }), f.ctx);
+    const request = await respond(f, { ok: true, resultJson: JSON.stringify({ DryRun: false, RevertedActors: 1, RevertedEntries: 2, Verified: true }) });
+    assert.equal(request.body.method, 'prefab.revert_overrides');
+    assert.deepEqual(request.params, {
+      ActorIds: [ACTOR_ID],
+      DryRun: false,
+      Confirm: true,
+      ExpectedSceneRevision: 7,
+      IdempotencyKey: 'prefab-revert-1',
+    });
+    const result = await pending;
+    assert.equal(result.isError, undefined);
+    assert.deepEqual((result.structuredContent as any).changes, [{ kind: 'prefab.overrides_reverted', actorIds: [ACTOR_ID] }]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('prefab apply and break_link marshal confirm gates with v30 idempotency keys', async () => {
+  const f = await fixture();
+  try {
+    const apply = handlePrefabApplyOverrides(PrefabApplyOverridesSchema.parse({
+      actor_id: ACTOR_ID,
+      dry_run: false,
+      confirm: true,
+      idempotency_key: 'prefab-apply-1',
+    }), f.ctx);
+    const first = await respond(f, { ok: true, resultJson: JSON.stringify({ DryRun: false, AppliedCount: 2, BeforeSnapshot: [] }) });
+    assert.equal(first.body.method, 'prefab.apply_overrides');
+    assert.deepEqual(first.params, { ActorId: ACTOR_ID, DryRun: false, Confirm: true, IdempotencyKey: 'prefab-apply-1' });
+    const applyResult = await apply;
+    assert.equal(applyResult.isError, undefined);
+    assert.deepEqual((applyResult.structuredContent as any).changes, [{ kind: 'prefab.overrides_applied', actorId: ACTOR_ID }]);
+
+    const unlink = handlePrefabBreakLink(PrefabBreakLinkSchema.parse({
+      actor_id: ACTOR_ID,
+      dry_run: false,
+      confirm: true,
+      idempotency_key: 'prefab-break-1',
+    }), f.ctx);
+    const second = await respond(f, { ok: true, resultJson: JSON.stringify({ DryRun: false, HadLink: true, UndoRegistered: true }) });
+    assert.equal(second.body.method, 'prefab.break_link');
+    assert.deepEqual(second.params, { ActorId: ACTOR_ID, DryRun: false, Confirm: true, IdempotencyKey: 'prefab-break-1' });
+    const breakResult = await unlink;
+    assert.equal(breakResult.isError, undefined);
+    assert.deepEqual((breakResult.structuredContent as any).changes, [{ kind: 'prefab.link_broken', actorId: ACTOR_ID }]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('prefab override tools fail closed before writing a request to a bridge older than v30', async () => {
+  const f = await fixture(29);
+  try {
+    // Sequential: the file RPC client serves one call at a time, so parallel
+    // calls would race with EDITOR_BUSY instead of the version gate.
+    const results = [];
+    results.push(await handlePrefabGetOverrides(PrefabGetOverridesSchema.parse({ actor_id: ACTOR_ID }), f.ctx));
+    results.push(await handlePrefabRevertOverrides(PrefabRevertOverridesSchema.parse({ actor_ids: [ACTOR_ID] }), f.ctx));
+    results.push(await handlePrefabApplyOverrides(PrefabApplyOverridesSchema.parse({ actor_id: ACTOR_ID }), f.ctx));
+    results.push(await handlePrefabBreakLink(PrefabBreakLinkSchema.parse({ actor_id: ACTOR_ID }), f.ctx));
+    for (const result of results) {
+      assert.equal(result.isError, true);
+      assert.equal((result.structuredContent as any).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    }
     assert.deepEqual(await fs.readdir(f.requests), []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('prefab v12 create/instantiate tools still work against a v12 bridge', async () => {
+  const f = await fixture(12);
+  try {
+    const pending = handlePrefabGetInstances(PrefabGetInstancesSchema.parse({ asset_id: PREFAB_ID }), f.ctx);
+    const request = await respond(f, { ok: true, resultJson: JSON.stringify({ Entries: [], HasMore: false }) });
+    assert.equal(request.body.method, 'prefab.get_instances');
+    assert.equal((await pending).isError, undefined);
   } finally {
     await f.cleanup();
   }

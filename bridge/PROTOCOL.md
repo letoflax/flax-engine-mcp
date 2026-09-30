@@ -364,10 +364,11 @@ Creation requires a new project-relative `Content/.../*.prefab` path and never
 overwrites; instantiation requires a loaded `ParentId` so scene revision and edit
 lease guards can be checked before mutation. Instance enumeration scans loaded
 scene actor trees only, capped at 10,000 actors and 200 results per page with
-bounded cursors. `prefab.get_overrides`, `prefab.revert_overrides`,
-`prefab.apply_overrides`, and `prefab.break_link` remain explicit stable
-`UNSUPPORTED_FLAX_VERSION` capabilities because Flax 1.12 lacks a reviewed,
-undoable and previewable public path for those operations.
+bounded cursors. (Bridge v12 shipped `prefab.get_overrides`,
+`prefab.revert_overrides`, `prefab.apply_overrides`, and
+`prefab.break_link` as explicit stable `UNSUPPORTED_FLAX_VERSION`
+capabilities; bridge v30 replaced those stubs with real implementations —
+see "Bridge v30" below.)
 
 ## Bridge v13: guarded asset quarantine deletion
 
@@ -1055,3 +1056,74 @@ the scene revision, and verifies `GetMaterial(slot)` reports the assigned
 ID. The scene is marked edited, never saved (`scene_save` persists it);
 the result reports `SceneEdited`, both revisions, and before/after
 material metadata.
+
+## Bridge v30: prefab override diff/revert/apply/break
+
+Bridge v30 keeps protocol v1 and the full v29 surface. It replaces the
+stable-unsupported prefab stubs (`prefab.get_overrides`,
+`prefab.revert_overrides`, `prefab.apply_overrides`, `prefab.break_link`)
+with real implementations. `status` flips `PrefabOverridesSupported`,
+`PrefabApplyOverridesSupported`, `PrefabRevertOverridesSupported`, and
+`PrefabBreakLinkSupported` to `true` (keeping
+`PrefabWorkflowsSupported`). Node requires bridge v30 for all four tools
+and reports `prefab.overrides/applyOverrides/revertOverrides/breakLink`
+in `get_server_capabilities`. Tool names and the 147-tool contract are
+unchanged.
+
+SDK truth (Flax 1.12, spot-verified against the shipped
+`FlaxEngine.CSharp.xml`; Editor C# sources are not shipped with the SDK):
+introspection and link APIs are public — `Actor.IsPrefabRoot/
+GetPrefabRoot`, `SceneObject.HasPrefabLink/PrefabID/PrefabObjectID`,
+`Prefab.GetDefaultInstance()/GetNestedObject()`,
+`SceneObject.BreakPrefabLink()`, `PrefabManager.SpawnPrefab/CreatePrefab/
+ApplyAll`. Verified ABSENT (0 hits in XML and `Source/`): `ApplySingle`,
+`GetPrefabObjectIds`, and any per-property diff/revert enumerator.
+`BreakPrefabLinkAction` documents undo/redo (`BreakLinks` supports
+undo/redo) but the type itself is internal, so the bridge invokes its
+documented public `Break(Actor)` factory via reflection (same precedent
+as the internal `AddRemoveScript` factory) and runs Do/AddAction through
+`IUndoAction`. Apply has no reviewed undo record. `PrefabsModule.
+OpenPrefab(Guid)` is public but opens an editor window with no verified
+headless-safe or close/save-stage API, so no open-stage tool is exposed.
+
+Honesty notes (also repeated in every result warning):
+
+- Diff is synthesized, not the engine diff: `prefab.get_overrides`
+  walks the live instance subtree (capped at 200 actors) and compares
+  each linked actor against its `Prefab.GetDefaultInstance()` default
+  using the same value semantics as the read projections
+  (bool/int/float/string/enum/Guid/Vector/Color, epsilon 1e-6 for
+  floats). Only `Name`, `IsActive`, `LocalPosition`, `LocalScale`,
+  `LocalEulerAngles`, and `Layer` are compared; scripts and all other
+  properties are out of scope. Entries are `{ ActorId, Path, Property,
+  InstanceValue, PrefabValue }` (capped at 200, `Truncated` flag).
+  Nested prefabs resolve per actor through its own `PrefabID`, with
+  `GetNestedObject` linkage annotated when available. Unlinked actors
+  return `HasPrefabLink:false` with no entries instead of an error.
+- Revert is copy-default, not an engine revert: `prefab.
+  revert_overrides` takes 1-32 `ActorIds` from a single loaded scene
+  and copies the six diff properties from prefab defaults into each
+  listed actor (no cascade — list children explicitly; no per-property
+  revert — a follow-up). Dry-run previews; a real write needs
+  `confirm:true`, runs each actor inside `Undo.RecordAction("Revert
+  prefab overrides", ...)` plus `MarkSceneEdited` (revertible with
+  `edit_undo`), re-verifies, and advances the scene revision.
+- Apply is whole-instance only: Flax exposes no `ApplySingle`, so
+  `prefab.apply_overrides` calls `PrefabManager.ApplyAll(actor)`,
+  which saves the prefab asset and synchronizes active instances. A
+  real write needs `confirm:true` and returns the pre-apply diff as
+  `BeforeSnapshot` for manual inspection — the asset save cannot be
+  undone by `edit_undo`.
+- Break is undoable: `prefab.break_link` breaks one actor's link via
+  the reflected `BreakPrefabLinkAction` factory (`Do` + `Undo.
+  AddAction`) plus `MarkSceneEdited`. Dry-run previews; a real write
+  needs `confirm:true` (consistent with all other destructive bridge
+  tools even though undo exists) and is revertible with `edit_undo`.
+  Breaking an unlinked actor fails closed (`VALIDATION_FAILED`).
+
+All three mutations are idempotent (`IdempotencyKey`, ten-minute
+replay) with dry-run previews that never consume a key, honor
+`ExpectedSceneRevision`/`LeaseId` via `CheckSceneWrite`, and refuse
+play mode, script compilation, and reload via the v12
+`EnsurePrefabEditorReady` gate (headless reads/writes stay allowed, as
+with the rest of the prefab surface).

@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 29
+// MCP-BRIDGE-VERSION: 30
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -28,12 +28,12 @@ using FObject = FlaxEngine.Object;
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 29; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 30; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 29; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = false; public bool PrefabApplyOverridesSupported = false; public bool PrefabRevertOverridesSupported = false; public bool PrefabBreakLinkSupported = false; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; }
+    public class McpStatus { public int BridgeVersion = 30; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = false; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = true; public bool PrefabApplyOverridesSupported = true; public bool PrefabRevertOverridesSupported = true; public bool PrefabBreakLinkSupported = true; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = false; public bool LightingBakeSupported = false; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -193,6 +193,15 @@ namespace Game.MCP
     public class McpPrefabInstantiateResult { public bool DryRun; public McpAssetMetadata Prefab; public McpActorDto Actor; public bool VerifiedLink; public long ProjectRevision; public string SceneId; public long SceneRevision; }
     public class McpPrefabInstanceDto { public string ActorId; public string SceneId; public string ParentId; public string Name; public string PrefabId; public string PrefabObjectId; public bool IsPrefabRoot; }
     public class McpPrefabInstancesResult { public McpAssetMetadata Prefab; public McpPrefabInstanceDto[] Entries; public string NextCursor; public bool HasMore; public string IndexRevision; public string[] Warnings; }
+    // Bridge v30 prefab override workflows. The diff is synthesized by the
+    // bridge (live subtree vs Prefab.GetDefaultInstance defaults), not the
+    // engine diff window: there is no public engine diff enumerator.
+    public class McpPrefabRevertRequest { public string[] ActorIds; public bool DryRun = true; public bool Confirm; public long? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; }
+    public class McpPrefabOverrideEntry { public string ActorId; public string Path; public string Property; public McpMaterialTypedValue InstanceValue; public McpMaterialTypedValue PrefabValue; public string NestedPrefabId; public string NestedObjectId; }
+    public class McpPrefabOverridesResult { public bool DryRun; public string ActorId; public bool HasPrefabLink; public bool IsPrefabRoot; public string PrefabId; public string PrefabObjectId; public McpPrefabOverrideEntry[] Entries; public bool Truncated; public int ActorCount; public long ProjectRevision; public string SceneId; public long SceneRevision; public string[] Warnings; }
+    public class McpPrefabRevertResult { public bool DryRun; public string[] ActorIds; public int RevertedActors; public int RevertedEntries; public bool Verified; public McpPrefabOverrideEntry[] Entries; public bool Truncated; public long ProjectRevision; public string SceneId; public long SceneRevision; public string[] Warnings; }
+    public class McpPrefabApplyResult { public bool DryRun; public string ActorId; public bool HasPrefabLink; public bool IsPrefabRoot; public string PrefabId; public McpPrefabOverrideEntry[] BeforeSnapshot; public bool SnapshotTruncated; public int AppliedCount; public long ProjectRevision; public string SceneId; public long SceneRevision; public string[] Warnings; }
+    public class McpPrefabBreakResult { public bool DryRun; public string ActorId; public bool HadLink; public string PrefabId; public bool UndoRegistered; public long ProjectRevision; public string SceneId; public long SceneRevision; public string[] Warnings; }
     public class McpMaterialAssetRequest { public string AssetId; public string Path; public bool IncludeNonPublic; }
     public class McpMaterialParameterSet { public string Name; public bool? Bool; public double? Number; public string Text; }
     // Bridge v29 bounded material writes. Values use the same exactly-one-of
@@ -256,7 +265,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 29;
+        private const int BridgeVersion = 30;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -384,7 +393,7 @@ namespace Game.MCP
                 WriteHeartbeat();
                 _running = true;
                 Scripting.Update += OnUpdate;
-                    Debug.Log("[Flax MCP] Bridge v29 listening at " + Root);
+                    Debug.Log("[Flax MCP] Bridge v30 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -592,10 +601,10 @@ namespace Game.MCP
                 case "prefab.create_from_actor": { var q = JsonSerializer.Deserialize<McpPrefabCreateFromActor>(p); result = OnMain(() => ExecuteIdempotent("prefab.create_from_actor", q == null ? null : q.IdempotencyKey, q, () => CreatePrefabFromActor(q)), request.deadlineUnixMs); break; }
                 case "prefab.instantiate": { var q = JsonSerializer.Deserialize<McpPrefabInstantiate>(p); result = OnMain(() => ExecuteIdempotent("prefab.instantiate", q == null ? null : q.IdempotencyKey, q, () => InstantiatePrefab(q)), request.deadlineUnixMs); break; }
                 case "prefab.get_instances": result = OnMain(() => GetPrefabInstances(JsonSerializer.Deserialize<McpPrefabGetInstances>(p)), request.deadlineUnixMs); break;
-                case "prefab.get_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_get_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
-                case "prefab.revert_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_revert_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
-                case "prefab.apply_overrides": result = OnMain(() => UnsupportedPrefabOperation("prefab_apply_overrides", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
-                case "prefab.break_link": result = OnMain(() => UnsupportedPrefabOperation("prefab_break_link", JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
+                case "prefab.get_overrides": result = OnMain(() => GetPrefabOverrides(JsonSerializer.Deserialize<McpPrefabActorRequest>(p)), request.deadlineUnixMs); break;
+                case "prefab.revert_overrides": { var q = JsonSerializer.Deserialize<McpPrefabRevertRequest>(p); result = OnMain(() => ExecutePrefabRevert(q), request.deadlineUnixMs); break; }
+                case "prefab.apply_overrides": { var q = JsonSerializer.Deserialize<McpPrefabActorRequest>(p); result = OnMain(() => ExecutePrefabApply(q), request.deadlineUnixMs); break; }
+                case "prefab.break_link": { var q = JsonSerializer.Deserialize<McpPrefabActorRequest>(p); result = OnMain(() => ExecutePrefabBreak(q), request.deadlineUnixMs); break; }
                 case "material.get_parameters": result = OnMain(() => GetMaterialParameters(JsonSerializer.Deserialize<McpMaterialAssetRequest>(p)), request.deadlineUnixMs); break;
                 case "material.set_parameters": { var q = JsonSerializer.Deserialize<McpMaterialSetParametersRequest>(p); result = OnMain(() => ExecuteMaterialSetParameters(q), request.deadlineUnixMs); break; }
                 case "material.create_instance": { var q = JsonSerializer.Deserialize<McpMaterialCreateInstanceRequest>(p); result = OnMain(() => ExecuteMaterialCreateInstance(q), request.deadlineUnixMs); break; }
@@ -4075,11 +4084,425 @@ namespace Game.MCP
             return new McpMaterialTypedValue { Kind = "unavailable", TypeName = Limit(value.GetType().FullName, 256, "Parameter value type") };
         }
 
-        private object UnsupportedPrefabOperation(string capability, McpPrefabActorRequest request)
+        // Bridge v30 prefab override workflows (see bridge/PROTOCOL.md
+        // "Bridge v30"). Verified public Flax 1.12 APIs only:
+        // Actor.IsPrefabRoot/GetPrefabRoot,
+        // SceneObject.HasPrefabLink/PrefabID/PrefabObjectID,
+        // Prefab.GetDefaultInstance()/GetNestedObject(),
+        // PrefabManager.ApplyAll, and BreakPrefabLinkAction.Break (Do/Undo
+        // via Undo.AddAction, mirroring the McpScriptFieldUndo precedent
+        // below; the raw SceneObject.BreakPrefabLink call is verified public
+        // but intentionally unused so every break flows through the reviewed
+        // undo action). Verified ABSENT from the
+        // SDK (0 hits): ApplySingle, GetPrefabObjectIds, and any
+        // per-property diff/revert enumerator — so the diff is
+        // bridge-synthesized (live subtree vs prefab defaults with the same
+        // value semantics as the read projections), revert copies defaults
+        // for the fixed property set, and apply is whole-instance ApplyAll
+        // only. PrefabWindow open/close/save (PrefabsModule.OpenPrefab) is
+        // window-backed with no verified headless-safe stage API, so no
+        // open-stage tool is exposed.
+        private const int MaxPrefabDiffActors = 200;
+        private const int MaxPrefabDiffEntries = 200;
+        private const float PrefabDiffEpsilon = 1e-6f;
+
+        private sealed class PrefabDiffAccumulator
+        {
+            public readonly List<McpPrefabOverrideEntry> Entries = new List<McpPrefabOverrideEntry>();
+            public readonly Dictionary<Guid, Prefab> Prefabs = new Dictionary<Guid, Prefab>();
+            public bool Truncated;
+            public int ActorCount;
+            public int SkippedActors;
+        }
+
+        private static bool PrefabFloatEqual(float left, float right)
+        {
+            return Math.Abs(left - right) <= PrefabDiffEpsilon;
+        }
+
+        private static bool PrefabFloat3Equal(Float3 left, Float3 right)
+        {
+            return PrefabFloatEqual(left.X, right.X) && PrefabFloatEqual(left.Y, right.Y) && PrefabFloatEqual(left.Z, right.Z);
+        }
+
+        private static Prefab LoadLinkedPrefab(Guid prefabId)
+        {
+            Asset loaded = null;
+            try { loaded = Content.Load(prefabId, AssetLoadTimeoutMs); } catch { }
+            var prefab = loaded as Prefab;
+            if (prefab == null || prefab.LastLoadFailed)
+                throw new McpProtocolException("ASSET_NOT_FOUND", "The linked prefab asset could not be loaded by Flax Editor.");
+            return prefab;
+        }
+
+        private static Actor GetPrefabDefaultActor(Prefab prefab, Guid objectId)
+        {
+            try
+            {
+                var lookup = objectId;
+                return prefab.GetDefaultInstance(ref lookup) as Actor;
+            }
+            catch { return null; }
+        }
+
+        private static void AnnotateNestedPrefab(Prefab prefab, Guid objectId, McpPrefabOverrideEntry entry)
+        {
+            try
+            {
+                var probe = objectId;
+                Guid nestedPrefabId, nestedObjectId;
+                if (prefab.GetNestedObject(ref probe, out nestedPrefabId, out nestedObjectId))
+                {
+                    entry.NestedPrefabId = nestedPrefabId == Guid.Empty ? null : nestedPrefabId.ToString("N");
+                    entry.NestedObjectId = nestedObjectId == Guid.Empty ? null : nestedObjectId.ToString("N");
+                }
+            }
+            catch { }
+        }
+
+        private static string PrefabActorPath(Actor root, Actor actor)
+        {
+            var names = new List<string>();
+            for (var current = actor; current != null && names.Count <= 64; current = current.Parent)
+            {
+                names.Add(string.IsNullOrEmpty(current.Name) ? "<unnamed>" : current.Name);
+                if (current == root) break;
+            }
+            names.Reverse();
+            var path = string.Join("/", names.ToArray());
+            return path.Length <= 512 ? path : path.Substring(0, 512);
+        }
+
+        private static void EmitPrefabEntry(PrefabDiffAccumulator acc, string actorId, string path, string property, McpMaterialTypedValue instanceValue, McpMaterialTypedValue prefabValue)
+        {
+            if (acc.Entries.Count >= MaxPrefabDiffEntries) { acc.Truncated = true; return; }
+            acc.Entries.Add(new McpPrefabOverrideEntry { ActorId = actorId, Path = path, Property = property, InstanceValue = instanceValue, PrefabValue = prefabValue });
+        }
+
+        private void DiffPrefabActor(Actor live, Actor def, string path, Prefab prefab, PrefabDiffAccumulator acc)
+        {
+            var actorId = live.ID.ToString("N");
+            if (!string.Equals(live.Name ?? "", def.Name ?? "", StringComparison.Ordinal))
+                EmitPrefabEntry(acc, actorId, path, "Name", ProjectScriptWriteValue(live.Name, typeof(string)), ProjectScriptWriteValue(def.Name, typeof(string)));
+            if (live.IsActive != def.IsActive)
+                EmitPrefabEntry(acc, actorId, path, "IsActive", ProjectScriptWriteValue(live.IsActive, typeof(bool)), ProjectScriptWriteValue(def.IsActive, typeof(bool)));
+            if (!PrefabFloat3Equal(live.LocalPosition, def.LocalPosition))
+                EmitPrefabEntry(acc, actorId, path, "LocalPosition", ProjectScriptWriteValue(live.LocalPosition, typeof(Float3)), ProjectScriptWriteValue(def.LocalPosition, typeof(Float3)));
+            if (!PrefabFloat3Equal(live.LocalScale, def.LocalScale))
+                EmitPrefabEntry(acc, actorId, path, "LocalScale", ProjectScriptWriteValue(live.LocalScale, typeof(Float3)), ProjectScriptWriteValue(def.LocalScale, typeof(Float3)));
+            if (!PrefabFloat3Equal(live.LocalEulerAngles, def.LocalEulerAngles))
+                EmitPrefabEntry(acc, actorId, path, "LocalEulerAngles", ProjectScriptWriteValue(live.LocalEulerAngles, typeof(Float3)), ProjectScriptWriteValue(def.LocalEulerAngles, typeof(Float3)));
+            if (live.Layer != def.Layer)
+                EmitPrefabEntry(acc, actorId, path, "Layer", ProjectScriptWriteValue(live.Layer, typeof(int)), ProjectScriptWriteValue(def.Layer, typeof(int)));
+            if (acc.Entries.Count > 0)
+            {
+                var latest = acc.Entries[acc.Entries.Count - 1];
+                if (string.Equals(latest.ActorId, actorId, StringComparison.Ordinal) && latest.NestedPrefabId == null)
+                    AnnotateNestedPrefab(prefab, live.PrefabObjectID, latest);
+            }
+        }
+
+        private void CollectPrefabDiff(Actor root, Actor actor, PrefabDiffAccumulator acc)
+        {
+            if (acc.ActorCount >= MaxPrefabDiffActors) { acc.Truncated = true; return; }
+            acc.ActorCount++;
+            if (actor.HasPrefabLink && actor.PrefabObjectID != Guid.Empty)
+            {
+                Prefab prefab = null;
+                if (!acc.Prefabs.TryGetValue(actor.PrefabID, out prefab) || prefab == null)
+                {
+                    try { prefab = LoadLinkedPrefab(actor.PrefabID); acc.Prefabs[actor.PrefabID] = prefab; }
+                    catch { prefab = null; }
+                }
+                var def = prefab == null ? null : GetPrefabDefaultActor(prefab, actor.PrefabObjectID);
+                if (def == null) acc.SkippedActors++;
+                else DiffPrefabActor(actor, def, PrefabActorPath(root, actor), prefab, acc);
+            }
+            else if (actor.HasPrefabLink) acc.SkippedActors++;
+            for (var i = 0; i < actor.ChildrenCount; i++)
+            {
+                if (acc.ActorCount >= MaxPrefabDiffActors) { acc.Truncated = true; return; }
+                CollectPrefabDiff(root, actor.GetChild(i), acc);
+            }
+        }
+
+        private static string[] PrefabDiffWarnings(PrefabDiffAccumulator acc)
+        {
+            var warnings = new List<string>
+            {
+                "Synthesized bridge diff, not the engine prefab-diff window: compares Name/IsActive/LocalPosition/LocalScale/LocalEulerAngles/Layer of linked actors against Prefab.GetDefaultInstance() defaults. Scripts and other properties are not compared; per-property revert is not exposed.",
+            };
+            if (acc.Truncated) warnings.Add("Capped at " + MaxPrefabDiffActors + " actors and " + MaxPrefabDiffEntries + " entries; additional overrides are truncated.");
+            if (acc.SkippedActors > 0) warnings.Add(acc.SkippedActors + " linked actor(s) had no resolvable prefab default and were skipped.");
+            return warnings.ToArray();
+        }
+
+        private McpPrefabOverridesResult GetPrefabOverrides(McpPrefabActorRequest request)
         {
             if (request == null || string.IsNullOrEmpty(request.ActorId)) throw new McpProtocolException("INVALID_REQUEST", "ActorId is required.");
-            RequireActor(request.ActorId);
-            throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", capability + " is intentionally unavailable: Flax 1.12 exposes no verified public override-diff/revert API, and apply or break-link lacks the reviewed undo, preview, and confirmation path required by this bridge.", new { Capability = capability, BridgeVersion = BridgeVersion, DryRun = request.DryRun });
+            var actor = RequireActor(request.ActorId);
+            var current = CurrentRevision(actor.Scene);
+            var result = new McpPrefabOverridesResult
+            {
+                DryRun = false,
+                ActorId = actor.ID.ToString("N"),
+                HasPrefabLink = actor.HasPrefabLink,
+                IsPrefabRoot = actor.IsPrefabRoot,
+                PrefabId = actor.HasPrefabLink && actor.PrefabID != Guid.Empty ? actor.PrefabID.ToString("N") : null,
+                PrefabObjectId = actor.HasPrefabLink && actor.PrefabObjectID != Guid.Empty ? actor.PrefabObjectID.ToString("N") : null,
+                Entries = new McpPrefabOverrideEntry[0],
+                ProjectRevision = current.ProjectRevision,
+                SceneId = actor.Scene == null ? null : actor.Scene.ID.ToString("N"),
+                SceneRevision = current.SceneRevision,
+            };
+            if (!actor.HasPrefabLink)
+            {
+                result.Warnings = new[] { "Actor has no prefab link; no overrides exist." };
+                return result;
+            }
+            var acc = new PrefabDiffAccumulator();
+            CollectPrefabDiff(actor, actor, acc);
+            result.Entries = acc.Entries.ToArray();
+            result.Truncated = acc.Truncated;
+            result.ActorCount = acc.ActorCount;
+            result.Warnings = PrefabDiffWarnings(acc);
+            return result;
+        }
+
+        private static bool PrefabActorMatchesDefault(Actor live, Actor def)
+        {
+            return string.Equals(live.Name ?? "", def.Name ?? "", StringComparison.Ordinal)
+                && live.IsActive == def.IsActive
+                && PrefabFloat3Equal(live.LocalPosition, def.LocalPosition)
+                && PrefabFloat3Equal(live.LocalScale, def.LocalScale)
+                && PrefabFloat3Equal(live.LocalEulerAngles, def.LocalEulerAngles)
+                && live.Layer == def.Layer;
+        }
+
+        private object ExecutePrefabRevert(McpPrefabRevertRequest q)
+        {
+            // Dry-run previews never consume idempotency keys (same convention
+            // as ExecuteSetScriptField): a preview filed under the same key as
+            // a later real write would collide on the request fingerprint.
+            if (q != null && q.DryRun) return RevertPrefabOverrides(q);
+            return ExecuteIdempotent("prefab.revert_overrides", q == null ? null : q.IdempotencyKey, q, () => RevertPrefabOverrides(q));
+        }
+
+        private McpPrefabRevertResult RevertPrefabOverrides(McpPrefabRevertRequest q)
+        {
+            if (q == null || q.ActorIds == null || q.ActorIds.Length < 1 || q.ActorIds.Length > 32)
+                throw new McpProtocolException("VALIDATION_FAILED", "ActorIds must contain between 1 and 32 actor IDs.");
+            var actors = new List<Actor>(q.ActorIds.Length);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in q.ActorIds)
+            {
+                if (string.IsNullOrEmpty(id) || !IsGuidN(id))
+                    throw new McpProtocolException("INVALID_REQUEST", "ActorIds must be 32-character GUIDs.");
+                if (!seen.Add(id)) throw new McpProtocolException("VALIDATION_FAILED", "Duplicate actor ID '" + id + "'.");
+                actors.Add(RequireActor(id));
+            }
+            var scene = actors[0].Scene;
+            foreach (var actor in actors)
+            {
+                if (!actor.HasPrefabLink)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Actor '" + actor.ID.ToString("N") + "' has no prefab link to revert.");
+                if (actor.Scene != scene)
+                    throw new McpProtocolException("VALIDATION_FAILED", "All revert targets must belong to a single loaded scene.");
+            }
+            EnsurePrefabEditorReady();
+            CheckSceneWrite(scene, q.ExpectedSceneRevision, q.LeaseId);
+            var acc = new PrefabDiffAccumulator();
+            var defaults = new Dictionary<string, Actor>(StringComparer.OrdinalIgnoreCase);
+            foreach (var actor in actors)
+            {
+                Prefab prefab = null;
+                if (!acc.Prefabs.TryGetValue(actor.PrefabID, out prefab) || prefab == null)
+                {
+                    try { prefab = LoadLinkedPrefab(actor.PrefabID); acc.Prefabs[actor.PrefabID] = prefab; }
+                    catch { prefab = null; }
+                }
+                var def = prefab == null || actor.PrefabObjectID == Guid.Empty ? null : GetPrefabDefaultActor(prefab, actor.PrefabObjectID);
+                if (def == null) throw new McpProtocolException("ASSET_NOT_FOUND", "The prefab default for actor '" + actor.ID.ToString("N") + "' could not be resolved.");
+                defaults[actor.ID.ToString("N")] = def;
+                DiffPrefabActor(actor, def, string.IsNullOrEmpty(actor.Name) ? "<unnamed>" : actor.Name, prefab, acc);
+            }
+            var current = CurrentRevision(scene);
+            var preview = new McpPrefabRevertResult
+            {
+                DryRun = q.DryRun,
+                ActorIds = actors.ConvertAll(a => a.ID.ToString("N")).ToArray(),
+                Entries = acc.Entries.ToArray(),
+                Truncated = acc.Truncated,
+                ProjectRevision = current.ProjectRevision,
+                SceneId = scene == null ? null : scene.ID.ToString("N"),
+                SceneRevision = current.SceneRevision,
+            };
+            if (q.DryRun)
+            {
+                preview.Warnings = PrefabDiffWarnings(acc);
+                return preview;
+            }
+            if (!q.Confirm)
+                throw new McpProtocolException("VALIDATION_FAILED", "Prefab revert requires confirm:true alongside dryRun:false. Revert copies prefab defaults into the scene and registers editor undo per actor (revertible with edit_undo).");
+            var touched = 0;
+            foreach (var actor in actors)
+            {
+                var def = defaults[actor.ID.ToString("N")];
+                if (PrefabActorMatchesDefault(actor, def)) continue;
+                var name = def.Name;
+                var active = def.IsActive;
+                var position = def.LocalPosition;
+                var scale = def.LocalScale;
+                var euler = def.LocalEulerAngles;
+                var layer = def.Layer;
+                try
+                {
+                    // Direct typed setters inside editor undo (same pattern as
+                    // UpdateActor); the fixed diff property set only.
+                    FEditor.Instance.Undo.RecordAction(actor, "Revert prefab overrides", () =>
+                    {
+                        actor.Name = name;
+                        actor.IsActive = active;
+                        actor.LocalPosition = position;
+                        actor.LocalScale = scale;
+                        actor.LocalEulerAngles = euler;
+                        actor.Layer = layer;
+                        MarkEdited(actor);
+                    });
+                }
+                catch (Exception ex) { throw new McpProtocolException("VALIDATION_FAILED", "Prefab revert failed for actor '" + actor.ID.ToString("N") + "': " + ex.GetType().FullName + "."); }
+                touched++;
+            }
+            var verified = true;
+            foreach (var actor in actors)
+            {
+                var def = defaults[actor.ID.ToString("N")];
+                if (!PrefabActorMatchesDefault(actor, def)) { verified = false; break; }
+            }
+            McpRevision revision = touched > 0 ? AdvanceSceneRevision(scene) : CurrentRevision(scene);
+            preview.DryRun = false;
+            preview.RevertedActors = touched;
+            preview.RevertedEntries = acc.Entries.Count;
+            preview.Verified = verified;
+            preview.ProjectRevision = revision.ProjectRevision;
+            preview.SceneRevision = revision.SceneRevision;
+            var warnings = new List<string>(PrefabDiffWarnings(acc));
+            warnings.Add(touched == 0 ? "No overrides were found; nothing was written." : "Reverted overrides are undoable with edit_undo; per-property revert is not exposed, list only the actors to revert.");
+            preview.Warnings = warnings.ToArray();
+            return preview;
+        }
+
+        private object ExecutePrefabApply(McpPrefabActorRequest q)
+        {
+            if (q != null && q.DryRun) return ApplyPrefabOverrides(q);
+            return ExecuteIdempotent("prefab.apply_overrides", q == null ? null : q.IdempotencyKey, q, () => ApplyPrefabOverrides(q));
+        }
+
+        private McpPrefabApplyResult ApplyPrefabOverrides(McpPrefabActorRequest q)
+        {
+            if (q == null || string.IsNullOrEmpty(q.ActorId)) throw new McpProtocolException("INVALID_REQUEST", "ActorId is required.");
+            var actor = RequireActor(q.ActorId);
+            if (!actor.HasPrefabLink)
+                throw new McpProtocolException("VALIDATION_FAILED", "Actor '" + actor.ID.ToString("N") + "' has no prefab link to apply.");
+            EnsurePrefabEditorReady();
+            CheckSceneWrite(actor.Scene, q.ExpectedSceneRevision, q.LeaseId);
+            var acc = new PrefabDiffAccumulator();
+            CollectPrefabDiff(actor, actor, acc);
+            var current = CurrentRevision(actor.Scene);
+            var result = new McpPrefabApplyResult
+            {
+                DryRun = q.DryRun,
+                ActorId = actor.ID.ToString("N"),
+                HasPrefabLink = true,
+                IsPrefabRoot = actor.IsPrefabRoot,
+                PrefabId = actor.PrefabID == Guid.Empty ? null : actor.PrefabID.ToString("N"),
+                BeforeSnapshot = acc.Entries.ToArray(),
+                SnapshotTruncated = acc.Truncated,
+                ProjectRevision = current.ProjectRevision,
+                SceneId = actor.Scene == null ? null : actor.Scene.ID.ToString("N"),
+                SceneRevision = current.SceneRevision,
+            };
+            if (q.DryRun)
+            {
+                var preview = new List<string>(PrefabDiffWarnings(acc));
+                preview.Add("Dry-run preview only: nothing was applied. Reissue with dryRun:false + confirm:true to push the whole-instance diff via PrefabManager.ApplyAll.");
+                result.Warnings = preview.ToArray();
+                return result;
+            }
+            if (!q.Confirm)
+                throw new McpProtocolException("VALIDATION_FAILED", "Prefab apply requires confirm:true alongside dryRun:false. ApplyAll saves the prefab asset; the asset save cannot be undone by edit_undo.");
+            // Whole-instance apply only: Flax 1.12 exposes no ApplySingle, so
+            // BeforeSnapshot is the manual record of what was pushed.
+            if (PrefabManager.ApplyAll(actor))
+                throw new McpProtocolException("ASSET_OPERATION_FAILED", "Flax failed to apply prefab overrides for actor '" + actor.ID.ToString("N") + "'.");
+            MarkEdited(actor);
+            var revision = AdvanceSceneRevision(actor.Scene);
+            result.DryRun = false;
+            result.AppliedCount = acc.Entries.Count;
+            result.ProjectRevision = revision.ProjectRevision;
+            result.SceneRevision = revision.SceneRevision;
+            var warnings = new List<string>(PrefabDiffWarnings(acc));
+            warnings.Add("PrefabManager.ApplyAll saved the prefab asset and synchronized active instances; the asset save cannot be undone by edit_undo. BeforeSnapshot lists the pushed values for manual inspection.");
+            result.Warnings = warnings.ToArray();
+            return result;
+        }
+
+        private object ExecutePrefabBreak(McpPrefabActorRequest q)
+        {
+            if (q != null && q.DryRun) return BreakPrefabLink(q);
+            return ExecuteIdempotent("prefab.break_link", q == null ? null : q.IdempotencyKey, q, () => BreakPrefabLink(q));
+        }
+
+        private McpPrefabBreakResult BreakPrefabLink(McpPrefabActorRequest q)
+        {
+            if (q == null || string.IsNullOrEmpty(q.ActorId)) throw new McpProtocolException("INVALID_REQUEST", "ActorId is required.");
+            var actor = RequireActor(q.ActorId);
+            var hadLink = actor.HasPrefabLink;
+            var prefabId = hadLink && actor.PrefabID != Guid.Empty ? actor.PrefabID.ToString("N") : null;
+            EnsurePrefabEditorReady();
+            CheckSceneWrite(actor.Scene, q.ExpectedSceneRevision, q.LeaseId);
+            var current = CurrentRevision(actor.Scene);
+            var result = new McpPrefabBreakResult
+            {
+                DryRun = q.DryRun,
+                ActorId = actor.ID.ToString("N"),
+                HadLink = hadLink,
+                PrefabId = prefabId,
+                ProjectRevision = current.ProjectRevision,
+                SceneId = actor.Scene == null ? null : actor.Scene.ID.ToString("N"),
+                SceneRevision = current.SceneRevision,
+            };
+            if (!hadLink)
+            {
+                if (!q.DryRun)
+                    throw new McpProtocolException("VALIDATION_FAILED", "Actor '" + result.ActorId + "' has no prefab link to break.");
+                result.Warnings = new[] { "Dry-run preview only: the actor has no prefab link, so a write would be refused as a no-op." };
+                return result;
+            }
+            if (q.DryRun)
+            {
+                result.Warnings = new[] { "Dry-run preview only: the link was not broken. Reissue with dryRun:false + confirm:true to break it via the reviewed BreakPrefabLinkAction undo path." };
+                return result;
+            }
+            if (!q.Confirm)
+                throw new McpProtocolException("VALIDATION_FAILED", "Prefab break-link requires confirm:true alongside dryRun:false. Breaking registers editor undo (revertible with edit_undo).");
+            // Reviewed undo path: BreakPrefabLinkAction documents undo/redo
+            // but the type is internal (same precedent as AddRemoveScript
+            // above), so invoke its documented public Break(Actor) factory
+            // and run Do/AddAction through IUndoAction, never the raw
+            // SceneObject.BreakPrefabLink call.
+            var action = CreateBreakPrefabLinkAction(actor);
+            try { action.Do(); }
+            catch (Exception ex) { throw new McpProtocolException("VALIDATION_FAILED", "Prefab break-link failed: " + ex.GetType().FullName + "."); }
+            FEditor.Instance.Undo.AddAction(action);
+            MarkEdited(actor);
+            var revision = AdvanceSceneRevision(actor.Scene);
+            result.DryRun = false;
+            result.UndoRegistered = true;
+            result.ProjectRevision = revision.ProjectRevision;
+            result.SceneRevision = revision.SceneRevision;
+            result.Warnings = new[] { "Prefab link broken via BreakPrefabLinkAction; revert with edit_undo." };
+            return result;
         }
 
         private static void EnsurePrefabEditorReady()
@@ -7060,6 +7483,19 @@ namespace Game.MCP
             var method = type == null ? null : type.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public, null, new[] { typeof(Script) }, null);
             var action = method == null ? null : method.Invoke(null, new object[] { script }) as IUndoAction;
             if (action == null) throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "This Flax version does not expose compatible script undo actions.");
+            return action;
+        }
+
+        private static IUndoAction CreateBreakPrefabLinkAction(Actor actor)
+        {
+            // Flax 1.12 exposes BreakPrefabLinkAction in its editor assembly
+            // but keeps the type internal. Invoke the documented public
+            // Break(Actor) factory so break/undo/redo flow through the
+            // reviewed action (Do, then Undo.AddAction like McpScriptFieldUndo).
+            var type = typeof(IUndoAction).Assembly.GetType("FlaxEditor.Actions.BreakPrefabLinkAction", false);
+            var method = type == null ? null : type.GetMethod("Break", BindingFlags.Static | BindingFlags.Public, null, new[] { typeof(Actor) }, null);
+            var action = method == null ? null : method.Invoke(null, new object[] { actor }) as IUndoAction;
+            if (action == null) throw new McpProtocolException("UNSUPPORTED_FLAX_VERSION", "This Flax version does not expose a prefab break-link undo action.");
             return action;
         }
 
