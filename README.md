@@ -128,6 +128,7 @@ The read-only `server_get_health`, `server_get_metrics`, and `server_get_recent_
 | `runtime_inspect_actor` | Read a bounded, allowlisted actor snapshot during play mode |
 | `perf_get_snapshot` | Read one instantaneous engine performance snapshot (FPS, frame time, draw calls, triangles, managed memory, actor count, GPU adapter/renderer). Works outside play mode (editor viewport rate) and in play mode; GPU fields are null when headless; single sample, no averaging (bridge v27) |
 | `viewport_capture` | Capture the game viewport (requires play mode) or the editor viewport (bridge v22, works outside play mode) and return a readable temporary `flax://capture/<id>` PNG resource |
+| `capture_compare` | Diff two viewport capture PNGs (`flax://capture/<id>` URIs or bare 32-hex ids) per pixel against a `threshold` fraction, with an optional red-overlay `emit_diff` PNG readable as a new capture resource |
 
 ### Live Logs
 | Tool | What it does |

@@ -8,11 +8,11 @@ import { inspectEditorBridge, readProjectIdentity } from './tools/serverStatus.j
 
 const CaptureId = /^[0-9a-f]{32}$/i;
 const FlaxId = /^[0-9a-f]{32}$/i;
-const MaxCaptureBytes = 16 * 1024 * 1024;
+export const MaxCaptureBytes = 16 * 1024 * 1024;
 const MaxJsonBytes = 256 * 1024;
 const MaxListedCaptures = 64;
 const MaxResourcePage = 16;
-const CaptureTtlMs = 24 * 60 * 60 * 1000;
+export const CaptureTtlMs = 24 * 60 * 60 * 1000;
 const CursorTtlMs = 10 * 60 * 1000;
 const MaxCursors = 128;
 
@@ -44,7 +44,7 @@ function parseUri(uri: string): { host: string; path: string[] } {
   return { host: parsed.hostname, path: pieces };
 }
 
-async function canonicalCaptureDirectory(ctx: ProjectMeta): Promise<string> {
+export async function canonicalCaptureDirectory(ctx: ProjectMeta): Promise<string> {
   const project = await fs.realpath(ctx.projectPath);
   const expected = path.resolve(captureDirectory(ctx));
   const directory = await fs.realpath(expected);
@@ -56,7 +56,7 @@ async function canonicalCaptureDirectory(ctx: ProjectMeta): Promise<string> {
   return directory;
 }
 
-async function confinedCaptureFile(directory: string, id: string): Promise<{ file: string; stat: Awaited<ReturnType<typeof fs.stat>> }> {
+export async function confinedCaptureFile(directory: string, id: string): Promise<{ file: string; stat: Awaited<ReturnType<typeof fs.stat>> }> {
   const lexical = path.join(directory, `${id}.png`);
   const linkStat = await fs.lstat(lexical);
   if (linkStat.isSymbolicLink() || !linkStat.isFile()) throw invalid('Capture resource must be a regular project-local file.');

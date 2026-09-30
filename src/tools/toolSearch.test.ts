@@ -22,7 +22,7 @@ function dataOf(result: Awaited<ReturnType<typeof dispatchToolCall>>): any {
   return result.structuredContent as any;
 }
 
-test('query capture finds viewport_capture offline without phantom capture_compare', async () => {
+test('query capture finds viewport_capture and capture_compare offline', async () => {
   const f = await fixture();
   try {
     const tools = buildToolRegistry(f.ctx);
@@ -31,7 +31,7 @@ test('query capture finds viewport_capture offline without phantom capture_compa
     const data = dataOf(result).data as { query: string; count: number; total_tools: number; tools: Array<{ name: string; description: string; read_only: boolean }> };
     assert.equal(data.query, 'capture');
     assert.ok(data.tools.some(t => t.name === 'viewport_capture'));
-    assert.equal(data.tools.some(t => t.name === 'capture_compare'), false);
+    assert.ok(data.tools.some(t => t.name === 'capture_compare'));
     assert.equal(data.count, data.tools.length);
     assert.ok(data.total_tools >= 143);
     for (const t of data.tools) {
