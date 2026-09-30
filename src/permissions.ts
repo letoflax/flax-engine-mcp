@@ -24,7 +24,7 @@ const TOOL_FAMILIES = {
     'server_get_health', 'server_get_metrics', 'server_get_recent_errors',
     'scene_list_loaded', 'scene_get_tree', 'actor_get', 'actor_find', 'script_instance_get', 'edit_get_lease', 'editor_get_selection',
     'code_get_diagnostics', 'play_get_status', 'log_get_recent', 'log_search',
-    'log_get_runtime_errors', 'get_project_info', 'get_game_settings', 'get_project_summary',
+    'log_get_runtime_errors', 'get_project_info', 'get_game_settings', 'get_project_summary', 'project_get_packages',
     'list_scripts', 'read_script', 'get_audit_entries', 'get_script_classes',
     'find_references', 'list_networked_scripts', 'search_in_files', 'search_tools', 'get_scene_actors',
     'get_asset_info', 'list_assets', 'asset_search', 'asset_get', 'asset_dependencies', 'asset_find_references', 'asset_import_status', 'asset_reimport_status', 'prefab_get_instances', 'prefab_get_overrides', 'material_get_parameters', 'animation_list_clips', 'animation_get_graph_parameters', 'animation_validate_bindings', 'graph_inspect', 'read_settings', 'get_input_actions',
