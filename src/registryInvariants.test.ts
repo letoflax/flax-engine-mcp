@@ -44,11 +44,14 @@ test('readOnlyHint agrees with the permission family of every tool', async () =>
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
-test('the registry offers no tool for the game-specific motion-matching tuning reads', async () => {
+test('the registry offers no game-specific motion-matching tools', async () => {
   const { root, ctx } = await fixture();
   try {
-    assert.equal(buildToolRegistry(ctx).some(tool => tool.name === 'mm_tuning'), false);
-    assert.equal(toolFamily('mm_tuning'), undefined);
+    const names = buildToolRegistry(ctx).map(tool => tool.name);
+    for (const name of ['mm_tuning', 'mm_apply_preset']) {
+      assert.equal(names.includes(name), false);
+      assert.equal(toolFamily(name), undefined);
+    }
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 

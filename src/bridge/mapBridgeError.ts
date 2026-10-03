@@ -20,14 +20,12 @@ export function isHeadlessRefusal(error: BridgeRpcError): boolean {
 /**
  * Shared bridge→tool error mapper (P2a).
  *
- * Consolidates the previously duplicated graphError()/mmError() logic so both
- * graph and MM surfaces map the full BridgeRpcError contract identically:
- * concurrent-call, lease trio, idempotency reuse, METHOD_NOT_ALLOWED, and
- * headless INVALID_STATE are covered in one place.
+ * One mapper for the full BridgeRpcError contract (concurrent-call, lease
+ * trio, idempotency reuse, METHOD_NOT_FOUND/METHOD_NOT_ALLOWED, and headless
+ * INVALID_STATE), shared by the graph tools and the other bridge callers.
  *
  * Notes:
- * - ToolDomainError inputs pass through unchanged (preserves the old mmError
- *   behavior now that mmError() delegates here).
+ * - ToolDomainError inputs pass through unchanged.
  * - INVALID_STATE carrying headless evidence maps to HEADLESS_MODE (a new
  *   ToolErrorCode placed next to CAPTURE_UNAVAILABLE); any other
  *   INVALID_STATE maps to EDITOR_BUSY. Headless is detected from the
@@ -38,7 +36,7 @@ export function isHeadlessRefusal(error: BridgeRpcError): boolean {
  *   when the Editor is headless, so the message is the evidence a real
  *   Editor sends. HEADLESS_MODE tells the caller a retry cannot help;
  *   EDITOR_BUSY invites one. Surfaces with their own mapper (domainLive,
- *   mmTuning, runtimeLive) call isHeadlessRefusal for the same split; only
+ *   runtimeLive) call isHeadlessRefusal for the same split; only
  *   viewport_capture keeps CAPTURE_UNAVAILABLE for a headless Editor, the
  *   code it uses for every reason a capture cannot be taken. The graph retry-glue
  *   (graphNotReadyDelay/graphCall) is untouched: NotReady retries still

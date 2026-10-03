@@ -1,6 +1,6 @@
 # Flax Engine MCP
 
-An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 178 tools for reading and patching code, editing live scenes and actor properties, building UI, searching/importing/creating assets, working with safe live-prefab primitives, editing materials, animation graphs, and project settings, physics/navigation/lighting diagnostics, compiling, running and driving bounded play-mode checks, inspecting logs, and local diagnostics.
+An MCP (Model Context Protocol) server that lets MCP clients interact with [Flax Engine](https://flaxengine.com/) game projects. It exposes 177 tools for reading and patching code, editing live scenes and actor properties, building UI, searching/importing/creating assets, working with safe live-prefab primitives, editing materials, animation graphs, and project settings, physics/navigation/lighting diagnostics, compiling, running and driving bounded play-mode checks, inspecting logs, and local diagnostics.
 
 ## Requirements
 
@@ -52,7 +52,7 @@ Every tool belongs to exactly one capability family in `src/permissions.ts`; a p
 
 - `read-only` permits the `read` family (inspection only).
 - `code-edit` adds the `code` family: script writes/patches/generation, `code_compile`, `code_generate_project`, `operation_cancel`, `install_editor_bridge`, and `editor_options` (it changes a user-global Editor setting; reading it is allowed through the same tool).
-- `scene-edit` adds the `scene` family (live actor/script/selection edits, undo/redo, edit leases, scene save/open/close, the legacy offline `create_actor`/`modify_actor`, prefab instantiate/revert/break-link, material assignment, UI/particle/foliage writes, `mm_apply_preset`) and the `runtime` family (play controls, `test_run_scenario`, captures, runtime inspection and script drive, `build_cook`/`build_cancel`, navmesh/lightmap/probe bakes, the Editor process controls `editor_quit` and `editor_launch`, and the cooked-game controls `game_launch` and `game_stop`). It does not include compile, source writes, or the `asset` family.
+- `scene-edit` adds the `scene` family (live actor/script/selection edits, undo/redo, edit leases, scene save/open/close, the legacy offline `create_actor`/`modify_actor`, prefab instantiate/revert/break-link, material assignment, UI/particle/foliage writes) and the `runtime` family (play controls, `test_run_scenario`, captures, runtime inspection and script drive, `build_cook`/`build_cancel`, navmesh/lightmap/probe bakes, the Editor process controls `editor_quit` and `editor_launch`, and the cooked-game controls `game_launch` and `game_stop`). It does not include compile, source writes, or the `asset` family.
 - `full` permits every released tool, including the `asset` family (asset import/reimport/move/rename/duplicate/delete/create, project-settings writes, `scene_create`, `content_create_folder`, prefab creation and apply, and material, graph (including `graph_edit` and `animgraph_set_transition`), and import-settings writes), which no narrower profile includes.
 
 `game_launch` is additionally gated by `--allow-game-launch`, a second, independent opt-in on top of the profile (like `--flax-editor` for `editor_launch`): a profile that includes the `runtime` family does not enable it without the flag.
@@ -340,7 +340,6 @@ All graph writes go through the asset's Editor window and its save path; they ar
 | `animgraph_add_state` / `animgraph_add_transition` | Add one state or one state-to-state transition to an AnimationGraph state machine (bridge v17) |
 | `animgraph_set_state_clip` | Assign an animation clip to a state by spawning a sampler and wiring Pose to State Output (bridge v20) |
 | `animgraph_set_transition` | Set blend duration/mode, enabled, solo, default rule, interruption flags, and order on one existing AnimationGraph state-machine transition, selected by source and destination state node ids; reports before/after, dry-run by default, `confirm:true` for a real write. Uses Editor-internal members by reflection (checked at runtime, `UNSUPPORTED_FLAX_VERSION` naming a missing member) (bridge v34) |
-| `mm_apply_preset` | Apply a motion-matching weight preset (baseline, pose, turn) to live scene weights without rebaking. Local-bridge-only: it needs the `mm.tuning` method, which the bundled `bridge/FlaxMcpBridge.cs` does not implement, so against a stock bridge it reports `UNSUPPORTED_FLAX_VERSION` |
 
 ### Operations
 | Tool | What it does |

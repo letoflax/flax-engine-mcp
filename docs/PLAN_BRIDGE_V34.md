@@ -217,7 +217,7 @@ Nguyên tắc giữ nguyên:
   - `BRIDGE_V34` (`src/tools/liveToolSupport.ts:9`);
   - `test/compatibility-matrix.json:24`;
   - `SERVER_VERSION` (`src/version.ts:2`) và `package.json`: 1.12.0 cho v34, 1.13.0 cho v35.
-- **Số tool**: v34 thêm `editor_quit`, `editor_launch`, `editor_options`, `graph_list_archetypes`, `graph_edit`, `animgraph_set_transition` (169 → 175). v35 thêm `game_launch`, `game_list_instances`, `game_stop` (→ 178).
+- **Số tool**: v34 thêm `editor_quit`, `editor_launch`, `editor_options`, `graph_list_archetypes`, `graph_edit`, `animgraph_set_transition` (169 → 175). v35 thêm `game_launch`, `game_list_instances`, `game_stop` (→ 178; `mm_apply_preset` gỡ sau đó → 177).
 - **Cần cập nhật**:
   - đếm tool trong `src/contracts.test.ts:26,29,76`;
   - `src/permissions.ts`;
@@ -331,11 +331,11 @@ Còn mở:
 - `code_compile` có thể trả `EDITOR_BUSY`/`TIMEOUT` khi Editor đang tự compile.
 - Hai Editor cùng project mà source thay đổi có thể kẹt compile.
 - Giới hạn `order` của transition: Node cho ±1024, bridge cho ±1.000.000.
-- `mm_apply_preset` (và `src/tools/mmTuning.ts`) vẫn là tool riêng của game, cần bạn quyết định gỡ.
+- `mm_apply_preset` (và `src/tools/mmTuning.ts`) là tool riêng của game: đã gỡ, còn 177 tool.
 
 ## Kết quả v35 (2026-10-03)
 
-Server 1.13.0, 178 tool. Bridge Editor giữ v34; bridge runtime mới là v35 (`bridge/FlaxMcpRuntimeBridge.cs`). `npm test` 537 test (533 pass, 4 skip, 0 fail). Ba compile smoke 0 warning: Editor, runtime Development, runtime Release. Bản Release biên dịch ra assembly rỗng. Chưa commit.
+Server 1.13.0, 178 tool (sau đó gỡ `mm_apply_preset`, còn 177). Bridge Editor giữ v34; bridge runtime mới là v35 (`bridge/FlaxMcpRuntimeBridge.cs`). `npm test` 537 test (533 pass, 4 skip, 0 fail). Ba compile smoke 0 warning: Editor, runtime Development, runtime Release. Bản Release biên dịch ra assembly rỗng. Chưa commit.
 
 Cách làm: R1 (file C#) và R2 (phía Node) chạy song song theo `v35_contract`, gộp trên một bản sao tích hợp, rồi một vòng chạy live trên bản cook Windows Development và Release của bản sao TestFlax.
 

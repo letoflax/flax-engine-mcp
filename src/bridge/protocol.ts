@@ -141,14 +141,6 @@ export type AnimationBridgeMethod =
    | 'animation.validate_bindings';
 
 /**
- * Motion-matching method behind mm_apply_preset (weight presets). Local-bridge-only:
- * the bundled bridge/FlaxMcpBridge.cs does not implement it and answers
- * METHOD_NOT_ALLOWED, which the shared mapper reports as UNSUPPORTED_FLAX_VERSION.
- */
-export type MMTuningBridgeMethod =
-  | 'mm.tuning';
-
-/**
  * Bridge v26 input methods. Both validate their arguments and the play state
  * and then answer UNSUPPORTED_FLAX_VERSION: Flax 1.12 exposes no managed
  * input-injection API.
@@ -229,7 +221,6 @@ export type BridgeMethod =
   | BuildBridgeMethod
   | MaterialBridgeMethod
   | AnimationBridgeMethod
-  | MMTuningBridgeMethod
   | InputBridgeMethod
   | GraphBridgeMethod
   | AnimgraphBridgeMethod

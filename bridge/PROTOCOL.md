@@ -7,7 +7,7 @@ This document is cumulative. The opening sections describe the v5 to v7 baseline
 each later `## Bridge vNN` section records what that version added or superseded,
 and the "Bridge v34" section describes the newest Editor bridge. The last
 section, "Runtime bridge (v35)", describes the separate bridge file for cooked
-games (server 1.13.0, 178 tools). Sections are
+games (server 1.13.0, 177 tools). Sections are
 not in strict version order (after v14 the file continues with v27 down to v16,
 then v28 to v34), so when two statements disagree, the one from the higher bridge
 version wins (for the Editor bridge; the runtime bridge is a separate file and
@@ -916,9 +916,7 @@ separate from the global `edit.undo`.
 
 ## Local-only surfaces (vắng mặt ở canonical installer)
 
-| Method | Lives on | Node tool | Notes |
-|---|---|---|---|
-| `mm.tuning` (`Op: "preset"`) | local dev bridge | `mm_apply_preset` | Missing method answers `METHOD_NOT_FOUND` (`METHOD_NOT_ALLOWED` on bridges before v34) → shared mapper reports `UNSUPPORTED_FLAX_VERSION` with capability hint. The `mm_tuning` tool (tuning reads and the database rebuild ops of the same method) was removed from the server: it is specific to one game's motion-matching system, not a general engine operation. |
+The bundled bridge has no project-local methods: every method the Node server calls is implemented in `bridge/FlaxMcpBridge.cs` (or `bridge/FlaxMcpRuntimeBridge.cs`). A project-local method that a bridge does not implement answers `METHOD_NOT_FOUND` (`METHOD_NOT_ALLOWED` on bridges before v34), which the shared mapper reports as `UNSUPPORTED_FLAX_VERSION` with a capability hint. The game-specific motion-matching tools `mm_tuning` and `mm_apply_preset` (method `mm.tuning`) were removed from the server: they belong to one game, not to the general engine surface.
 
 Capability checks must use the `*Supported` status flags (e.g.
 `GraphSetModelSupported`, `ScriptFieldValuesReadSupported`,
@@ -927,10 +925,8 @@ bridge advertised `BridgeVersion = 21` for its experimental `scene.open`
 while canonical v21 means `graph.set_model` — the same number named two
 different capability sets. Canonical v25+ ships `scene.open` (`scene_open`
 in Node); older canonical installers answer that method with
-`METHOD_NOT_ALLOWED`. The canonical installer does not ship the row above,
-so a stock editor answers that method with `METHOD_NOT_FOUND` (v34 and later) or
-`METHOD_NOT_ALLOWED` (older). From v34 an unknown method is `METHOD_NOT_FOUND`
-and its error details list the known methods; see "Bridge v34".
+`METHOD_NOT_ALLOWED`. From v34 an unknown method is `METHOD_NOT_FOUND` and its
+error details list the known methods; see "Bridge v34".
 
 ## Bridge v28: bounded script/component property write
 
@@ -1681,8 +1677,8 @@ starts a process and needs no bridge). Existing methods gain optional fields
   `status.MethodDiscoverySupported` is `true`. A client can discover a method
   before calling it instead of provoking an error.
 - The Node mapper reports both `METHOD_NOT_FOUND` and `METHOD_NOT_ALLOWED` as
-  `UNSUPPORTED_FLAX_VERSION` with a capability hint, so `mm_apply_preset`
-  against a stock bridge behaves as before.
+  `UNSUPPORTED_FLAX_VERSION` with a capability hint, so a project-local method
+  missing from a bridge behaves as before.
 
 ### Capability flags
 `status` adds these booleans, all `true` on a v34 bridge. Check them rather than
@@ -2480,11 +2476,12 @@ from the bridge's `IsHeadlessMode` gates and are mapped to `HEADLESS_MODE` (see
   server from a shell, so scripts need no raw `Cache/MCP/requests` writes (see the
   README "Command line" section).
 
-## Runtime bridge (v35): a cooked game, a second bridge file (178-tool contract)
+## Runtime bridge (v35): a cooked game, a second bridge file (177-tool contract)
 
-Server 1.13.0 registers 178 tools: the 175 of v34 plus `game_launch`,
-`game_list_instances`, and `game_stop`. The Editor bridge stays at v34 and does
-not change. `bridge/FlaxMcpRuntimeBridge.cs` is a second, self-contained bridge
+Server 1.13.0 registers 177 tools: the 175 of v34 plus `game_launch`,
+`game_list_instances`, and `game_stop`, minus the game-specific
+`mm_apply_preset`, which was removed afterwards (no bridge change). The
+Editor bridge stays at v34 and does not change. `bridge/FlaxMcpRuntimeBridge.cs` is a second, self-contained bridge
 that runs inside a cooked Development game. It reports `BridgeVersion` 35 and
 `Kind` `"game"`, keeps protocol v1, and carries a first-line
 `// MCP-BRIDGE-VERSION: 35` marker like the Editor file (34). Nothing from v1 to

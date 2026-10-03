@@ -53,11 +53,11 @@ test('mapBridgeError maps validation and oversized payloads', () => {
 });
 
 test('mapBridgeError maps METHOD_NOT_ALLOWED to UNSUPPORTED_FLAX_VERSION with a capability hint', () => {
-  const mapped = remote('METHOD_NOT_ALLOWED', { Method: 'mm.tuning' }, 'Method mm.tuning is not supported.');
+  const mapped = remote('METHOD_NOT_ALLOWED', { Method: 'local.example' }, 'Method local.example is not supported.');
   assert.equal(mapped.code, 'UNSUPPORTED_FLAX_VERSION');
-  assert.match(mapped.message, /Method mm\.tuning is not supported\./);
+  assert.match(mapped.message, /Method local\.example is not supported\./);
   assert.match(mapped.message, /capability: check bridge status\/PROTOCOL for supported methods/);
-  assert.deepEqual(mapped.details, { Method: 'mm.tuning' });
+  assert.deepEqual(mapped.details, { Method: 'local.example' });
 });
 
 test('mapBridgeError maps METHOD_NOT_FOUND exactly like METHOD_NOT_ALLOWED and keeps the method list', () => {

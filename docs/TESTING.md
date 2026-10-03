@@ -326,8 +326,8 @@ Known limitations and observations:
 - Play stop leaves a transient "running" state for a moment.
 - Scratch project files were deleted once mid-run by an unknown cause (the
   Editor logged "Content item removed"); the originals were intact.
-- `mm_apply_preset` and `src/tools/mmTuning.ts` are game-specific and should be
-  removed from the MCP.
+- `mm_apply_preset` and `src/tools/mmTuning.ts` were game-specific; they were
+  removed after this run (177 tools).
 - Windows only; Linux and macOS not exercised.
 
 ## Runtime bridge v35 live run (Windows, Flax 1.12.6912, 2026-10-03)
