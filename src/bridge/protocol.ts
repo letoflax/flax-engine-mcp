@@ -11,6 +11,17 @@ export const BRIDGE_TOKEN_FILE = 'token';
 export const BRIDGE_REQUESTS_DIRECTORY = 'requests';
 export const BRIDGE_RESPONSES_DIRECTORY = 'responses';
 
+/**
+ * Bridge v35 runtime (cooked game) bridge. Each running game instance owns one
+ * directory <project>/Cache/MCP-Runtime/<instance> with the same layout as the
+ * editor bridge (requests/, responses/, captures/, token, bridge.json). The
+ * heartbeat reports Kind "game". Node passes the directory to the game with
+ * -mcpdir=<abs> and the name with -mcpinstance=<name>.
+ */
+export const RUNTIME_BRIDGE_CACHE_DIRECTORY = 'Cache/MCP-Runtime';
+export const RUNTIME_BRIDGE_CAPTURES_DIRECTORY = 'captures';
+export const RUNTIME_INSTANCE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
 export type SceneBridgeMethod =
   | 'scene.list_loaded'
   | 'scene.get_tree'
@@ -187,9 +198,23 @@ export type V33BridgeMethod =
   | 'scene.create' | 'scene.close' | 'content.create_folder' | 'asset.create'
   | 'particle.get_parameters' | 'particle.set_parameter';
 
+/**
+ * Bridge v34: editor lifecycle/options, graph archetype listing, batched graph
+ * edits, and AnimGraph transition settings.
+ */
+export type V34BridgeMethod =
+  | 'editor.quit' | 'editor.get_options' | 'editor.set_option'
+  | 'graph.list_archetypes' | 'graph.edit'
+  | 'animgraph.set_transition';
+
+/** Bridge v35: the only method that exists on the runtime (game) bridge alone. */
+export type V35BridgeMethod = 'game.quit';
+
 export type BridgeMethod =
   | 'status'
+  | V35BridgeMethod
   | V33BridgeMethod
+  | V34BridgeMethod
   | SceneBridgeMethod
   | ActorBridgeMethod
   | ScriptBridgeMethod
@@ -249,6 +274,7 @@ export interface BridgeConnectionMetadata {
   reason: 'connected';
   pid: number | null;
   heartbeatAgeMs: number | null;
+  /** The Flax Editor version, or the engine version of a runtime (game) bridge. */
   editorVersion: string | null;
   bridgeVersion: string | null;
   protocolVersion: string | null;

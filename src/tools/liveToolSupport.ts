@@ -1,12 +1,18 @@
 import { z } from 'zod';
-import { callEditorBridge } from '../bridge/fileRpcClient.js';
-import { mapBridgeError } from '../bridge/mapBridgeError.js';
+import { callEditorBridge, callRuntimeBridge } from '../bridge/fileRpcClient.js';
+import { mapBridgeError, mapRuntimeBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
 
 /** Minimum bridge for the v33 member, UI, runtime-script, settings, lifecycle, and particle surface. */
 export const BRIDGE_V33 = 33;
+
+/** Minimum bridge for the v34 editor lifecycle/options, graph archetype/edit, and AnimGraph transition-settings surface. */
+export const BRIDGE_V34 = 34;
+
+/** Bridge version a runtime (cooked game) bridge reports; the editor bridge stays at v34. */
+export const RUNTIME_BRIDGE_V35 = 35;
 
 export const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
 
@@ -97,6 +103,8 @@ export interface LiveCallOptions {
   playScoped?: boolean;
   minimumBridgeVersion?: number;
   warnings?: string[];
+  /** Send the call to this running game instance (runtime bridge, v35) instead of the Editor. */
+  instance?: string;
 }
 
 export async function callLive(
@@ -106,7 +114,9 @@ export async function callLive(
   options: LiveCallOptions = {},
 ): Promise<ToolResponse> {
   try {
-    const response = await callEditorBridge(ctx, method, params, { minimumBridgeVersion: options.minimumBridgeVersion ?? BRIDGE_V33 });
+    const response = options.instance === undefined
+      ? await callEditorBridge(ctx, method, params, { minimumBridgeVersion: options.minimumBridgeVersion ?? BRIDGE_V33 })
+      : await callRuntimeBridge(ctx, options.instance, method, params);
     const result = typeof response.data === 'object' && response.data !== null ? response.data as Record<string, unknown> : {};
     const changes = typeof options.changes === 'function' ? options.changes(result) : options.changes ?? [];
     const data = { result: response.data, bridge: response.bridge };
@@ -117,6 +127,6 @@ export async function callLive(
       changes,
     });
   } catch (error) {
-    return toolError(mapLiveError(error, options.playScoped === true));
+    return toolError(options.instance === undefined ? mapLiveError(error, options.playScoped === true) : mapRuntimeBridgeError(error));
   }
 }

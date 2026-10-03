@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { ProjectMeta, walkDir, safeReadFile, assertSafePath } from '../projectContext.js';
 import { toolResult, toolError, ToolResponse } from '../errors.js';
+import { headerBytesToManaged, nativeToManagedLenient } from '../guid.js';
 
 export const ListAssetsSchema = z.object({
   type: z.enum(['all', 'scene', 'material', 'settings', 'other']).optional().default('all'),
@@ -40,7 +41,7 @@ async function readBinaryAssetHeader(filePath: string): Promise<{ typeName: stri
     while (end + 1 < data.length && (data[end] !== 0 || data[end + 1] !== 0)) end += 2;
     return {
       typeName: data.subarray(FLAX_TYPENAME_OFFSET, end).toString('utf16le'),
-      guid: data.subarray(FLAX_GUID_OFFSET, FLAX_GUID_OFFSET + 16).toString('hex'),
+      guid: headerBytesToManaged(data.subarray(FLAX_GUID_OFFSET, FLAX_GUID_OFFSET + 16)),
     };
   } finally {
     await handle.close();
@@ -84,7 +85,7 @@ export async function handleListAssets(
         if (raw) {
           try {
             const parsed = JSON.parse(raw) as FlaxAsset;
-            guid = parsed.ID ?? '';
+            guid = nativeToManagedLenient(parsed.ID ?? '');
           } catch { /* not valid JSON */ }
         }
       }

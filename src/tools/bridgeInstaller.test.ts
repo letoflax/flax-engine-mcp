@@ -150,3 +150,108 @@ test('the packaged bridge resolver finds the real bundled artifact and reports i
     await f.cleanup();
   }
 });
+
+const RUNTIME_CONTENT = '#if FLAX_GAME && !BUILD_RELEASE\nnamespace Game.MCP { public class McpRuntimeBridgeInfo { public int BridgeVersion = 35; } }\n#endif\n';
+
+async function runtimeFixture() {
+  const f = await fixture();
+  const runtimeBundled = path.join(f.root, 'runtime-bundle.cs');
+  await fs.writeFile(runtimeBundled, RUNTIME_CONTENT);
+  return { ...f, runtimeBundled, runtimeTarget: path.join(path.dirname(f.target), 'FlaxMcpRuntimeBridge.cs') };
+}
+
+test('include_runtime installs the runtime bridge next to the editor bridge and reports both files', async () => {
+  const f = await runtimeFixture();
+  try {
+    const preview = await installEditorBridge(InstallEditorBridgeSchema.parse({ include_runtime: true, dry_run: true }), f.ctx, f.bundled, f.runtimeBundled);
+    assert.equal(preview.isError, undefined);
+    assert.equal((preview.structuredContent as any).data.runtime.action, 'create');
+    await assert.rejects(fs.access(path.dirname(f.runtimeTarget)));
+
+    const result = await installEditorBridge(InstallEditorBridgeSchema.parse({ include_runtime: true }), f.ctx, f.bundled, f.runtimeBundled);
+    assert.equal(result.isError, undefined);
+    const data = (result.structuredContent as any).data;
+    assert.equal(data.runtime.target, 'Source/Game/MCP/FlaxMcpRuntimeBridge.cs');
+    assert.equal(data.runtime.bundled_version, '35');
+    assert.equal(await fs.readFile(f.runtimeTarget, 'utf8'), RUNTIME_CONTENT);
+    assert.equal(await fs.readFile(f.target, 'utf8'), f.content);
+
+    const info = await inspectEditorBridgeInstallation(f.ctx, f.bundled, undefined, f.runtimeBundled);
+    assert.equal(info.current, true);
+    assert.equal(info.runtime.target, 'Source/Game/MCP/FlaxMcpRuntimeBridge.cs');
+    assert.equal(info.runtime.bundled.version, '35');
+    assert.equal(info.runtime.installed.version, '35');
+    assert.equal(info.runtime.installed.hash, sha256(RUNTIME_CONTENT));
+    assert.equal(info.runtime.current, true);
+    assert.doesNotMatch(JSON.stringify(info), new RegExp(f.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+    const again = await installEditorBridge(InstallEditorBridgeSchema.parse({ include_runtime: true }), f.ctx, f.bundled, f.runtimeBundled);
+    assert.equal((again.structuredContent as any).data.runtime.action, 'unchanged');
+    assert.deepEqual((again.structuredContent as any).changes, []);
+  } finally { await f.cleanup(); }
+});
+
+test('without include_runtime the runtime bridge is neither installed nor touched', async () => {
+  const f = await runtimeFixture();
+  try {
+    await installEditorBridge(InstallEditorBridgeSchema.parse({}), f.ctx, f.bundled, f.runtimeBundled);
+    await assert.rejects(fs.access(f.runtimeTarget));
+    const info = await inspectEditorBridgeInstallation(f.ctx, f.bundled, undefined, f.runtimeBundled);
+    assert.equal(info.runtime.installed.present, false);
+    assert.equal(info.runtime.current, false);
+    assert.equal(info.runtime.bundled.available, true);
+  } finally { await f.cleanup(); }
+});
+
+test('a locally modified runtime bridge is not replaced silently and blocks the whole install', async () => {
+  const f = await runtimeFixture();
+  try {
+    await fs.mkdir(path.dirname(f.runtimeTarget), { recursive: true });
+    await fs.writeFile(f.runtimeTarget, 'user-edited runtime bridge\n');
+    let result = await installEditorBridge(InstallEditorBridgeSchema.parse({ include_runtime: true }), f.ctx, f.bundled, f.runtimeBundled);
+    assert.equal((result.structuredContent as any).error.code, 'FILE_EXISTS');
+    assert.equal(await fs.readFile(f.runtimeTarget, 'utf8'), 'user-edited runtime bridge\n');
+    await assert.rejects(fs.access(f.target), 'the editor file must not be written when the runtime file is refused');
+
+    result = await installEditorBridge(InstallEditorBridgeSchema.parse({ include_runtime: true, runtime_expected_hash: '0'.repeat(64), force: true }), f.ctx, f.bundled, f.runtimeBundled);
+    assert.equal((result.structuredContent as any).error.code, 'FILE_CHANGED');
+
+    result = await installEditorBridge(
+      InstallEditorBridgeSchema.parse({ include_runtime: true, runtime_expected_hash: sha256('user-edited runtime bridge\n') }),
+      f.ctx, f.bundled, f.runtimeBundled,
+    );
+    assert.equal(result.isError, undefined);
+    assert.equal(await fs.readFile(f.runtimeTarget, 'utf8'), RUNTIME_CONTENT);
+
+    result = await installEditorBridge(InstallEditorBridgeSchema.parse({ runtime_expected_hash: 'a'.repeat(64) }), f.ctx, f.bundled, f.runtimeBundled);
+    assert.equal((result.structuredContent as any).error.code, 'VALIDATION_FAILED');
+  } finally { await f.cleanup(); }
+});
+
+test('a missing bundled runtime bridge refuses include_runtime without installing anything', async () => {
+  const f = await runtimeFixture();
+  try {
+    const missing = path.join(f.root, 'does-not-exist.cs');
+    const result = await installEditorBridge(InstallEditorBridgeSchema.parse({ include_runtime: true }), f.ctx, f.bundled, missing);
+    assert.equal(result.isError, true);
+    assert.equal((result.structuredContent as any).error.code, 'NOT_FOUND');
+    await assert.rejects(fs.access(f.target), 'nothing is installed when the runtime bundle cannot be read');
+  } finally { await f.cleanup(); }
+});
+
+test('the installation report works whether or not the runtime bridge is bundled', async () => {
+  const f = await runtimeFixture();
+  try {
+    const info = await inspectEditorBridgeInstallation(f.ctx, f.bundled);
+    assert.equal(typeof info.runtime.bundled.available, 'boolean');
+    assert.equal(info.runtime.target, 'Source/Game/MCP/FlaxMcpRuntimeBridge.cs');
+    assert.equal(info.runtime.installed.present, false);
+    if (info.runtime.bundled.available) {
+      assert.match(info.runtime.bundled.hash ?? '', /^[a-f0-9]{64}$/);
+      assert.equal(info.runtime.bundled.version, '35');
+    } else {
+      assert.equal(info.runtime.bundled.version, null);
+      assert.equal(info.runtime.bundled.hash, null);
+    }
+  } finally { await f.cleanup(); }
+});

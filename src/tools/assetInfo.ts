@@ -5,6 +5,7 @@ import { ProjectMeta, walkDir, assertSafePath } from '../projectContext.js';
 import { toolResult, toolError, ToolDomainError, ToolResponse } from '../errors.js';
 import { inspectEditorBridge } from './serverStatus.js';
 import { AssetReimportSchema, handleAssetReimport } from './assetImport.js';
+import { headerBytesToManaged, nativeToManagedLenient } from '../guid.js';
 
 export const GetAssetInfoSchema = z.object({
   path: z.string().describe('Asset path relative to project root, or just the filename (e.g. "Blue Material.flax")'),
@@ -14,7 +15,7 @@ export const ReimportAssetSchema = z.object({
   path: z.string().describe('Asset path relative to project root or filename'),
   type: z.string().optional().describe('Deprecated: the safe reimport API preserves the existing asset type.'),
   open_editor: z.boolean().optional().default(false)
-    .describe('Deprecated safe compatibility flag. This server never launches an editor process.'),
+    .describe('Deprecated safe compatibility flag. This server never launches processes unless editor_launch is enabled with --flax-editor.'),
   dry_run: z.boolean().optional().default(false),
   wait: z.boolean().optional().default(false),
   timeout_ms: z.number().int().min(250).max(30_000).optional().default(10_000),
@@ -30,7 +31,7 @@ const GUID_LEN = 16;
 function readFlaxBinary(buf: Buffer): { typeName: string; guid: string; version: number } | null {
   if (buf.length < TYPENAME_OFFSET + 4 || buf.slice(0, 4).toString('ascii') !== FLAX_MAGIC) return null;
   const version = buf.readUInt32LE(4);
-  const guid = buf.slice(GUID_OFFSET, GUID_OFFSET + GUID_LEN).toString('hex');
+  const guid = headerBytesToManaged(buf.subarray(GUID_OFFSET, GUID_OFFSET + GUID_LEN));
   let end = TYPENAME_OFFSET;
   while (end + 1 < buf.length && !(buf[end] === 0 && buf[end + 1] === 0)) end += 2;
   return { typeName: end > TYPENAME_OFFSET ? buf.slice(TYPENAME_OFFSET, end).toString('utf16le') : '(unknown)', guid, version };
@@ -61,7 +62,8 @@ export async function handleGetAssetInfo(args: z.infer<typeof GetAssetInfoSchema
     if (ext === '.json' || ext === '.scene') {
       const parsed = JSON.parse(await fs.readFile(resolved, 'utf-8')) as Record<string, unknown>;
       lines.push(`Type:   ${parsed['TypeName'] ?? '(none)'}`);
-      lines.push(`ID:     ${parsed['ID'] ?? '(none)'}`);
+      const textId = parsed['ID'];
+      lines.push(`ID:     ${typeof textId === 'string' ? nativeToManagedLenient(textId) : '(none)'}`);
       const data = parsed['Data'];
       if (Array.isArray(data)) lines.push(`Entries: ${data.length}`);
       else if (data && typeof data === 'object') lines.push('Data keys: ' + Object.keys(data).join(', '));
@@ -116,7 +118,7 @@ export async function handleReimportAsset(args: z.infer<typeof ReimportAssetSche
       'Automated reimport requires a connected bridge v9 and configured --asset-import-root values.',
       'Manual fallback: open this project in Flax Editor, select the asset in Content, then choose Reimport.',
     ];
-    if (args.open_editor) lines.push('open_editor:true is intentionally ignored; MCP never launches OS editor processes.');
+    if (args.open_editor) lines.push('open_editor:true is intentionally ignored; MCP never launches OS editor processes from this tool (only editor_launch can, and only when the server was started with --flax-editor).');
     return toolResult(lines.join('\n'), {
       mode: bridge.connected ? 'editor-connected' : 'offline',
       data: { asset: relative, mode: 'manual-only', bridgeVersion: bridge.bridgeVersion },

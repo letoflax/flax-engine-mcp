@@ -242,3 +242,180 @@ Not exercised live:
 - `restored:false` for a Model or an AudioClip (only a Texture was produced)
 - a SpriteAtlas as an unsupported import-settings type
 - Linux and macOS.
+
+## Bridge v34 live run (Windows, Flax 1.12.6912, 2026-10-03)
+
+Bridge v34 (server 1.12.0) was run against a real Flax 1.12 Editor on a scratch
+copy of a small template project, never on an Editor the user had open. The
+bridge was installed into `Source/Game/MCP/` and compiled by the Editor's own
+script build. Calls went through the built CLI (`flax-engine-mcp call ...`) and
+the Node tool registry, so every call used the real file-RPC transport. Probe
+scripts (nested class/struct fields, an animation driver) lived in the scratch
+project's own game sources, never in the bridge. Editors were started headless
+and headed (minimized); one Editor per project at a time, except in the
+standby test.
+
+Results:
+
+| Area | Check | Result |
+| --- | --- | --- |
+| Import | `asset_import` batch of 3 files; `ResultAssetId` equals header bytes 28..43 read as a .NET Guid and equals `asset_get` | pass |
+| Import | replace keeps the ID and needs confirm; cross-type replace refused (`VALIDATION_FAILED`) | pass |
+| Offline | `list_assets` and `get_asset_info` GUIDs equal `asset_get` | pass |
+| Transport | raw `ping` gives `METHOD_NOT_FOUND` with a Methods list | pass |
+| Ownership | second Editor on one project stays standby; takeover after a clean quit about 17 s; after a kill 2 s (after fix) | pass |
+| Navigation | headless `navigation_build` reports `completed` (26 of 26 builds after fix) | pass (after fix) |
+| Lifecycle | `editor_launch` headless and headed; `editor_get_status` `wait_ready` with `require_scene` | pass |
+| Lifecycle | `editor_quit`: dirty scene refused (`DIRTY_SCENES`), `save`, `discard`, refused during play (`EDITOR_BUSY`), `stop_play` | pass |
+| Options | `editor_options` read, dry-run, set, restore; `EditorOptions.json` SHA256 identical before and after | pass |
+| CLI | exit codes 0 / 1 / 2 | pass |
+| Scenes | on-disk `.scene` edit then `scene_open` with reload; `DiskSha256` matches the file | pass |
+| Scenes | `reload` and `replace` refused on a dirty scene; `replace` on a clean scene unloads the others | pass |
+| Scripts | `script_instance_set_value` with asset refs (path and GUID), nested class and struct paths, save, reload, persistence | pass |
+| Scripts | refusals: List member, unknown member, path through a scalar, wrong type, wrong asset type | pass |
+| Undo | `edit_undo` / `edit_redo` restore values including an asset ref | pass |
+| Play | `runtime_set_script_value` with a path during play (struct and nested class) | pass |
+| AnimGraph | zombie graph built through graph tools (4 states, Any, 7 transitions with `State == N` rules, blends, Entry, clips, Multi Blend 1D); verified after Editor restart | pass (after fixes) |
+| AnimGraph | play test: pose signature changed correctly across State 2, 1, 0, 1, 3, 0 and Speed 380, 150, 0 | pass |
+| X3 | Material with a Color constant wired to the output: shader compilation succeeded | pass |
+| X3 | MaterialFunction with input, float, add, output, all connected | pass |
+| X3 | ParticleEmitter modules added through `graph_edit` (15,100 and 15,301), persisted | pass (after fix) |
+| X3 | GameplayGlobals with 3 variables (Single, Int32, Color) reopened after a fresh Editor start | pass |
+
+Defects found and fixed during the run:
+
+- `bridge/FlaxMcpBridge.cs`: the Editor never started the bridge because game
+  assemblies have no `System.Diagnostics.Process` (CS1069). `IsProcessAlive` now
+  uses kernel32 P/Invoke.
+- `bridge/FlaxMcpBridge.cs`: the first P/Invoke used `SetLastError`, `bool` and
+  `out`, which throw under disabled runtime marshalling; the catch reported
+  "alive" and takeover waited for the 30 s heartbeat. The imports are now
+  blittable (`Marshal.GetLastSystemError`, an unmanaged buffer).
+- `bridge/FlaxMcpBridge.cs`: headless `navigation_build` returned `TIMEOUT`
+  "queued" because a small build lasts 3 to 6 ms and the 100 ms poll missed it.
+  Completion is now detected by sampling on the request thread and by
+  `Engine.UpdateCount` advancing twice, with a 250 ms quiet window and a
+  warning when no tile build was observed.
+- `bridge/FlaxMcpBridge.cs`: `graph_edit` refused a wire from a Get Parameter
+  node created in the same batch (its boxes exist only after spawn).
+  `GraphEditResolveBox` now accepts boxes 0..4 of that archetype.
+- `bridge/FlaxMcpBridge.cs`: `graph_edit` could not add particle modules (group
+  15 is `NoSpawnViaGUI`). They are now offered at the root of a
+  ParticleEmitter surface, as the stage header "+" menu does.
+- `src/tools/serverStatus.ts`: one call failed with `EDITOR_NOT_CONNECTED`
+  because `bridge.json` was briefly missing during `File.Replace` on Windows.
+  The read retries while the `token` file exists.
+
+Tests added or adjusted: `bridgeV34ImportContract`, `bridgeV7Contract`,
+`bridgeV34PathSafetyContract`, `bridgeV34GraphContract` and `serverStatus`.
+After the fixes `npm test` gives 481 tests, 477 pass, 0 fail, 4 skipped, and the
+`BridgeCompileSmoke` build succeeds with 0 warnings and 0 errors.
+
+Known limitations and observations:
+
+- No tool reads GameplayGlobals values; they were checked with an Editor probe
+  in the scratch project.
+- `graph_inspect` does not list transition contexts; use `graph_list_archetypes`
+  `existing_nodes` with the context path.
+- The navmesh `completed` signal is inferred from a processed request when the
+  build is too short to observe.
+- `code_compile` can return `EDITOR_BUSY` or `TIMEOUT` while the Editor is
+  already compiling.
+- Two Editors on one project while sources change can leave one stuck in
+  "scripts compiling"; `editor_quit` then returns `EDITOR_BUSY`.
+- Play stop leaves a transient "running" state for a moment.
+- Scratch project files were deleted once mid-run by an unknown cause (the
+  Editor logged "Content item removed"); the originals were intact.
+- `mm_apply_preset` and `src/tools/mmTuning.ts` are game-specific and should be
+  removed from the MCP.
+- Windows only; Linux and macOS not exercised.
+
+## Runtime bridge v35 live run (Windows, Flax 1.12.6912, 2026-10-03)
+
+The runtime bridge (`bridge/FlaxMcpRuntimeBridge.cs`, server 1.13.0) was run in
+cooked Windows Development builds of a scratch copy of a small template project,
+never in a game or Editor the user had open. Both bridge files were installed
+with `install_editor_bridge` (`include_runtime: true`, preview first, then
+apply; `get_editor_bridge_installation` reported both files as current). A probe
+script `RuntimeProbe` lived in the scratch project's own game sources: a float,
+Vector3, Color, enum, bool, string, `Material` and `List<int>` field, a nested
+`[Serializable]` struct field, `Add(int, int)`, a method that throws, a method
+that logs warning/error/exception lines, a method that blocks the game thread,
+and an update that can throw. It was attached to an actor of the start scene
+through the Editor bridge tools and the scene saved.
+
+Setup used:
+
+- Cook: a headless Editor (`editor_launch`), then `build_validate` and
+  `build_cook` (windows64, development and release, `wait: true`) into
+  `Builds/Win64Dev*` and `Builds/Win64Rel*`. The in-Editor cook path worked, with
+  one environment note: the cooker builds the game with `-dotnet=8`, so the
+  Editor must be started with `DOTNET_ROOT` pointing at a dotnet root that has
+  SDK 8 (without it `build_cook` ends `BUILD_FAILED` and the Editor log says
+  "Missing .NET SDK 8"). The output directory must be new for each cook.
+- Games were started with `game_launch` from a server run with
+  `--allow-game-launch`. One-shot CLI calls cannot show `launched_by_this_server`
+  or `force` across calls, so the launch, stop and force-kill checks used one
+  persistent MCP stdio session (SDK client); instance tools also ran through the
+  CLI.
+
+Results:
+
+| Area | Check | Result |
+| --- | --- | --- |
+| Installer | `install_editor_bridge` preview, apply, `get_editor_bridge_installation` for both files (version 34 and 35, hashes equal to `bridge/`) | pass |
+| Cook | in-Editor `build_validate` and `build_cook` Development and Release | pass (needs `DOTNET_ROOT` with SDK 8) |
+| Release | Release `Game.CSharp.dll` has no `FlaxMcpRuntimeBridge` type (Development has it); the Release game ignores `-mcpdir` and writes nothing | pass |
+| Release | `RuntimeBridgeCompileSmoke` with `RuntimeBuildConfig=Release` builds with 0 warnings | pass |
+| Inert | game started without `-mcpdir`: no `Cache/MCP-Runtime` created | pass |
+| Inert | relative `-mcpdir` and empty `-mcpdir=` stay inert; `-mcpinstance=a/b` falls back to the pid | pass |
+| Command line | `-mcpdir` unquoted, quoted value with spaces, and whole switch quoted (what `spawn` produces) | pass |
+| Launch | `game_launch` two instances (`g1`, `g2`) with `wait_ready`, `status` has version 35, `Kind game`, frame count, scene count | pass (after fix) |
+| Launch | default instance name `g<n>`; `wait_ready: false`; relaunch of an instance name after a kill (stale files cleared) | pass |
+| Launch | refused: instance with path characters, `-mcpdir` in args, exe outside the project (`INVALID_PATH`, `NOT_FOUND`), name with a live heartbeat (`EDITOR_BUSY`), no `--allow-game-launch` | pass |
+| List | `game_list_instances` live, stale (`process_not_running`), `launched_by_this_server`, no paths | pass |
+| Scripts | `runtime_invoke_script_method` `Add` result; throwing method returns `Threw`, `ExceptionType`, `ExceptionMessage` as data; wrong arg count, unknown script refused | pass |
+| Scripts | `runtime_set_script_value`: float, nested struct path (`Inner.Gain`, `Inner.Count`), Vector3, Color, enum, bool, string; values read back through a probe method | pass |
+| Scripts | Material by 32-hex GUID set and cleared; path value, wrong asset type (MaterialInstance into Material), List member, engine member (`Enabled`), unknown member, path through a scalar, bad enum, bad string refused (`VALIDATION_FAILED`) | pass |
+| Actors | `runtime_inspect_actor` returns the actor, children and script ids with `IsPlayMode` true | pass |
+| Logs | `log_search`, `log_get_recent`, `log_get_runtime_errors` return the probe lines, `Debug.LogError`, `Debug.LogException` and update exceptions as errors | pass |
+| Capture | `viewport_capture instance:` returns a PNG (1280x720) through the capture cache and the `flax://capture/<id>` resource; `viewport:"editor"` refused; raw `capture.start` with Width/Height gives `VALIDATION_FAILED` | pass |
+| Perf | `perf_get_snapshot` FPS, frame time, managed memory, actor count, GPU adapter, renderer; draw calls and triangles are null | pass |
+| Time | `play_set_time_scale` 0.5, 0 (frames keep advancing, bridge responsive), 1, 2; 11 refused by the schema, 20 refused by the bridge | pass |
+| Transport | raw `ping` gives `METHOD_NOT_FOUND` with the Methods list; raw `capture.status` with a traversal id gives `INVALID_REQUEST` | pass |
+| Stop | `game_stop` clean quit (about 0.3 s), process exits, heartbeat removed | pass |
+| Stop | `game_stop` with `force` on a launched game: graceful quit first, process killed after the timeout when the game thread is blocked (about 1.9 s with `timeout_ms` 2000) | pass |
+| Stop | `force` on an instance another server process launched: `PERMISSION_DENIED`, nothing stopped | pass |
+| Stop | instance tools and `game_stop` on a stopped instance answer `GAME_NOT_CONNECTED`; unknown instance the same | pass |
+| Stop | `game_stop` while a call is blocking the game thread: `EDITOR_BUSY` (one request in flight per instance); `force` still kills | pass |
+| Multi | two instances answered independently (separate values, logs, captures, time scale) | pass |
+
+Defects found and fixed during the run:
+
+- `src/tools/gameRuntime.ts`: `game_launch` with `wait_ready` returned as soon
+  as the bridge answered `status`, which is before the first scene has loaded
+  (frame 2, `loaded_scene_count` 0 in the first launch). A script tool called
+  right afterwards answered `NOT_FOUND` and a first capture was almost empty.
+  `wait_ready` now also waits up to 10 s (within `timeout_ms`) for a loaded
+  scene, then returns ready with a warning when none loaded.
+
+Tests added or adjusted: `gameRuntime` (waits for the first scene to load, warns
+when none ever does). After the fix `npm test` gives 537 tests, 533 pass, 0
+fail, 4 skipped; `BridgeCompileSmoke` and `RuntimeBridgeCompileSmoke`
+(Development and Release) build with 0 warnings and 0 errors.
+
+Known limitations and observations:
+
+- `perf_get_snapshot` reports `draw_calls` and `triangles` as null for a game.
+- Responses from a game carry the bridge block with the key `editorVersion`
+  holding the game's engine version.
+- `StackTrace` of log entries is always null (the tools never request it, as for
+  the Editor).
+- A game started by `game_launch` runs at the unfocused frame cap of the
+  project's Time settings (about 30 FPS) when it does not have focus.
+- `force` is a graceful quit followed by a kill after `timeout_ms`; it cannot
+  reach a game that another server process launched.
+- A cooked game only has the assets the cooker included; asset GUIDs that were
+  not cooked cannot be loaded by `runtime_set_script_value`.
+- Cooking needs `DOTNET_ROOT` with SDK 8 and a fresh output directory (see Setup).
+- Windows only; Linux and macOS cooked games were not exercised.

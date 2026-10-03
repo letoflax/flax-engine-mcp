@@ -3,6 +3,7 @@ import path from 'node:path';
 import { ProjectMeta, safeReadFile, walkDir } from '../projectContext.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { readTextFile } from '../textEncoding.js';
+import { headerBytesToNative, managedToNative, nativeToManaged } from '../guid.js';
 
 type Severity = 'error' | 'warning' | 'info';
 type Check = 'scripts' | 'assets' | 'settings' | 'scenes';
@@ -25,12 +26,13 @@ function finding(list: Finding[], ruleId: string, severity: Severity, check: Che
   list.push({ ruleId, severity, check, location: { kind: file ? 'file' : 'project', ...(file ? { path: file } : {}) }, message, suggestedFix, autoFixAvailable: false, metadata });
 }
 
+/** Returns the asset ID in the engine's text (native) form, which is what scene/prefab/json references use. */
 async function assetId(file: string): Promise<string | null> {
   const extension = path.extname(file).toLowerCase();
   if (extension === '.flax') {
     const handle = await fs.open(file, 'r').catch(() => null);
     if (!handle) return null;
-    try { const header = Buffer.alloc(44); const read = await handle.read(header, 0, header.length, 0); return read.bytesRead >= 44 && header.subarray(0, 4).toString('ascii') === 'CFWF' ? header.subarray(0x1c, 0x2c).toString('hex') : null; }
+    try { const header = Buffer.alloc(44); const read = await handle.read(header, 0, header.length, 0); return read.bytesRead >= 44 && header.subarray(0, 4).toString('ascii') === 'CFWF' ? headerBytesToNative(header.subarray(0x1c, 0x2c)) : null; }
     finally { await handle.close(); }
   }
   if (extension !== '.json' && extension !== '.scene') return null;
@@ -141,7 +143,7 @@ export async function handleValidateProjectEnhanced(input: unknown, ctx: Project
         if (extension !== '.json' && extension !== '.scene') continue;
         try {
           const raw = await safeReadFile(file);
-          for (const reference of referenceGuids(JSON.parse(raw ?? ''))) if (!knownIds.has(reference.id) && referenceCount++ < MAX_REFERENCES) finding(results, 'FLAX002', 'error', 'assets', target, `Reference field "${reference.key}" points to missing asset ID ${reference.id}.`, 'Restore the referenced asset or update the serialized reference in Flax Editor.', { referenceField: reference.key, assetId: reference.id, parserLimit: 'Only GUID values in asset/reference-shaped JSON fields are checked.' });
+          for (const reference of referenceGuids(JSON.parse(raw ?? ''))) if (!knownIds.has(reference.id) && !knownIds.has(managedToNative(reference.id)) && referenceCount++ < MAX_REFERENCES) finding(results, 'FLAX002', 'error', 'assets', target, `Reference field "${reference.key}" points to missing asset ID ${nativeToManaged(reference.id)} (file text form ${reference.id}).`, 'Restore the referenced asset or update the serialized reference in Flax Editor.', { referenceField: reference.key, assetId: nativeToManaged(reference.id), assetIdNative: reference.id, parserLimit: 'Only GUID values in asset/reference-shaped JSON fields are checked.' });
         } catch { if (extension === '.scene') finding(results, 'FLAX011', 'error', 'assets', target, `${target} is not valid scene JSON`, 'Restore valid scene JSON or open the scene in Flax Editor and save it again.'); }
       }
       if (referenceCount > MAX_REFERENCES) warnings.push(`Missing asset reference findings are capped at ${MAX_REFERENCES}.`);

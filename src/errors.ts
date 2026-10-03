@@ -3,7 +3,7 @@ import { ZodError } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export type ToolResponse = CallToolResult;
-export type ToolMode = 'offline' | 'editor-connected';
+export type ToolMode = 'offline' | 'editor-connected' | 'game-connected';
 export type ToolErrorCode =
   | 'INVALID_ARGUMENT'
   | 'UNKNOWN_TOOL'
@@ -22,6 +22,7 @@ export type ToolErrorCode =
   | 'PATCH_CONFLICT'
   | 'VALIDATION_FAILED'
   | 'EDITOR_NOT_CONNECTED'
+  | 'GAME_NOT_CONNECTED'
   | 'EDITOR_BUSY'
   | 'RATE_LIMITED'
   | 'SCENE_NOT_LOADED'
@@ -186,7 +187,7 @@ export function finalizeToolResponse(
     : undefined;
   const envelope: ToolEnvelope = {
     operationId: operationIdValue,
-    mode: existing?.mode === 'editor-connected' ? 'editor-connected' : 'offline',
+    mode: existing?.mode === 'editor-connected' || existing?.mode === 'game-connected' ? existing.mode : 'offline',
     ok: !response.isError,
     ...(response.isError ? { error } : { data: existing?.data ?? { text: fallbackText } }),
     warnings: existing?.warnings ?? [],

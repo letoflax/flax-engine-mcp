@@ -141,6 +141,20 @@ test('navigation build warns on whole-scene and maps timeout phases', async () =
   } finally { await slow.cleanup(); }
 });
 
+test('navigation build reports queued and running phases as unfinished, never completed', async () => {
+  for (const phase of ['queued', 'running']) {
+    const f = await fixture(34);
+    try {
+      const pending = handleNavigationBuild(NavigationBuildSchema.parse({ timeout_ms: 500 }), f.ctx);
+      await reply(f, { ok: true, resultJson: JSON.stringify({ Phase: phase, Progress: 0, ObservedBuilding: phase === 'running', Warnings: [] }) });
+      const response = await pending;
+      assert.equal(response.isError, true);
+      assert.equal((response.structuredContent as any).error.code, 'TIMEOUT');
+      assert.equal((response.structuredContent as any).error.details.phase, phase);
+    } finally { await f.cleanup(); }
+  }
+});
+
 test('lighting bake and probe bake marshal actions and map timeout phases', async () => {
   const f = await fixture(31);
   try {

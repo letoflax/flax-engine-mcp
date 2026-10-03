@@ -14,7 +14,6 @@ import {
   SubscribeRequestSchema,
   UnsubscribeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { createProjectContext } from './projectContext.js';
 import { buildToolRegistry, ToolDefinition } from './tools/index.js';
 import { finalizeToolResponse, toolError, ToolDomainError, ToolResponse } from './errors.js';
 import { ProjectMeta } from './projectContext.js';
@@ -22,24 +21,14 @@ import { SERVER_NAME, SERVER_VERSION } from './version.js';
 import { listFlaxResourceTemplates, listFlaxResources, readFlaxResource } from './resources.js';
 import { getFlaxPrompt, listFlaxPrompts } from './prompts.js';
 import { ResourceSubscriptionManager } from './resourceSubscriptions.js';
-import { allowedToolNames, assertPermissionRegistryCoverage, parsePermissionPolicy, policyForContext } from './permissions.js';
-import { createAssetImportPolicy } from './assetImportPolicy.js';
+import { allowedToolNames, assertPermissionRegistryCoverage, policyForContext } from './permissions.js';
+import { createServerContext } from './serverContext.js';
+import { runCli } from './cli.js';
 import { recordToolCall } from './observability.js';
 import { runDoctor } from './doctor.js';
 import { createProgressReporter, runWithProgress } from './progress.js';
 
-export function parseProjectPath(argv = process.argv): string {
-  const idx = argv.indexOf('--project-path');
-  if (idx !== -1 && argv[idx + 1]) {
-    return argv[idx + 1];
-  }
-  const first = argv[2];
-  if (first && !first.startsWith('--')) return first;
-  throw new Error(
-    'Usage: flax-mcp --project-path /path/to/flax/project\n' +
-    'Example: flax-mcp --project-path /home/user/Projects/flax/test-flax'
-  );
-}
+export { parseProjectPath } from './serverContext.js';
 
 /**
  * The only tool invocation path. It makes Zod schemas authoritative, including
@@ -91,10 +80,13 @@ async function main(): Promise<void> {
     process.exitCode = result.exitCode;
     return;
   }
-  const projectPath = parseProjectPath();
-  const ctx = await createProjectContext(projectPath);
-  ctx.permissionPolicy = parsePermissionPolicy(process.argv);
-  ctx.assetImportPolicy = await createAssetImportPolicy(process.argv);
+  if (process.argv[2] === 'call' || process.argv[2] === 'tools') {
+    const result = await runCli(process.argv, dispatchToolCall);
+    await new Promise<void>(resolve => process.stdout.write(result.stdout, () => resolve()));
+    await new Promise<void>(resolve => process.stderr.write(result.stderr, () => resolve()));
+    process.exit(result.exitCode);
+  }
+  const ctx = await createServerContext(process.argv);
 
   process.stderr.write(`Flax MCP Server — project: ${ctx.projectName} (${ctx.projectPath})\n`);
 

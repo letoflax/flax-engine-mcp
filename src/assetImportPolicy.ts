@@ -58,15 +58,20 @@ export function parseAssetImportRootArguments(argv: readonly string[]): string[]
   return roots;
 }
 
-/** Resolve every configured root once at startup so junctions and symlinks are never trusted by spelling alone. */
-export async function createAssetImportPolicy(argv: readonly string[]): Promise<AssetImportPolicy> {
+/**
+ * Resolve every configured root once at startup so junctions and symlinks are never trusted by spelling alone.
+ * A relative root is resolved against `projectPath` (the --project-path value), never against the working
+ * directory of the process; without a project path it falls back to the working directory as before.
+ */
+export async function createAssetImportPolicy(argv: readonly string[], projectPath?: string): Promise<AssetImportPolicy> {
+  const base = projectPath === undefined ? process.cwd() : path.resolve(projectPath);
   const candidates = parseAssetImportRootArguments(argv);
   const roots: string[] = [];
   const seen = new Set<string>();
   for (const candidate of candidates) {
     let canonical: string;
     try {
-      canonical = await fs.realpath(path.resolve(candidate));
+      canonical = await fs.realpath(path.resolve(base, candidate));
       const stat = await fs.stat(canonical);
       if (!stat.isDirectory()) throw new Error('not a directory');
     } catch {
@@ -185,13 +190,15 @@ export async function verifyAssetImportDestination(destination: string, ctx: Pro
 
 export async function chooseAssetImportDestination(
   requested: { absolutePath: string; relativePath: string },
-  collisionPolicy: 'error' | 'rename',
+  collisionPolicy: 'error' | 'rename' | 'replace',
 ): Promise<{ absolutePath: string; relativePath: string; renamed: boolean }> {
   const exists = async (candidate: string): Promise<boolean> => fs.lstat(candidate).then(() => true, error => {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   });
   if (!await exists(requested.absolutePath)) return { ...requested, renamed: false };
+  // replace keeps the requested path: the bridge reimports into the existing asset (it needs confirm:true there).
+  if (collisionPolicy === 'replace') return { ...requested, renamed: false };
   if (collisionPolicy === 'error') {
     throw Object.assign(new Error('An asset already exists at the requested destination.'), { code: 'FILE_EXISTS' });
   }

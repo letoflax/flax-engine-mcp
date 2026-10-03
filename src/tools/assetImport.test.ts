@@ -155,6 +155,9 @@ test('asset_import maps to a strict PascalCase v9 RPC and supports dry-run/colli
     assert.equal(envelope(result).ok, true);
     assert.equal(envelope(result).data.operation.Phase, 'dry_run');
     assert.doesNotMatch(JSON.stringify(envelope(result).data), /approved-source|SourcePath/);
+    // The rename was decided by the Node side (the bridge only saw a free name), so the result must say so.
+    assert.deepEqual(envelope(result).data.destination, { path: 'Content/Existing-1.flax', requested: 'Content/Existing.flax', renamed: true });
+    assert.equal(envelope(result).data.operation.Renamed, true);
   } finally { await f.cleanup(); }
 });
 
@@ -556,5 +559,181 @@ test('asset import-settings tools surface bridge refusals and default-valued rea
       assert.equal(envelope(await statusPending).error.code, expected);
       await requestGone(f, status.name);
     }
+  } finally { await f.cleanup(); }
+});
+
+test('--asset-import-root resolves relative roots against the project path, not the working directory', async () => {
+  const f = await fixture();
+  try {
+    await fs.mkdir(path.join(f.root, 'Content', 'Raws'), { recursive: true });
+    const policy = await createAssetImportPolicy(['node', 'server', '--asset-import-root', 'Content/Raws', '--asset-import-root', 'approved-source', '--asset-import-root', f.sourceRoot], f.root);
+    assert.deepEqual(policy.roots, [await fs.realpath(path.join(f.root, 'Content', 'Raws')), await fs.realpath(f.sourceRoot)]);
+    assert.notEqual(path.resolve('.'), f.root);
+    await assert.rejects(() => createAssetImportPolicy(['node', 'server', '--asset-import-root', 'Content/Missing'], f.root), /existing readable directory/);
+    // Without a project path the legacy cwd-relative behaviour is unchanged.
+    await assert.rejects(() => createAssetImportPolicy(['node', 'server', '--asset-import-root', 'approved-source']), /existing readable directory/);
+    const absolute = await createAssetImportPolicy(['node', 'server', '--asset-import-root', f.sourceRoot], path.join(f.root, 'Source'));
+    assert.equal(absolute.roots[0], await fs.realpath(f.sourceRoot));
+  } finally { await f.cleanup(); }
+});
+
+test('asset_import start timeouts carry the operation_id so the caller can poll asset_import_status', async () => {
+  const f = await fixture();
+  try {
+    const pending = handleAssetImport(AssetImportSchema.parse({
+      source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Imported/Slow.flax', operation_id: '1'.repeat(32),
+    }), f.ctx);
+    const request = await nextRequest(f);
+    await reply(f, request, { ok: false, errorCode: 'DEADLINE_EXCEEDED', error: 'Import ran past its deadline.' });
+    const result = await pending;
+    const error = envelope(result).error;
+    assert.equal(error.code, 'TIMEOUT');
+    assert.equal(error.details.operation_id, '1'.repeat(32));
+    assert.match(error.details.hint, /asset_import_status/);
+  } finally { await f.cleanup(); }
+});
+
+test('asset_import maps bridge failures through the shared mapper', async () => {
+  const f = await fixture();
+  try {
+    const pending = handleAssetImport(AssetImportSchema.parse({
+      source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Imported/Busy.flax',
+    }), f.ctx);
+    const request = await nextRequest(f);
+    await reply(f, request, { ok: false, errorCode: 'UNAUTHORIZED', error: 'Missing or invalid bridge session token.' });
+    const error = envelope(await pending).error;
+    assert.equal(error.code, 'EDITOR_BUSY');
+    assert.equal(error.details.reason, 'bridge_session_changed');
+    assert.equal(error.details.retryable, true);
+  } finally { await f.cleanup(); }
+});
+
+test('asset_import replace needs confirm:true and a v34 bridge, then sends CollisionPolicy replace with Confirm', async () => {
+  const f = await fixture(34);
+  try {
+    const noConfirm = await handleAssetImport(AssetImportSchema.parse({
+      source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Existing.flax', collision_policy: 'replace',
+    }), f.ctx);
+    assert.equal(envelope(noConfirm).error.code, 'VALIDATION_FAILED');
+    assert.match(envelope(noConfirm).error.message, /confirm:true/);
+    assert.deepEqual(await fs.readdir(f.requests), []);
+
+    const pending = handleAssetImport(AssetImportSchema.parse({
+      source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Existing.flax', collision_policy: 'replace', confirm: true,
+      operation_id: '2'.repeat(32),
+    }), f.ctx);
+    const request = await nextRequest(f);
+    const params = JSON.parse(String(request.body.paramsJson));
+    assert.equal(params.CollisionPolicy, 'replace');
+    assert.equal(params.Confirm, true);
+    assert.equal(params.DestinationPath, 'Content/Existing.flax');
+    await reply(f, request, { ok: true, resultJson: JSON.stringify({ OperationId: '2'.repeat(32), Kind: 'import', Phase: 'succeeded', Progress: 1, ResultPath: 'Content/Existing.flax', ResultAssetId: ASSET_ID }) });
+    const result = await pending;
+    assert.equal(envelope(result).ok, true);
+    assert.equal(envelope(result).data.destination.renamed, false);
+    assert.equal(envelope(result).data.operation.ResultAssetId, ASSET_ID);
+  } finally { await f.cleanup(); }
+
+  const old = await fixture(33);
+  try {
+    const refused = await handleAssetImport(AssetImportSchema.parse({
+      source_path: path.join(old.sourceRoot, 'texture.png'), destination: 'Content/Existing.flax', collision_policy: 'replace', confirm: true,
+    }), old.ctx);
+    assert.equal(envelope(refused).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(old.requests), []);
+  } finally { await old.cleanup(); }
+});
+
+test('asset_import schema: items are 1-32 and exclusive with the single-item fields', () => {
+  const item = { source_path: 'a.png', destination: 'Content/A.flax' };
+  assert.equal(AssetImportSchema.safeParse({ items: [item] }).success, true);
+  assert.equal(AssetImportSchema.safeParse({ items: [] }).success, false);
+  assert.equal(AssetImportSchema.safeParse({ items: Array.from({ length: 33 }, (_, i) => ({ ...item, destination: `Content/A${i}.flax` })) }).success, false);
+  assert.equal(AssetImportSchema.safeParse({ items: Array.from({ length: 32 }, (_, i) => ({ ...item, destination: `Content/A${i}.flax` })) }).success, true);
+  assert.equal(AssetImportSchema.safeParse({ items: [item], source_path: 'b.png' }).success, false);
+  assert.equal(AssetImportSchema.safeParse({ items: [item], destination: 'Content/B.flax' }).success, false);
+  assert.equal(AssetImportSchema.safeParse({ items: [item], operation_id: 'a'.repeat(32) }).success, false);
+  assert.equal(AssetImportSchema.safeParse({ items: [{ ...item, extra: 1 }] }).success, false);
+  assert.equal(AssetImportSchema.safeParse({}).success, false);
+  assert.equal(AssetImportSchema.safeParse({ source_path: 'a.png' }).success, false);
+  assert.equal(AssetImportSchema.safeParse({ ...item, collision_policy: 'replace' }).success, true);
+  assert.equal(AssetImportSchema.safeParse({ ...item, collision_policy: 'overwrite' }).success, false);
+  assert.ok(zodToJsonSchema(AssetImportSchema));
+});
+
+test('asset_import items run sequentially with their own operation ids and an aggregate status', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(path.join(f.sourceRoot, 'second.png'), Buffer.from([4, 5]));
+    const pending = handleAssetImport(AssetImportSchema.parse({
+      items: [
+        { source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Imported/One.flax' },
+        { source_path: path.join(f.sourceRoot, 'second.png'), destination: 'Content/Existing.flax' },
+        { source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Imported/Three.flax' },
+      ],
+      collision_policy: 'rename',
+      idempotency_key: 'batch',
+    }), f.ctx);
+    const seen: Array<Record<string, any>> = [];
+    for (let index = 0; index < 3; index += 1) {
+      const request = await nextRequest(f);
+      const params = JSON.parse(String(request.body.paramsJson));
+      seen.push(params);
+      if (index === 1) {
+        await reply(f, request, { ok: false, errorCode: 'IMPORT_FAILED', error: 'Importer rejected the source.' });
+      } else {
+        await reply(f, request, { ok: true, resultJson: JSON.stringify({ OperationId: params.OperationId, Kind: 'import', Phase: 'succeeded', Progress: 1, ResultPath: params.DestinationPath, ResultAssetId: ASSET_ID }) });
+      }
+      await requestGone(f, request.name);
+    }
+    assert.equal(new Set(seen.map(params => params.OperationId)).size, 3);
+    assert.deepEqual(seen.map(params => params.IdempotencyKey), ['batch:0', 'batch:1', 'batch:2']);
+    assert.equal(seen[1]!.DestinationPath, 'Content/Existing-1.flax');
+    const result = await pending;
+    assert.equal(envelope(result).ok, true);
+    const data = envelope(result).data;
+    assert.equal(data.status, 'partial');
+    assert.deepEqual(data.counts, { total: 3, succeeded: 2, pending: 0, failed: 1, skipped: 0 });
+    assert.deepEqual(data.items.map((entry: any) => [entry.index, entry.ok, entry.status]), [[0, true, 'succeeded'], [1, false, 'failed'], [2, true, 'succeeded']]);
+    assert.equal(data.items[1].error.code, 'IMPORT_FAILED');
+    assert.equal(data.items[1].operation_id, seen[1]!.OperationId);
+    assert.equal(data.items[2].destination.path, 'Content/Imported/Three.flax');
+    assert.doesNotMatch(JSON.stringify(data), /approved-source|SourcePath/);
+  } finally { await f.cleanup(); }
+});
+
+test('asset_import items: all-failed, duplicates, and stop-on-editor-error', async () => {
+  const f = await fixture();
+  try {
+    const dup = await handleAssetImport(AssetImportSchema.parse({
+      items: [
+        { source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Imported/A.flax' },
+        { source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/imported/a.flax' },
+      ],
+    }), f.ctx);
+    assert.equal(envelope(dup).error.code, 'VALIDATION_FAILED');
+    assert.deepEqual(await fs.readdir(f.requests), []);
+
+    // Every item fails locally (destination exists, collision_policy error): no bridge call, aggregate failed.
+    const failed = await handleAssetImport(AssetImportSchema.parse({
+      items: [{ source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Existing.flax' }],
+    }), f.ctx);
+    assert.equal(failed.isError, true);
+    assert.equal(envelope(failed).error.code, 'FILE_EXISTS');
+    assert.equal(envelope(failed).error.details.status, 'failed');
+    assert.equal(envelope(failed).error.details.items[0].error.code, 'FILE_EXISTS');
+
+    const pending = handleAssetImport(AssetImportSchema.parse({
+      items: [
+        { source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Imported/B.flax' },
+        { source_path: path.join(f.sourceRoot, 'texture.png'), destination: 'Content/Imported/C.flax' },
+      ],
+      dry_run: true,
+    }), f.ctx);
+    const request = await nextRequest(f);
+    await reply(f, request, { ok: false, errorCode: 'EDITOR_BUSY', error: 'Editor is compiling.' });
+    const aborted = envelope(await pending);
+    assert.equal(aborted.error.code, 'EDITOR_BUSY');
+    assert.deepEqual(aborted.error.details.items.map((entry: any) => entry.status), ['failed', 'skipped']);
   } finally { await f.cleanup(); }
 });

@@ -5,19 +5,20 @@ import { ProjectMeta, walkDir, safeReadFile, assertSafePath } from '../projectCo
 import { ToolDomainError, toolResult, toolError, ToolResponse } from '../errors.js';
 import crypto from 'node:crypto';
 import { inspectEditorBridge } from './serverStatus.js';
+import { managedToNative, nativeToManagedLenient, normalizeGuidInput } from '../guid.js';
 
 export const CreateActorSchema = z.object({
   type_name: z.string().describe('Flax TypeName (e.g. "FlaxEngine.EmptyActor", "FlaxEngine.StaticModel", "FlaxEngine.PointLight")'),
   name: z.string().describe('Actor display name'),
   scene: z.string().optional().describe('Scene file name. Defaults to DefaultScene.'),
-  parent_id: z.string().optional().describe('Parent actor ID (hex). Defaults to scene root.'),
+  parent_id: z.string().optional().describe('Parent actor ID (32 hex digits in the managed "N" form the Editor bridge prints; scene files store the native form and are matched/written accordingly). Defaults to scene root.'),
   position: z.object({ X: z.number(), Y: z.number(), Z: z.number() }).optional().describe('World position'),
   allow_offline_write: z.boolean().optional().default(false)
     .describe('Required explicit opt-in for legacy direct scene serialization when no Editor Bridge is connected.'),
 });
 
 export const ModifyActorSchema = z.object({
-  actor_id_or_name: z.string().describe('Actor ID (hex) or exact Name to find'),
+  actor_id_or_name: z.string().describe('Actor ID (32 hex digits, managed "N" form as printed by the bridge; native scene-file spelling is also accepted) or exact Name to find'),
   scene: z.string().optional().describe('Scene file name. Defaults to DefaultScene.'),
   name: z.string().optional().describe('New display name'),
   active: z.boolean().optional().describe('Set actor active/inactive'),
@@ -47,8 +48,24 @@ interface SceneFile {
   [key: string]: unknown;
 }
 
+/** New object ID in the engine's text (native) form, which is what scene files store. */
 function flaxGuid(): string {
   return crypto.randomBytes(16).toString('hex');
+}
+
+/**
+ * Tool inputs and outputs use the bridge's managed "N" form, scene files store the native form
+ * (see src/guid.ts). Resolve a caller-supplied actor ID to the ID spelled in the file, or null.
+ */
+function resolveSceneId(actors: SceneActor[], input: string): string | null {
+  const normalized = normalizeGuidInput(input);
+  if (!normalized) return null;
+  const candidates = [managedToNative(normalized), normalized];
+  for (const candidate of candidates) {
+    const hit = actors.find(a => typeof a.ID === 'string' && a.ID.toLowerCase() === candidate);
+    if (hit) return hit.ID;
+  }
+  return null;
 }
 
 async function loadScene(ctx: ProjectMeta, sceneArg?: string): Promise<{ path: string; data: SceneFile }> {
@@ -123,7 +140,12 @@ export async function handleCreateActor(
 
     // Find scene root ID (first entry with TypeName ending in .Scene)
     const sceneRoot = data.Data.find(a => a.TypeName.endsWith('.Scene'));
-    const parentId = args.parent_id ?? sceneRoot?.ID;
+    let parentId: string | undefined = sceneRoot?.ID;
+    if (args.parent_id !== undefined) {
+      // parent_id arrives in managed form (as the bridge prints it); the file holds native IDs.
+      const normalized = normalizeGuidInput(args.parent_id);
+      parentId = resolveSceneId(data.Data, args.parent_id) ?? (normalized ? managedToNative(normalized) : args.parent_id);
+    }
 
     if (!parentId) return toolError(new Error('Could not determine parent ID. Pass parent_id explicitly.'));
 
@@ -148,7 +170,7 @@ export async function handleCreateActor(
 
     const rel = path.relative(ctx.projectPath, scenePath);
     return toolResult(
-      `Created actor "${args.name}" (${args.type_name})\nID: ${newId}\nParent: ${parentId}\nScene: ${rel}\nBackup saved to ${path.basename(scenePath)}.bak`
+      `Created actor "${args.name}" (${args.type_name})\nID: ${nativeToManagedLenient(newId)}\nParent: ${nativeToManagedLenient(parentId)}\nScene: ${rel}\nBackup saved to ${path.basename(scenePath)}.bak`
     );
   } catch (e) {
     return toolError(e);
@@ -163,10 +185,9 @@ export async function handleModifyActor(
     await requireLegacyOfflineWrite(args.allow_offline_write, ctx);
     const { path: scenePath, data } = await loadScene(ctx, args.scene);
 
-    const actor = data.Data.find(a =>
-      a.ID === args.actor_id_or_name ||
-      a.Name === args.actor_id_or_name
-    );
+    const resolvedId = resolveSceneId(data.Data, args.actor_id_or_name);
+    const actor = (resolvedId ? data.Data.find(a => a.ID === resolvedId) : undefined)
+      ?? data.Data.find(a => a.Name === args.actor_id_or_name);
 
     if (!actor) {
       return toolError(new Error(`Actor "${args.actor_id_or_name}" not found in scene.`));
@@ -198,7 +219,7 @@ export async function handleModifyActor(
 
     const rel = path.relative(ctx.projectPath, scenePath);
     return toolResult(
-      `Modified actor "${actor.Name ?? actor.ID}" in ${rel}:\n${changes.map(c => `  • ${c}`).join('\n')}\nBackup saved to ${path.basename(scenePath)}.bak`
+      `Modified actor "${actor.Name ?? nativeToManagedLenient(actor.ID)}" in ${rel}:\n${changes.map(c => `  • ${c}`).join('\n')}\nBackup saved to ${path.basename(scenePath)}.bak`
     );
   } catch (e) {
     return toolError(e);

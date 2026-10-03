@@ -3,6 +3,7 @@ import { z } from 'zod';
 import path from 'node:path';
 import { ProjectMeta, safeReadFile } from '../projectContext.js';
 import { toolResult, toolError, ToolResponse } from '../errors.js';
+import { nativeToManagedLenient } from '../guid.js';
 
 export const ReadSettingsSchema = z.object({
   name: z.string().describe('Partial name of the settings file (e.g. "Input", "Physics", "Graphics")'),
@@ -46,7 +47,7 @@ export async function handleReadSettings(
     const parsed = JSON.parse(raw) as FlaxSettings;
     const header = [
       `File:        ${matches[0]}`,
-      `ID:          ${parsed.ID ?? ''}`,
+      `ID:          ${nativeToManagedLenient(parsed.ID ?? '')}`,
       `TypeName:    ${parsed.TypeName ?? ''}`,
       `EngineBuild: ${parsed.EngineBuild ?? ''}`,
       '',

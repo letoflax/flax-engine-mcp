@@ -315,6 +315,98 @@ namespace FlaxMcpCompileSmoke
             GC.KeepAlive(parameter);
         }
 
+        internal static void V34GraphEdit(
+            MaterialFunctionWindow materialFunction,
+            ParticleEmitterFunctionWindow particleFunction,
+            VisjectSurface surface,
+            VisjectSurfaceContext context,
+            Box fromBox,
+            Box toBox,
+            SurfaceNode node)
+        {
+            // Bridge v34 graph.list_archetypes / graph.edit / MaterialFunction
+            // windows (compile-proof only). Function windows are
+            // AssetEditorWindows with a public Surface and SurfaceAsset but are
+            // not IVisjectSurfaceWindow; they still implement IVisjectSurfaceOwner.
+            VisjectSurface functionSurface = materialFunction.Surface;
+            Asset functionAsset = materialFunction.SurfaceAsset;
+            FlaxEditor.Undo functionUndo = ((IVisjectSurfaceOwner)materialFunction).Undo;
+            AssetEditorWindow functionSaver = materialFunction;
+            functionSaver.Save();
+            VisjectSurface particleFunctionSurface = particleFunction.Surface;
+            Asset particleFunctionAsset = particleFunction.SurfaceAsset;
+            GC.KeepAlive(functionSurface);
+            GC.KeepAlive(functionAsset);
+            GC.KeepAlive(functionUndo);
+            GC.KeepAlive(particleFunctionSurface);
+            GC.KeepAlive(particleFunctionAsset);
+
+            // Archetype enumeration = the Editor menu filter.
+            List<GroupArchetype> groups = surface.NodeArchetypes;
+            foreach (GroupArchetype g in groups)
+            {
+                foreach (NodeArchetype arch in g.Archetypes)
+                {
+                    bool usable = (arch.Flags & NodeFlags.NoSpawnViaGUI) == 0 && surface.CanUseNodeType(g, arch);
+                    bool variable = (arch.Flags & NodeFlags.VariableValuesSize) != 0;
+                    string archTitle = arch.Title;
+                    string archDescription = arch.Description;
+                    object[] defaults = arch.DefaultValues;
+                    foreach (NodeElementArchetype element in arch.Elements ?? new NodeElementArchetype[0])
+                    {
+                        bool isBox = element.Type == NodeElementType.Input || element.Type == NodeElementType.Output;
+                        int elementBoxId = element.BoxID;
+                        string elementText = element.Text;
+                        FlaxEditor.Scripting.ScriptType connectionsType = element.ConnectionsType;
+                        Type clr = connectionsType.Type;
+                        string scriptTypeName = connectionsType.Name;
+                        GC.KeepAlive(isBox);
+                        GC.KeepAlive(elementBoxId);
+                        GC.KeepAlive(elementText);
+                        GC.KeepAlive(clr);
+                        GC.KeepAlive(scriptTypeName);
+                    }
+                    GC.KeepAlive(usable);
+                    GC.KeepAlive(variable);
+                    GC.KeepAlive(archTitle);
+                    GC.KeepAlive(archDescription);
+                    GC.KeepAlive(defaults);
+                }
+            }
+
+            // Context walk: OpenContext(ISurfaceContext) is what EditRule() calls.
+            ISurfaceContext rootContext = surface.RootContext.Context;
+            surface.OpenContext(rootContext);
+            SurfaceNode byId = surface.Context.FindNode(node.ID);
+            ISurfaceContext sub = byId as ISurfaceContext;
+            if (sub != null) surface.OpenContext(sub);
+            VisjectSurfaceContext parentContext = context.Parent;
+            ISurfaceContext contextOwner = context.Context;
+            GC.KeepAlive(parentContext);
+            GC.KeepAlive(contextOwner);
+
+            // Reflection targets of the transition rule path (read-only).
+            Type animationType = typeof(FlaxEditor.Surface.Archetypes.Animation);
+            Type stateBase = animationType.GetNestedType("StateMachineStateBase", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+            System.Reflection.FieldInfo transitions = stateBase == null ? null : stateBase.GetField("Transitions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+            System.Reflection.FieldInfo staticList = typeof(AnimGraphSurface).GetField("StateMachineGroupArchetypes", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+            GC.KeepAlive(transitions);
+            GC.KeepAlive(staticList);
+
+            // Editor-path edits: undo-aware Box.Connect (also the wire toggle),
+            // batched undo actions flushed by the public Update(0), undo stack depth.
+            bool canConnect = fromBox.CanConnectWith(toBox);
+            if (canConnect) fromBox.Connect(toBox);
+            surface.AddBatchedUndoAction(new ProbeUndo());
+            surface.Update(0.0f);
+            FlaxEditor.Undo undo = ((IVisjectSurfaceOwner)materialFunction).Undo;
+            int history = undo.UndoOperationsStack.HistoryCount;
+            context.MarkAsModified(true);
+            node.SetValues(new object[] { new Float4(0, 0, 0, 1), Guid.Empty });
+            node.Location = new Float2(1, 2);
+            GC.KeepAlive(history);
+        }
+
         private sealed class ProbeUndo : IUndoAction
         {
             public string ActionString { get { return "Probe"; } }

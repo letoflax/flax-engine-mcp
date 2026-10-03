@@ -99,9 +99,12 @@ import {
   AnimgraphAddStateSchema,
   AnimgraphAddTransitionSchema,
   AnimgraphSetStateClipSchema,
+  AnimgraphSetTransitionSchema,
   GraphAddParameterSchema,
   GraphDisconnectSchema,
+  GraphEditSchema,
   GraphInspectSchema,
+  GraphListArchetypesSchema,
   GraphMoveNodeSchema,
   GraphRemoveNodeSchema,
   GraphSetDefaultParameterSchema,
@@ -111,9 +114,12 @@ import {
   handleAnimgraphAddState,
   handleAnimgraphAddTransition,
   handleAnimgraphSetStateClip,
+  handleAnimgraphSetTransition,
   handleGraphAddParameter,
   handleGraphDisconnect,
+  handleGraphEdit,
   handleGraphInspect,
+  handleGraphListArchetypes,
   handleGraphMoveNode,
   handleGraphRemoveNode,
   handleGraphSetDefaultParameter,
@@ -301,6 +307,14 @@ import {
   handleSettingsSetLayerName,
 } from './settingsLive.js';
 import {
+  EditorLaunchSchema,
+  EditorOptionsSchema,
+  EditorQuitSchema,
+  handleEditorLaunch,
+  handleEditorOptions,
+  handleEditorQuit,
+} from './editorLifecycle.js';
+import {
   AssetCreateSchema,
   ContentCreateFolderSchema,
   SceneCloseSchema,
@@ -310,6 +324,15 @@ import {
   handleSceneClose,
   handleSceneCreate,
 } from './contentLifecycleLive.js';
+
+import {
+  GameLaunchSchema,
+  GameListInstancesSchema,
+  GameStopSchema,
+  handleGameLaunch,
+  handleGameListInstances,
+  handleGameStop,
+} from './gameRuntime.js';
 
 export interface ToolDefinition {
   name: string;
@@ -492,11 +515,20 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   scene_close: SceneCloseSchema,
   content_create_folder: ContentCreateFolderSchema,
   asset_create: AssetCreateSchema,
+  editor_quit: EditorQuitSchema,
+  editor_launch: EditorLaunchSchema,
+  editor_options: EditorOptionsSchema,
+  graph_list_archetypes: GraphListArchetypesSchema,
+  graph_edit: GraphEditSchema,
+  animgraph_set_transition: AnimgraphSetTransitionSchema,
+  game_launch: GameLaunchSchema,
+  game_list_instances: GameListInstancesSchema,
+  game_stop: GameStopSchema,
 };
 
 const TOOL_OUTPUT_SCHEMA = zodToJsonSchema(z.object({
   operationId: z.string().uuid(),
-  mode: z.enum(['offline', 'editor-connected']),
+  mode: z.enum(['offline', 'editor-connected', 'game-connected']),
   ok: z.boolean(),
   data: z.unknown().optional(),
   error: z.object({
@@ -602,6 +634,13 @@ const WRITE_TOOL_NAMES = new Set([
   'scene_close',
   'content_create_folder',
   'asset_create',
+  'editor_quit',
+  'editor_launch',
+  'editor_options',
+  'graph_edit',
+  'animgraph_set_transition',
+  'game_launch',
+  'game_stop',
 ]);
 
 function annotationsFor(name: string): ToolAnnotations {
@@ -635,9 +674,9 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'editor_get_status',
-      description: 'Reports whether a matching, live, recently heartbeating Flax Editor Bridge is connected.',
+      description: 'Reports whether a matching, live, recently heartbeating Flax Editor Bridge is connected. With wait_ready:true it polls (with progress notifications) until the bridge answers and is idle: not compiling, reloading scripts, importing or switching scenes, optionally with a scene loaded (require_scene) and a minimum bridge version (min_bridge_version); heartbeat gaps and token changes during a script reload are waited out. On timeout_ms (default 120000, max 300000) it returns TIMEOUT with the last observed state. Readiness fields need bridge v34.',
       inputSchema: zodToJsonSchema(EditorGetStatusSchema),
-      handler: (a, c) => handleEditorGetStatus(a, c),
+      handler: (a, c) => handleEditorGetStatus(a as Parameters<typeof handleEditorGetStatus>[0], c),
     },
     {
       name: 'server_get_health',
@@ -665,13 +704,13 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'get_editor_bridge_installation',
-      description: 'Reports bundled and installed Editor Bridge versions and hashes without exposing full filesystem paths.',
+      description: 'Reports bundled and installed Editor Bridge versions and hashes without exposing full filesystem paths, and the same for the runtime (cooked game) bridge file FlaxMcpRuntimeBridge.cs under runtime (bridge v35; runtime.bundled.available is false when the package does not carry it).',
       inputSchema: zodToJsonSchema(GetEditorBridgeInstallationSchema),
       handler: (a, c) => handleGetEditorBridgeInstallation(a as Parameters<typeof handleGetEditorBridgeInstallation>[0], c),
     },
     {
       name: 'install_editor_bridge',
-      description: 'Safely previews or installs the bundled Editor Bridge in a detected Flax game module with replacement guards.',
+      description: 'Safely previews or installs the bundled Editor Bridge in a detected Flax game module with replacement guards. include_runtime:true also installs the runtime (cooked game) bridge FlaxMcpRuntimeBridge.cs into the same MCP/ folder, with the same guards (runtime_expected_hash or force to replace a modified file; nothing is written when either file is refused). Install it before cooking a Development build.',
       inputSchema: zodToJsonSchema(InstallEditorBridgeSchema),
       handler: (a, c) => handleInstallEditorBridge(a as Parameters<typeof handleInstallEditorBridge>[0], c),
     },
@@ -695,7 +734,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'scene_open',
-      description: 'Opens one Content scene asset by GUID or project-relative path through the Flax Editor. The load is async: Phase opening means poll scene_list_loaded, already_loaded is a no-op success. Refuses play mode, compiling scripts, active edit leases, and edited scenes unless allow_dirty_scenes is explicit. Requires bridge v25.',
+      description: 'Opens one Content scene asset by GUID or project-relative path through the Flax Editor. The load is async: Phase opening means poll scene_list_loaded, already_loaded is a no-op success. Refuses play mode, compiling scripts, active edit leases, and edited scenes unless allow_dirty_scenes is explicit. Requires bridge v25. Bridge v34 adds replace (make this the only loaded scene), reload (re-read the scene file from disk, because a plain open of a loaded scene is a no-op and a scene unloaded and reopened can still come from the Content cache), and discard_unsaved (drop edits instead of refusing with DIRTY_SCENE). Both are async: Phase replacing or reloading means poll scene_list_loaded. Warning: while a scene is open the Editor autosave can overwrite edits made to its file from outside, so change the file only while the scene is closed or about to be reloaded (reload reports disk_sha256 of the file it read).',
       inputSchema: zodToJsonSchema(SceneOpenSchema),
       handler: (a, c) => handleSceneOpen(a as Parameters<typeof handleSceneOpen>[0], c),
     },
@@ -731,7 +770,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'actor_set_property',
-      description: 'Sets one editor-visible member of a live actor (anything the Flax property grid shows: collider, rigid body, light, camera, audio source, model and other component settings) through the Editor property wrapper with editor undo and a dry_run preview. Accepts Member or Type.Member. Asset references are a GUID, a project Content/ path, or engine content as engine:<path> (for example engine:Editor/Primitives/Cube); actor references are GUIDs. Requires bridge v33; the aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled work from bridge v28. Name, active, transform, and layer stay with actor_update.',
+      description: 'Sets one editor-visible member of a live actor (anything the Flax property grid shows: collider, rigid body, light, camera, audio source, model and other component settings) through the Editor property wrapper with editor undo and a dry_run preview. Accepts Member or Type.Member, or (bridge v34) a nested path of 1-4 member names (path, with property omitted) that writes a member inside a user struct or class like the property grid does. Asset references are a GUID, a project Content/ path, or engine content as engine:<path> (for example engine:Editor/Primitives/Cube); actor references are GUIDs. Requires bridge v33; the aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled work from bridge v28. Name, active, transform, and layer stay with actor_update.',
       inputSchema: zodToJsonSchema(ActorSetPropertySchema),
       handler: (a, c) => handleActorSetProperty(a as Parameters<typeof handleActorSetProperty>[0], c),
     },
@@ -767,7 +806,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'script_instance_get',
-      description: 'Reads a live script instance and its enabled state. Opt-in include_values returns a bounded read-only projection of whitelisted public field values (max 64, unsupported types are null with a reason). Arbitrary serialized script writes are not exposed.',
+      description: 'Reads a live script instance and its enabled state. Opt-in include_values returns a bounded read-only projection of public field values (max 64): primitives, enums, vectors, colors, asset references (GUID plus type name), and from bridge v34 nested user struct and class values up to two levels deep (Value.Kind struct or object with Fields); collections and other unsupported types are null with a reason. Arbitrary serialized script writes are not exposed.',
       inputSchema: zodToJsonSchema(ScriptInstanceGetSchema),
       handler: (a, c) => handleScriptInstanceGet(a as Parameters<typeof handleScriptInstanceGet>[0], c),
     },
@@ -779,7 +818,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'script_instance_set_value',
-      description: 'Writes one whitelisted public script field (bool/int/float/string/enum/Guid/Vector2-4/Color) through the Editor property-grid wrapper with editor undo; Guid/Vector/Color values are strict strings. Supports dry_run preview with would_change and before/after. Requires bridge v28.',
+      description: 'Writes one editor-visible member of a live script through the Editor property-grid wrapper with one editor undo record. Bridge v34 takes the actor_set_property pipeline: the member must be one the property grid shows, and values use the actor_set_property shapes (bool, number, enum names, vectors, quaternion, color, GUID, and asset references as a GUID, Content/ path, or engine:<path>; "" clears). Pass path (1-4 names, with field omitted) to write a member nested in a user struct or class. Supports dry_run preview with would_change, before/after, and the resolved path. Bridges v28-v33 accept only bool/int/float/string/enum/Guid/Vector2-4/Color fields. Requires bridge v28; path requires v34.',
       inputSchema: zodToJsonSchema(ScriptInstanceSetValueSchema),
       handler: (a, c) => handleScriptInstanceSetValue(a as Parameters<typeof handleScriptInstanceSetValue>[0], c),
     },
@@ -901,7 +940,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     { name: 'physics_raycast', description: 'Runs one bounded read-only Flax physics raycast with a caller-supplied layer mask.', inputSchema: zodToJsonSchema(PhysicsRaycastSchema), handler: (a, c) => handlePhysicsRaycast(a as Parameters<typeof handlePhysicsRaycast>[0], c) },
     { name: 'physics_get_layer_matrix', description: 'Lists public layer names and truthfully reports that Flax 1.12 has no reviewed managed collision-matrix reader.', inputSchema: zodToJsonSchema(PhysicsGetLayerMatrixSchema), handler: (a, c) => handlePhysicsGetLayerMatrix(a as Parameters<typeof handlePhysicsGetLayerMatrix>[0], c) },
     { name: 'physics_find_overlaps', description: 'Runs one bounded read-only Physics.OverlapSphere query and returns loaded collider metadata only.', inputSchema: zodToJsonSchema(PhysicsFindOverlapsSchema), handler: (a, c) => handlePhysicsFindOverlaps(a as Parameters<typeof handlePhysicsFindOverlaps>[0], c) },
-    { name: 'navigation_build', description: 'Starts a Flax navmesh build for one scene (default first loaded) with optional bounds and polls IsBuildingNavMesh/NavMeshBuildingProgress until completion or timeout_ms; a timeout reports TIMEOUT while the build continues in the background (no cancel API). Requires bridge v31.', inputSchema: zodToJsonSchema(NavigationBuildSchema), handler: (a, c) => handleNavigationBuild(a as Parameters<typeof handleNavigationBuild>[0], c) },
+    { name: 'navigation_build', description: 'Starts a Flax navmesh build now (start delay 0) for one scene (default first loaded) with optional bounds, then waits up to timeout_ms for the build to be observed starting and finishing (IsBuildingNavMesh true then false, or new navmesh data). Reports completed only for an observed build; if the budget runs out while the build is still running or has not started yet it returns TIMEOUT with phase running or queued while the build continues in the background (no cancel API). Works in a headless Editor (CPU build; the engine saves the navmesh data itself); refused in play mode and while scripts compile. Requires bridge v31.', inputSchema: zodToJsonSchema(NavigationBuildSchema), handler: (a, c) => handleNavigationBuild(a as Parameters<typeof handleNavigationBuild>[0], c) },
     { name: 'navigation_get_status', description: 'Reads public global Flax navigation build state and normalized progress without starting a build.', inputSchema: zodToJsonSchema(NavigationGetStatusSchema), handler: (a, c) => handleNavigationGetStatus(a as Parameters<typeof handleNavigationGetStatus>[0], c) },
     { name: 'navigation_validate_agents', description: 'Lists bounded NavMesh agent settings in loaded scenes; dynamic agent mutation is not exposed.', inputSchema: zodToJsonSchema(NavigationValidateAgentsSchema), handler: (a, c) => handleNavigationValidateAgents(a as Parameters<typeof handleNavigationValidateAgents>[0], c) },
     { name: 'navigation_query_path', description: 'Runs one bounded read-only Navigation.FindPath query against the active global navmesh.', inputSchema: zodToJsonSchema(NavigationQueryPathSchema), handler: (a, c) => handleNavigationQueryPath(a as Parameters<typeof handleNavigationQueryPath>[0], c) },
@@ -958,7 +997,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'play_set_time_scale',
-      description: 'Sets the play-mode time scale (0-10, 0 freezes for frame-step debugging) via FlaxEngine.Time.TimeScale. Requires play mode and bridge v23.',
+      description: 'Sets the play-mode time scale (0-10, 0 freezes for frame-step debugging) via FlaxEngine.Time.TimeScale. Requires play mode and bridge v23. With the optional instance parameter it targets a running cooked game instance with the runtime bridge (bridge v35; see game_list_instances) instead of the Editor: no play mode or Editor needed.',
       inputSchema: zodToJsonSchema(PlaySetTimeScaleSchema),
       handler: (a, c) => handlePlaySetTimeScale(a as Parameters<typeof handlePlaySetTimeScale>[0], c),
     },
@@ -988,25 +1027,25 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'log_get_recent',
-      description: 'Reads bounded, cursor-based log entries from the active editor session.',
+      description: 'Reads bounded, cursor-based log entries from the active editor session. With the optional instance parameter it targets a running cooked game instance with the runtime bridge (bridge v35; see game_list_instances) instead of the Editor: no play mode or Editor needed.',
       inputSchema: zodToJsonSchema(LogGetRecentSchema),
       handler: (a, c) => handleLogGetRecent(a as Parameters<typeof handleLogGetRecent>[0], c),
     },
     {
       name: 'log_search',
-      description: 'Searches bounded live editor logs by safe substring or regular expression.',
+      description: 'Searches bounded live editor logs by safe substring or regular expression. With the optional instance parameter it targets a running cooked game instance with the runtime bridge (bridge v35; see game_list_instances) instead of the Editor: no play mode or Editor needed.',
       inputSchema: zodToJsonSchema(LogSearchSchema),
       handler: (a, c) => handleLogSearch(a as Parameters<typeof handleLogSearch>[0], c),
     },
     {
       name: 'log_get_runtime_errors',
-      description: 'Returns bounded error, fatal, and exception logs for a play session.',
+      description: 'Returns bounded error, fatal, and exception logs for a play session. With the optional instance parameter it targets a running cooked game instance with the runtime bridge (bridge v35; see game_list_instances) instead of the Editor: no play mode or Editor needed.',
       inputSchema: zodToJsonSchema(LogGetRuntimeErrorsSchema),
       handler: (a, c) => handleLogGetRuntimeErrors(a as Parameters<typeof handleLogGetRuntimeErrors>[0], c),
     },
     {
       name: 'viewport_capture',
-      description: 'Captures a bounded viewport image (game requires play mode; editor works outside play mode) into the bridge cache and returns a resource URI.',
+      description: 'Captures a bounded viewport image (game requires play mode; editor works outside play mode) into the bridge cache and returns a resource URI. With the optional instance parameter (only viewport game) it captures from a running cooked game instance (bridge v35) and returns the same flax://capture resource; the game window size is used and no size can be chosen.',
       inputSchema: zodToJsonSchema(ViewportCaptureSchema),
       handler: (a, c) => handleViewportCapture(a as Parameters<typeof handleViewportCapture>[0], c),
     },
@@ -1018,13 +1057,13 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'runtime_inspect_actor',
-      description: 'Reads an allowlisted, depth-bounded live actor snapshot while play mode is active.',
+      description: 'Reads an allowlisted, depth-bounded live actor snapshot while play mode is active. With the optional instance parameter it targets a running cooked game instance with the runtime bridge (bridge v35; see game_list_instances) instead of the Editor: no play mode or Editor needed.',
       inputSchema: zodToJsonSchema(RuntimeInspectActorSchema),
       handler: (a, c) => handleRuntimeInspectActor(a as Parameters<typeof handleRuntimeInspectActor>[0], c),
     },
     {
       name: 'perf_get_snapshot',
-      description: 'Reads one instantaneous engine performance snapshot (FPS, frame time, draw calls, triangles, managed memory, actor count, GPU adapter) from the connected editor. Works outside play mode (editor viewport rate) and in play mode; GPU fields are null when headless. Requires bridge v27.',
+      description: 'Reads one instantaneous engine performance snapshot (FPS, frame time, draw calls, triangles, managed memory, actor count, GPU adapter) from the connected editor. Works outside play mode (editor viewport rate) and in play mode; GPU fields are null when headless. Requires bridge v27. With the optional instance parameter it targets a running cooked game instance with the runtime bridge (bridge v35; see game_list_instances) instead of the Editor: no play mode or Editor needed.',
       inputSchema: zodToJsonSchema(PerfGetSnapshotSchema),
       handler: (a, c) => handlePerfGetSnapshot(a as Parameters<typeof handlePerfGetSnapshot>[0], c),
     },
@@ -1152,7 +1191,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'reimport_asset',
-      description: 'Deprecated alias of asset_reimport. With a connected bridge v9+ it reimports a Content asset from its existing importer metadata (same dry_run/wait/operation_id behaviour as asset_reimport; type changes are refused). Without one it only reports the current asset type and the manual Editor steps. It never launches an editor process; open_editor is ignored.',
+      description: 'Deprecated alias of asset_reimport. With a connected bridge v9+ it reimports a Content asset from its existing importer metadata (same dry_run/wait/operation_id behaviour as asset_reimport; type changes are refused). Without one it only reports the current asset type and the manual Editor steps. It never launches an editor process (only editor_launch can, and only when the server runs with --flax-editor); open_editor is ignored.',
       inputSchema: zodToJsonSchema(ReimportAssetSchema),
       handler: (a, c) => handleReimportAsset(a as Parameters<typeof handleReimportAsset>[0], c),
     },
@@ -1190,7 +1229,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'asset_import',
-      description: 'Imports one allowlisted external source into Content/ through Flax Editor. No roots means denied; destination is a .flax file and never overwrites by default. Requires bridge v9.',
+      description: 'Imports allowlisted external sources into Content/ through Flax Editor: one source_path/destination pair, or items[] (1-32, imported sequentially with per-item results and an aggregate status). No --asset-import-root means denied; destination is a .flax file and never overwrites by default (collision_policy error|rename; replace needs confirm:true and bridge v34). A timed-out start reports operation_id so asset_import_status can be polled. Requires bridge v9.',
       inputSchema: zodToJsonSchema(AssetImportSchema),
       handler: (a, c) => handleAssetImport(a as Parameters<typeof handleAssetImport>[0], c),
     },
@@ -1343,7 +1382,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'graph_inspect',
-      description: 'Reads a window-backed Visject node graph (AnimationGraph, Material, or ParticleEmitter) as nodes, boxes, and parameters without mutating it. Requires bridge v16.',
+      description: 'Reads a window-backed Visject node graph (AnimationGraph, Material, ParticleEmitter, or with bridge v34 MaterialFunction/ParticleEmitterFunction) as nodes, boxes, and parameters without mutating it. Requires bridge v16.',
       inputSchema: zodToJsonSchema(GraphInspectSchema),
       handler: (a, c) => handleGraphInspect(a as Parameters<typeof handleGraphInspect>[0], c),
     },
@@ -1517,13 +1556,13 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     // ── Bridge v33: play-mode script drive ────────────────────────────────────
     {
       name: 'runtime_set_script_value',
-      description: 'During play mode, writes one editor-visible field or property of a game script (members declared in game code only, never engine members). Values use the actor_set_property shapes, including engine:<path> assets, brushes, and fonts. No undo is recorded and the value is discarded when play stops. Use it to drive gameplay from tests, since Flax 1.12 has no managed key or mouse injection. Requires bridge v33.',
+      description: 'During play mode, writes one editor-visible field or property of a game script (members declared in game code only, never engine members), or with path (1-4 names, member omitted, bridge v34) a member nested in a user struct or class. Values use the actor_set_property shapes, including engine:<path> assets, brushes, and fonts. No undo is recorded and the value is discarded when play stops. Use it to drive gameplay from tests, since Flax 1.12 has no managed key or mouse injection. Requires bridge v33. With the optional instance parameter it targets a running cooked game instance with the runtime bridge (bridge v35; see game_list_instances) instead of the Editor: no play mode or Editor needed.',
       inputSchema: zodToJsonSchema(RuntimeSetScriptValueSchema),
       handler: (a, c) => handleRuntimeSetScriptValue(a as Parameters<typeof handleRuntimeSetScriptValue>[0], c),
     },
     {
       name: 'runtime_invoke_script_method',
-      description: 'During play mode, invokes one public, non-generic instance method declared in game code on a live script, with up to four scalar arguments, and returns its result. An exception thrown by the game method is reported as data (Threw, ExceptionType), not as a tool error. Requires bridge v33.',
+      description: 'During play mode, invokes one public, non-generic instance method declared in game code on a live script, with up to four scalar arguments, and returns its result. An exception thrown by the game method is reported as data (Threw, ExceptionType), not as a tool error. Requires bridge v33. With the optional instance parameter it targets a running cooked game instance with the runtime bridge (bridge v35; see game_list_instances) instead of the Editor: no play mode or Editor needed.',
       inputSchema: zodToJsonSchema(RuntimeInvokeScriptMethodSchema),
       handler: (a, c) => handleRuntimeInvokeScriptMethod(a as Parameters<typeof handleRuntimeInvokeScriptMethod>[0], c),
     },
@@ -1587,9 +1626,67 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'asset_create',
-      description: 'Creates one new empty asset the way the Editor Content window does: a binary .flax asset by kind (Material, ParticleSystem, AnimationGraph, BehaviorTree, ...) or a .json data asset of a given class (kind JsonAsset plus type_name, for example FlaxEngine.PhysicalMaterial). Never overwrites. dry_run previews; a real write needs confirm:true and has no undo. Requires bridge v33.',
+      description: 'Creates one new asset the way the Editor Content window does: a binary .flax asset by kind (Material, ParticleSystem, AnimationGraph, BehaviorTree, GameplayGlobals, ...) or a .json data asset of a given class (kind JsonAsset plus type_name, for example FlaxEngine.PhysicalMaterial). Kind GameplayGlobals accepts variables (at most 64 of float, int, bool, Float2, Float3, Float4, Color with string values) written as the asset default values. Never overwrites. dry_run previews; a real write needs confirm:true and has no undo. Requires bridge v33; kind GameplayGlobals requires bridge v34.',
       inputSchema: zodToJsonSchema(AssetCreateSchema),
       handler: (a, c) => handleAssetCreate(a as Parameters<typeof handleAssetCreate>[0], c),
+    },
+
+    // ── Bridge v34: editor lifecycle/options, graph archetypes/edit, transition settings ──
+    {
+      name: 'editor_quit',
+      description: 'Quits the connected Flax Editor through the Editor exit path. unsaved chooses what happens to scenes and asset windows with unsaved edits: refuse (default), save, or discard. Quitting during play mode is refused unless stop_play is true. Refuses with EDITOR_BUSY while scripts compile or reload, content imports, or a game build runs. A save/discard choice is reported back (savedSceneIds, discardedSceneIds, discardedAssetWindows). The bridge answers first and exits on a later frame; the tool then waits up to timeout_ms for the Editor process to exit (exited:false means it was still running). Requires bridge v34.',
+      inputSchema: zodToJsonSchema(EditorQuitSchema),
+      handler: (a, c) => handleEditorQuit(a as Parameters<typeof handleEditorQuit>[0], c),
+    },
+    {
+      name: 'editor_launch',
+      description: 'Starts a Flax Editor process for this project, optionally headless, and can wait until its bridge reports ready. Disabled unless the server runs with --flax-editor <FlaxEditor.exe>. Passes only -project <this project> plus -headless/-skipcompile when requested, refuses when this project already has a live bridge heartbeat or a FlaxEditor process with -project for it, and returns the pid. wait_ready (default true) polls the bridge heartbeat until it is live (timeout_ms, default 120000, at most 300000). Needs no bridge to start; the readiness wait needs a bridge that writes a heartbeat (bridge v34).',
+      inputSchema: zodToJsonSchema(EditorLaunchSchema),
+      handler: (a, c) => handleEditorLaunch(a as Parameters<typeof handleEditorLaunch>[0], c),
+    },
+    {
+      name: 'editor_options',
+      description: 'Reads, or with set changes, one of two user-global Flax Editor options: AutoReloadScriptsOnMainWindowFocus or ForceScriptCompilationOnStartup. The options are stored per user, not per project. Without set it only reads. A change is a dry run by default and needs confirm:true to apply; it is refused with EDITOR_BUSY while the Editor Options window is open. The file is shared by every Editor of this user and other running Editors only pick a change up after a restart. With AutoReloadScriptsOnMainWindowFocus off, play mode uses the last compiled assemblies (run code_compile first). Requires bridge v34.',
+      inputSchema: zodToJsonSchema(EditorOptionsSchema),
+      handler: (a, c) => handleEditorOptions(a as Parameters<typeof handleEditorOptions>[0], c),
+    },
+    {
+      name: 'graph_list_archetypes',
+      description: 'Lists the node archetypes (group_id, type_id, title, description, input/output boxes, default value kinds) the Visject editor menu offers in one context of a graph asset (AnimationGraph, Material, ParticleEmitter, MaterialFunction, ParticleEmitterFunction), plus the nodes already in that context. context_path walks nested contexts like graph_inspect sub-contexts (decimal node ids) and accepts "transition:<fromStateNodeId>:<toStateNodeId>" for a state-machine transition rule graph; a state machine context offers only State and Any, a transition context adds Transition Source State Anim. Read-only; the ids are the ones graph_edit add_node accepts. Requires bridge v34.',
+      inputSchema: zodToJsonSchema(GraphListArchetypesSchema),
+      handler: (a, c) => handleGraphListArchetypes(a as Parameters<typeof handleGraphListArchetypes>[0], c),
+    },
+    {
+      name: 'graph_edit',
+      description: 'Applies 1-64 ordered Visject graph edits (add_node, connect, disconnect, set_values, move, remove) as one batch via the window save path, in any context: each op has its own context_path (nested node ids, or "transition:<from>:<to>" for a transition rule graph). add_node binds a "$ref" that later ops use as a node id and is checked against the archetypes graph_list_archetypes lists. Connecting two State nodes in a state machine creates a transition. set_values takes {index, value} entries; asset slots (Animation clip, Multi Blend point clips) take {asset_id}, Get Parameter takes the graph parameter id the same way. dry_run (default true) validates the whole batch without touching the window; a real run needs confirm:true, saves once, and if an op fails rolls the applied ops back and saves nothing. Saving cannot be undone. Requires bridge v34.',
+      inputSchema: zodToJsonSchema(GraphEditSchema),
+      handler: (a, c) => handleGraphEdit(a as Parameters<typeof handleGraphEdit>[0], c),
+    },
+    {
+      name: 'animgraph_set_transition',
+      description: 'Sets settings on one existing AnimationGraph state-machine transition, selected by its source and destination state node ids (blend duration and mode, enabled, solo, default rule, interruption flags, order), through the Editor transition property setters (one undo entry) and the window save path, and reports before/after values. The transition must already exist (animgraph_add_transition); build its rule graph with graph_edit. Reaches Editor-internal transition members by reflection and answers UNSUPPORTED_FLAX_VERSION naming any member this Flax version lacks. Dry-run by default; confirm:true is required for a real write and saving cannot be undone. Requires bridge v34.',
+      inputSchema: zodToJsonSchema(AnimgraphSetTransitionSchema),
+      handler: (a, c) => handleAnimgraphSetTransition(a as Parameters<typeof handleAnimgraphSetTransition>[0], c),
+    },
+
+    // ── Bridge v35: cooked game instances (runtime bridge) ──────────────────────
+    {
+      name: 'game_launch',
+      description: 'Starts a cooked game that runs the runtime bridge (bridge/FlaxMcpRuntimeBridge.cs, installed with install_editor_bridge include_runtime before cooking a Development build) as a named instance, and can wait until its bridge answers status. Disabled unless the server runs with --allow-game-launch. exe is relative to the project root and must resolve to a file inside it (on Windows an .exe); the only switches passed are -mcpdir and -mcpinstance (set by the server) plus up to 32 validated -name[=value] args. Refuses when the instance name already has a live heartbeat or is still starting. Several instances can run at once under different names (default g<n>). The game is left running when the server exits; stop it with game_stop. Through the flax-mcp CLI the launch works but game_stop force cannot kill it later (the launched-pid record is per process).',
+      inputSchema: zodToJsonSchema(GameLaunchSchema),
+      handler: (a, c) => handleGameLaunch(a as Parameters<typeof handleGameLaunch>[0], c),
+    },
+    {
+      name: 'game_list_instances',
+      description: 'Lists the cooked game instances under the project runtime cache with their heartbeat state (live or stale, with the reason), process id, bridge version, protocol version, product name, engine version, heartbeat age, and whether this server launched them. Reads heartbeat files only; reports no filesystem paths. Other tools take the instance name in their instance parameter.',
+      inputSchema: zodToJsonSchema(GameListInstancesSchema),
+      handler: (a, c) => handleGameListInstances(a as Parameters<typeof handleGameListInstances>[0], c),
+    },
+    {
+      name: 'game_stop',
+      description: 'Stops a running game instance: sends game.quit (the game answers first and exits on a later frame), then waits up to timeout_ms (default 15000) for its process to exit. force:true additionally kills the process when the graceful quit did not finish, but only a process this server launched with game_launch; for any other instance force is refused with PERMISSION_DENIED and nothing is stopped. An instance that is not running reports GAME_NOT_CONNECTED.',
+      inputSchema: zodToJsonSchema(GameStopSchema),
+      handler: (a, c) => handleGameStop(a as Parameters<typeof handleGameStop>[0], c),
     },
   ];
 

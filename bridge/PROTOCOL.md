@@ -1,21 +1,26 @@
-# Flax MCP Editor Bridge protocol (bridge v33 / protocol v1)
+# Flax MCP Editor Bridge protocol (Editor bridge v34, runtime bridge v35 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
 
 This document is cumulative. The opening sections describe the v5 to v7 baseline;
 each later `## Bridge vNN` section records what that version added or superseded,
-and the "Bridge v33" section at the end describes the newest bridge. Sections are
+and the "Bridge v34" section describes the newest Editor bridge. The last
+section, "Runtime bridge (v35)", describes the separate bridge file for cooked
+games (server 1.13.0, 178 tools). Sections are
 not in strict version order (after v14 the file continues with v27 down to v16,
-then v28 to v33), so when two statements disagree, the one from the higher bridge
-version wins. The protocol version stays 1: every addition since v5 is optional or
+then v28 to v34), so when two statements disagree, the one from the higher bridge
+version wins (for the Editor bridge; the runtime bridge is a separate file and
+only the "Runtime bridge (v35)" section describes it). The protocol version stays 1: every addition since v5 is optional or
 additive.
 
 At startup the bridge creates `requests/`, `processing/`, and `responses/` (plus
 `captures/` and `operations/`), then writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 33, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 34, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
+  Since v34 only one Editor per project owns this directory; see "Bridge directory
+  ownership (v34)".
 - `token`: a fresh 256-bit base64url session token. The bridge requires it on every
   request and deletes it on normal shutdown. It is marked hidden where the host
   filesystem supports that attribute; callers must treat `Cache/MCP` as private.
@@ -291,7 +296,8 @@ optional `ModelImportType` (`Model`, `SkinnedModel`, `Animation`, or `Prefab`;
 added with bridge v16) that selects the model importer type for model sources.
 `DestinationPath` is strictly project-relative `Content/.../*.flax`; absolute
 paths, traversal, and a Content parent resolving through a junction are rejected.
-`CollisionPolicy` is `error` (default) or bounded `rename`, never overwrite.
+`CollisionPolicy` is `error` (default), bounded `rename`, or (bridge v34)
+`replace`; see "Import changes (v34)". `error` and `rename` never overwrite.
 The verified direct API is `FlaxEditor.Editor.Import(inputPath, outputPath)`;
 the bridge never substitutes `File.Copy`, opens an import dialog, or launches a
 process. Flax 1.12 returns this call synchronously, so a successful operation is
@@ -315,8 +321,10 @@ play, compiling/reloading scripts, or already importing content. They are UI-fre
 and can be requested from a headed or headless Editor, but actual headless import
 success remains dependent on the installed Flax importer backend; callers should
 validate that environment. Operation records contain only kind, phase, bounded
-progress, timestamps, Content-relative result path/GUID, collision rename flag,
-and bounded error text--never a source path or configured root. They expire after
+progress, timestamps, the Content-relative result path, the result asset ID
+(`ResultAssetId`, set on `asset.import_start` success since bridge v34; before
+v34 it was always null), the collision `Renamed` and `Replaced` flags, and
+bounded error text--never a source path or configured root. They expire after
 ten minutes and are capped at 512. Reusing an operation ID with a different
 request fingerprint or an idempotency key with a different request yields
 `IDEMPOTENCY_KEY_REUSED`; expired/unknown/mismatched status IDs yield
@@ -910,7 +918,7 @@ separate from the global `edit.undo`.
 
 | Method | Lives on | Node tool | Notes |
 |---|---|---|---|
-| `mm.tuning` (`Op: "preset"`) | local dev bridge | `mm_apply_preset` | Missing method answers `METHOD_NOT_ALLOWED` → shared mapper reports `UNSUPPORTED_FLAX_VERSION` with capability hint. The `mm_tuning` tool (tuning reads and the database rebuild ops of the same method) was removed from the server: it is specific to one game's motion-matching system, not a general engine operation. |
+| `mm.tuning` (`Op: "preset"`) | local dev bridge | `mm_apply_preset` | Missing method answers `METHOD_NOT_FOUND` (`METHOD_NOT_ALLOWED` on bridges before v34) → shared mapper reports `UNSUPPORTED_FLAX_VERSION` with capability hint. The `mm_tuning` tool (tuning reads and the database rebuild ops of the same method) was removed from the server: it is specific to one game's motion-matching system, not a general engine operation. |
 
 Capability checks must use the `*Supported` status flags (e.g.
 `GraphSetModelSupported`, `ScriptFieldValuesReadSupported`,
@@ -920,7 +928,9 @@ while canonical v21 means `graph.set_model` — the same number named two
 different capability sets. Canonical v25+ ships `scene.open` (`scene_open`
 in Node); older canonical installers answer that method with
 `METHOD_NOT_ALLOWED`. The canonical installer does not ship the row above,
-so a stock editor answers that method with `METHOD_NOT_ALLOWED`.
+so a stock editor answers that method with `METHOD_NOT_FOUND` (v34 and later) or
+`METHOD_NOT_ALLOWED` (older). From v34 an unknown method is `METHOD_NOT_FOUND`
+and its error details list the known methods; see "Bridge v34".
 
 ## Bridge v28: bounded script/component property write
 
@@ -1256,7 +1266,8 @@ Honesty notes (also repeated in result warnings):
   build continues in the background. Whole-scene builds (the default)
   discard all tiles and warn they may take a while. No revision is
   advanced and nothing is saved; navmesh output persists via scene save
-  by the user.
+  by the user. Bridge v34 changes the wait and Phase semantics and allows
+  headless Editors; see "navigation.build (changed in v34)".
 - Lightmap `lighting.bake start` returns `{Phase:baking}` and the caller
   polls `status` (`{IsBaking, Step, StepProgress, TotalProgress}` plus
   the last `Failed` outcome). Start-while-baking and cancel-while-idle
@@ -1269,7 +1280,9 @@ Honesty notes (also repeated in result warnings):
   fresh bake from previously baked content. Timeout surfaces as Node
   `TIMEOUT`; the bake may still complete in the background.
 - All five write/start ops (including the terrain stub) require
-  edit-time via `RequireEditTime`: headless fails `INVALID_STATE`
+  edit-time via `RequireEditTime` (bridge v34 relaxes this for
+  `navigation.build`, which only refuses play mode and works headless):
+  headless fails `INVALID_STATE`
   (GPU/editor-ops dependent; navmesh is CPU work but keeps the gate for
   consistency) and play mode fails `INVALID_STATE`, mirroring
   `actor_update`. The status polls (`navigation.get_status`,
@@ -1643,3 +1656,1008 @@ started, `total` equal to the timeout of the call when one applies, and a
 `message`. Sources: the compile, generate, play, import, build, and
 capture polling loops, and any bridge request still pending after one
 second.
+
+## Bridge v34: editor lifecycle, replace imports, scene reload, nested paths, graph edits (175-tool contract)
+
+Bridge v34 keeps protocol v1 and the full v33 surface. The server (1.12.0) now
+registers 175 tools: the 169 of v33 plus `editor_quit`, `editor_options`,
+`editor_launch`, `graph_list_archetypes`, `graph_edit`, and
+`animgraph_set_transition`. Six bridge methods are new (`editor.quit`,
+`editor.get_options`, `editor.set_option`, `graph.list_archetypes`,
+`graph.edit`, `animgraph.set_transition`); `editor_launch` is Node-only (it
+starts a process and needs no bridge). Existing methods gain optional fields
+(`asset.import_start`, `scene.open`, `script.instance_set_value`,
+`actor.set_property`, `runtime.set_script_value`, `script.instance_get`,
+`asset.create`, `navigation.build`, and the `graph.*` methods for
+`MaterialFunction` windows). Node gates each new method or field at bridge v34
+(`BRIDGE_V34`): a plain `scene_open`, an `asset_create` of any kind but
+`GameplayGlobals`, and every v33 call keep working against v33.
+
+### Method discovery and `METHOD_NOT_FOUND`
+- An unknown method now answers `METHOD_NOT_FOUND` (it was
+  `METHOD_NOT_ALLOWED`, "not in the bridge allowlist"). The error details carry
+  `{ Method, Methods }`, the list of methods this bridge knows.
+- `status.Methods` is the same list (`string[]`) and
+  `status.MethodDiscoverySupported` is `true`. A client can discover a method
+  before calling it instead of provoking an error.
+- The Node mapper reports both `METHOD_NOT_FOUND` and `METHOD_NOT_ALLOWED` as
+  `UNSUPPORTED_FLAX_VERSION` with a capability hint, so `mm_apply_preset`
+  against a stock bridge behaves as before.
+
+### Capability flags
+`status` adds these booleans, all `true` on a v34 bridge. Check them rather than
+the version number.
+
+| Flag | Meaning |
+|---|---|
+| `MethodDiscoverySupported` | `status.Methods` and `METHOD_NOT_FOUND` details list the known methods |
+| `AssetImportResultIdSupported` | `asset.import_start` returns `ResultAssetId` |
+| `AssetImportReplaceSupported` | `CollisionPolicy:"replace"` |
+| `BridgeOwnershipSupported` | one Editor owns `Cache/MCP`, others stand by |
+| `EditorReadinessSupported` | readiness fields on `status` |
+| `EditorQuitSupported` | `editor.quit` |
+| `EditorOptionsSupported` | `editor.get_options` / `editor.set_option` |
+| `SceneReplaceSupported`, `SceneReloadSupported` | `scene.open` `Replace` / `Reload` |
+| `NestedMemberPathSupported` | `Path` on the three member writes |
+| `ScriptAssetReferenceWriteSupported` | `script.instance_set_value` takes asset references and the other `actor.set_property` value shapes |
+| `GraphArchetypeListSupported` | `graph.list_archetypes` |
+| `GraphEditSupported` | `graph.edit` |
+| `MaterialFunctionGraphSupported` | graph methods open `MaterialFunction` / `ParticleEmitterFunction` windows |
+| `AnimgraphTransitionSettingsSupported` | `animgraph.set_transition` |
+| `GameplayGlobalsCreateSupported` | `asset.create` kind `GameplayGlobals` |
+
+### Editor readiness (`status`, `EditorReadinessSupported`)
+`status` additionally reports:
+
+| Field | Meaning |
+|---|---|
+| `EditorState` | Type name of the Editor state machine's current state (`LoadingState`, `EditingSceneState`, `PlayingState`, `ReloadingScriptsState`, `ChangingScenesState`, `BuildingLightingState`, `BuildingScenesState`, `ClosingState`) |
+| `IsEditMode` | `StateMachine.IsEditMode` (the state is `EditingSceneState`) |
+| `IsCompiling` | `ScriptsBuilder.IsCompiling` |
+| `ScriptsReady` | `ScriptsBuilder.IsReady && !ScriptsBuilder.IsCompiling`; false while scripts compile or the scripting domain reloads |
+| `IsImporting` | `ContentImporting.IsImporting` |
+| `LastCompileFailed` | `ScriptsBuilder.LastCompilationFailed` (the value `code.status` reports as `LastCompilationFailed`) |
+| `LoadedSceneCount` | `Level.ScenesCount` |
+
+`status` stays cheap and never throws for these fields: each probe is guarded,
+and a field the Editor cannot answer in its current state keeps its default
+(`null` / `false` / `0`).
+
+Ready means: the bridge answers, `IsCompiling` is false, `ScriptsReady` is true,
+`IsImporting` is false, and `EditorState` is `EditingSceneState` or
+`PlayingState`. The Node tool `editor_get_status` with `wait_ready:true` applies
+exactly this rule, plus optional `require_scene` (`LoadedSceneCount` above zero)
+and `min_bridge_version`. It treats a missing or stale heartbeat and a token
+change during a script reload as "reloading" and keeps waiting; `timeout_ms`
+defaults to 120000 (at most 300000) and a timeout returns `TIMEOUT` with the last
+observed state. The result adds `ready`, `waitedMs`, and a `readiness` object
+(`editorState`, `isEditMode`, `isCompiling`, `scriptsReady`, `isImporting`,
+`lastCompileFailed`, `loadedSceneCount`); a bridge older than v34 only proves
+that it answers.
+
+### `editor.quit` (`EditorQuitSupported`)
+Params `{ Unsaved: "refuse" | "save" | "discard" (default "refuse"), StopPlay:
+bool }`. Result `{ Accepted, Phase: "exiting" | "stopping_play", SavedSceneIds[],
+DiscardedSceneIds[], DiscardedAssetWindows[], Pid }`.
+
+- Refused with `EDITOR_BUSY` while scripts compile or reload, content imports,
+  or a game build (GameCooker) runs.
+- Unsaved edits are detected the way the Editor's close path sees them: every
+  loaded scene with `Editor.Scene.IsEdited(scene)` and every open asset editor
+  window (`AssetEditorWindow`) with `IsEdited`.
+  - `refuse`: `DIRTY_SCENE` listing the edited scenes and asset windows (details
+    `DirtyScenes[]`, `DirtyAssetWindows[]`); nothing is changed. Node reports it
+    as `DIRTY_SCENES`.
+  - `save`: edited asset windows are saved with their own `Save()`, edited
+    scenes with `Editor.Scene.SaveScenes()` (the File menu path; asynchronous,
+    the exit waits for it). `SavedSceneIds` lists the scenes that were edited. A
+    window that is still edited after `Save()` fails the request with
+    `ASSET_OPERATION_FAILED`.
+  - `discard`: nothing is saved; `DiscardedSceneIds` and `DiscardedAssetWindows`
+    report what was dropped.
+- Play mode (or a requested play start): without `StopPlay` the request fails
+  with `INVALID_STATE` ("play mode active"). With `StopPlay:true` the bridge
+  requests the Editor's normal play stop, answers `Accepted:true,
+  Phase:"stopping_play"`, and exits only after play mode has ended. Scene edits
+  are evaluated after play ends in that case: with `refuse` and edited scenes the
+  quit is cancelled (logged in the Editor log), with `save` the scenes are saved
+  first, with `discard` they are dropped. `SavedSceneIds` / `DiscardedSceneIds`
+  are empty in the `stopping_play` response because scene state is not
+  meaningful during play. A play stop that does not finish within 60 seconds
+  cancels the pending quit.
+- Exit: the response is written first. The request only arms a pending quit; the
+  bridge's update tick calls `Engine.RequestExit()` on a later frame, once the
+  response file is on disk, no scene or level action is pending, and (if needed)
+  play mode has ended. `RequestExit` closes the main window with
+  `ClosingReason.EngineExit`, which shows no save prompt (the prompt exists only
+  for `ClosingReason.User`). `Pid` is the Editor process id. A second
+  `editor.quit` while one is pending answers `Accepted:true` again. Headless
+  Editors quit the same way.
+- The Node tool `editor_quit` (`timeout_ms` default 60000, at most 120000) then
+  waits for the `Pid` process to exit and returns `exited` (false plus a warning
+  when the process outlives `timeout_ms`).
+
+### `editor.get_options` / `editor.set_option` (`EditorOptionsSupported`)
+Only two General options are exposed (an allow-list, not a generic option
+editor): `AutoReloadScriptsOnMainWindowFocus` and
+`ForceScriptCompilationOnStartup`.
+
+`editor.get_options` returns `{ AutoReloadScriptsOnMainWindowFocus,
+ForceScriptCompilationOnStartup, Scope: "user-global" }`, read from
+`Editor.Options.Options.General`. No file path is ever returned.
+
+`editor.set_option` takes `{ Name, Value, DryRun (default true), Confirm }` and
+returns `{ Name, Previous, Value, Changed, DryRun, Scope: "user-global" }`.
+
+- `DryRun:true` reports `Previous` / `Value` / `Changed` and writes nothing.
+- A real write needs `Confirm:true` (else `INVALID_REQUEST`), is refused with
+  `EDITOR_BUSY` while the Editor Options window is visible (so the window cannot
+  overwrite it with its own copy), and goes exactly the way that window's Save
+  button does: deep-copy `Editor.Options.Options` (JSON round trip), change the
+  field on the copy, call `Editor.Options.Apply(copy)`. A write that would not
+  change the value does not call `Apply`. An unknown `Name` fails with
+  `INVALID_REQUEST`.
+- Scope is `user-global`: the Editor stores options per user
+  (`%AppData%/Flax/EditorOptions.json` on Windows), not per project, and every
+  Editor of that user shares the file. Editors that are already running keep
+  their in-memory copy and only pick the change up when they restart; an Editor
+  that saves its options afterwards overwrites the file with its own copy. This
+  is why the Node tool `editor_options` sits in the `code` permission family and
+  needs `confirm:true`.
+- With `AutoReloadScriptsOnMainWindowFocus` off the Editor does not recompile
+  and reload scripts when its main window regains focus, and play mode runs the
+  last compiled game assemblies. Run `code_compile` after editing scripts, or
+  the play session executes stale code. `ForceScriptCompilationOnStartup` off
+  lets the Editor start without compiling the game scripts when they are already
+  up to date.
+
+### Bridge directory ownership (v34)
+Several Editors can open the same project. Only one owns `Cache/MCP` at a time;
+ownership is decided from `bridge.json`.
+
+- Init: if `bridge.json` names a different PID that is alive and whose
+  `Timestamp` is younger than 30 seconds, this Editor enters **standby**. It logs
+  once "another Flax Editor (pid N) owns Cache/MCP; this Editor's MCP bridge is on
+  standby" and writes no token or heartbeat, does not poll `requests/`,
+  subscribes to no Editor events, and restores or persists no state.
+- Every two seconds a standby Editor re-checks. When the owner process is gone
+  or its heartbeat is older than 30 seconds it takes ownership: it restores the
+  persisted state, writes a NEW session token and the heartbeat, and starts
+  polling. If `bridge.json` was removed (clean exit, or the owner's script
+  reload), it waits an extra 15 seconds first so a reloading owner can
+  re-initialise before the file is treated as released. Clients must re-read
+  `token` after a takeover (`UNAUTHORIZED` with the old token).
+- An owner that finds another live Editor's fresh heartbeat in `bridge.json` (it
+  was stalled for more than 30 seconds and lost the directory) demotes itself to
+  standby. Each heartbeat tick also restores the token file if a racing Editor
+  overwrote it.
+- Script reload or exit of the owning Editor: the same PID re-initialises as
+  owner exactly as before. Deinit deletes `token` and `bridge.json` only when
+  `bridge.json` names this Editor's PID; a standby or demoted Editor leaves the
+  owner's files alone.
+- `status.BridgeOwnershipSupported` is `true`. Nothing else is exposed in
+  `status`; a standby Editor cannot answer requests, so a client talking to a
+  project with a standby Editor always reaches the owner.
+- Remaining limit: an Editor whose main thread is blocked for more than 30
+  seconds (for example during a very long import) looks dead to a standby Editor.
+
+### Import changes (v34)
+**`ResultAssetId`.** After a successful `asset.import_start` (not a dry run) the
+bridge resolves the ID of the written asset and returns it as `ResultAssetId`
+(32-character GUID without separators, the managed "N" form) on the operation
+record and the start/status results.
+
+- Primary source: `Content.GetAssetInfo(<engine spelling of the result path>)`;
+  see "Path-spelling safety" for why the spelling matters.
+- Fallback: the 16 ID bytes at offset 28 of the binary asset header
+  (`new Guid(byte[16])`), read from the written file.
+- It stays null only when both fail (a warning is written to the Editor log).
+  `status.AssetImportResultIdSupported` is `true`.
+- `asset.reimport_start` and `asset.set_import_settings` already return the ID of
+  the reimported asset. A dry run returns no `ResultAssetId`, except a `replace`
+  dry run onto an existing asset, which returns the ID that would be preserved.
+
+**Persistence of import records.** Import and reimport records (and the
+fingerprint used for retry adoption) are persisted as
+`Cache/MCP/asset-operations/<operationId>.json` when created, finished, and
+completed, and flushed on script reload. After a reload `asset.import_status` /
+`asset.reimport_status` and an `OperationId` retry find the record again
+(ten-minute TTL, cap 512). A record that was still unfinished at the reload is
+restored as `failed` with `ErrorCode: "IMPORT_FAILED"` and a message saying the
+asset may or may not have been written; check the Content registry before
+retrying. Operation IDs and the pending-reimport output paths are compared
+case-insensitively.
+
+**`CollisionPolicy:"replace"`.** Reimports a new source into an existing
+registered asset and keeps its asset ID, so references stay valid. It needs
+`Confirm:true` (unless `DryRun:true`), otherwise `INVALID_REQUEST`.
+
+1. The destination file must exist and be a registered Content asset (else
+   `FILE_EXISTS`; a destination that does not exist is imported as a normal new
+   asset and `Replaced` is false).
+2. The importer's output type for the source extension is compared with the
+   existing asset's type name from the registry: texture extensions write
+   `FlaxEngine.Texture`, audio extensions `FlaxEngine.AudioClip`, model
+   extensions `FlaxEngine.Model` or, with `ModelImportType`,
+   `SkinnedModel` / `Animation` / `Prefab`. A mismatch fails with
+   `VALIDATION_FAILED` before anything is written. (Live probe: a cross-type
+   `Editor.Import` onto an existing path silently writes a new sibling
+   `Name (0).flax` and still reports success.)
+3. The bridge calls `Editor.Import(source, <registered asset path in engine
+   spelling>)`, the same call a Content Browser reimport ends up making, and
+   waits for it like a normal import (it is synchronous in Flax 1.12).
+4. It then verifies that no new sibling `<Name> (N).flax` appeared next to the
+   asset and that the asset ID, read from the file header and from the registry,
+   equals the ID before the import. Either failure fails the operation with
+   `ASSET_OPERATION_FAILED` (details: previous/new IDs or the created sibling
+   paths; the bridge never deletes files).
+
+Result: `Replaced:true`, `ResultAssetId` = the preserved ID, `Renamed:false`. The
+import uses engine-default import options (or `ModelImportType`); the previous
+options of the asset are not restored, so adjust them afterwards with
+`asset.set_import_settings`. `status.AssetImportReplaceSupported` is `true`.
+`error` and `rename` behave as before.
+
+**Node side.** `asset_import` accepts `collision_policy:"replace"` (with
+`confirm:true`, or `dry_run:true` to preview) and `items[]` (1-32
+`{source_path, destination, model_import_type?}`), which the server runs one
+after another with one generated operation ID each; the bridge sees ordinary
+single imports. A relative `--asset-import-root` is resolved against
+`--project-path`.
+
+### Path-spelling safety (Flax 1.12)
+`Content.GetAssetInfo(string path)` and the other path-based Content calls
+(`LoadAsync(path)`, `Load(path)`, `GetAsset(path)`, `RenameAsset(old, new)`) on a
+file the engine already registered under a different spelling (backslashes,
+relative `Content/...`, different case) make Flax re-register the file under a
+NEW asset ID ("Founded duplicated asset ... Changing asset id"); the Content
+database keeps the old ID and later loads fail. The bridge therefore never asks
+the engine for an asset by an arbitrary path:
+
+- lookups use the asset ID whenever a registry record is at hand;
+- where a path is unavoidable it is `EngineAssetPath(rel)`
+  (`StringUtils.NormalizePath(Path.Combine(Globals.ProjectFolder, rel))`, with
+  the on-disk casing of every segment, the spelling the Editor's own Content
+  database uses), or `EngineAssetPathFromAbsolute(abs)` for an already-absolute
+  output path;
+- model, skinned model, and generic asset loads try the ID first and fall back to
+  `EngineAssetPath(record.Path)` (engine `engine:<path>` records are loaded by ID
+  only); the "registry/file ID mismatch" guard is unchanged;
+- `material.create_instance` no longer calls `Content.GetAssetInfo` for its
+  destination clash check (the v33 check rewrote an existing asset's ID before
+  answering `FILE_EXISTS`); it uses the registry records plus
+  `File.Exists(EngineAssetPath(destination))`;
+- `asset.rename` passes engine-spelled source and destination paths to
+  `Content.RenameAsset`;
+- `scene.open` with `Reload` never looks a `SceneAsset` up by path (see below).
+
+### `navigation.build` (changed in v34)
+- `Navigation.BuildNavMesh(..., float timeoutMs)`: the argument is "the timeout
+  to wait before building" (a start delay), not a build timeout. v31 to v33
+  passed the request's `TimeoutMs` there, so `IsBuildingNavMesh` stayed false for
+  that long and the bridge reported `completed` before the build ran (the build
+  then started about 15 s later). v34 passes 0 (build now); `TimeoutMs`
+  (500-60000, default 15000) is only the bridge's own wait budget.
+- Result `Phase`: `completed` only when `IsBuildingNavMesh` was observed true and
+  then false, or the newest write time of `NavMesh*.flax` under Content changed
+  during the wait (a build too short to observe); `running` when the budget
+  elapsed while the build is still running; `queued` when it elapsed before the
+  engine started the build (requests enqueue until the next game-scripts update)
+  and no new navmesh data was seen. `timeout` is no longer produced. Node reports
+  `running` and `queued` as `TIMEOUT` (details `phase`, `progress`, `sceneId`,
+  `observedBuilding`) while the build continues in the background; there is no
+  cancel API.
+- Result DTO `McpNavigationBuildResult` gains `ObservedBuilding` (bool),
+  `DataChanged` (bool), and `WaitedMs` (int). `Progress` is 1 for `completed`.
+- Headless Editors are now supported: the CPU navmesh build needs no window
+  (live-probed on Flax 1.12: tiles built, `NavMeshDefault.flax` saved). The
+  play-mode gate (`INVALID_STATE`) stays, and a compile/reload gate
+  (`INVALID_STATE` while `ScriptsBuilder.IsCompiling` or not ready) was added.
+  `RequireNotPlaying(capability)` is the play-mode half of `RequireEditTime`.
+- The engine writes the navmesh data asset itself when a build finishes; the
+  bridge still does not save the scene.
+
+### `scene.open` Replace / Reload / DiscardUnsaved
+Capability flags `SceneReplaceSupported`, `SceneReloadSupported`. Node requires
+bridge v34 for `replace`, `reload`, and `discard_unsaved`.
+
+`McpSceneOpen` gains `bool Replace; bool Reload; bool DiscardUnsaved;`.
+`McpSceneOpenResult` gains `string[] UnloadedSceneIds; string DiskSha256;`.
+
+- Exactly one of `AssetId` / `Path` as before. `Replace` and `Reload` are
+  mutually exclusive; `DiscardUnsaved` is valid only together with one of them
+  (`VALIDATION_FAILED` otherwise). All existing gates still apply first: play
+  mode (`INVALID_STATE`), compiling scripts (`EDITOR_BUSY`), active edit leases
+  (`EDIT_LEASE_ACTIVE`). A second `scene.open` while a multi-scene reload is
+  still loading is refused with `EDITOR_BUSY`. The Editor must also be in a state
+  that can change scenes (`EDITOR_BUSY` otherwise).
+- Both modes run through the Editor scene state machine
+  (`FlaxEditor.States.ChangingScenesState`), the path `SceneModule.OpenScene`
+  takes, without its modal "save before closing?" prompt. The bridge refuses
+  instead: a scene that would be unloaded with unsaved edits fails with
+  `DIRTY_SCENE` (details `DirtyScenes`) unless `DiscardUnsaved:true`.
+  `AllowDirtyScenes` never discards edits; it only acknowledges dirty scenes for
+  an additive open.
+- **Replace** = `ChangeScenes([id], every other loaded scene)`. The target is
+  never in the unload list, so an already-loaded target stays loaded and only the
+  others close (no other scene loaded: `Phase: "already_loaded"`, nothing
+  happens). `Phase: "replacing"`; `UnloadedSceneIds` lists the scenes being
+  closed (`N` GUIDs). The call returns once the change started; poll
+  `scene.list_loaded` for the result.
+- **Reload** re-reads the scene file from disk. Live-verified on Flax 1.12: the
+  `SceneAsset` stays cached in `Content` after its scene unloads (it drops after
+  about 5-7 s, but any managed `Content.GetAsset` call pins it), and a plain
+  close and open, `Level.UnloadScene` + `LoadScene`, the Editor "Reload scenes"
+  command, and a same-scene `ChangeScenes` all rebuild the scene from that stale
+  cached data. The bridge therefore calls `Reload()` on the cached asset first
+  (found by ID with `Content.GetAsset(Guid)`; path-based lookups under a
+  different path spelling make Flax re-register the file under a new asset ID and
+  are never used), which is safe while the scene is still loaded. Then:
+  - the only loaded scene: `ChangeScenes([id], [scene])`;
+  - several loaded scenes: `UnloadScene(scene)`, and once the unload finished (a
+    later frame, driven by a main-thread poller with a 60 s limit)
+    `LoadScene(id, additive:true)`;
+  - the scene is not loaded: the normal additive open (honours
+    `AllowDirtyScenes` for other edited scenes).
+
+  `Phase: "reloading"`; `DiskSha256` is the SHA-256 (lowercase hex) of the scene
+  file as read for this request, so a caller can confirm the reloaded content is
+  the file it just edited.
+- Warning: the Editor autosave can write a loaded, edited scene back to its
+  file. An external edit to a scene file while the scene is open can be
+  overwritten; change the file with the scene closed (or reload right after, and
+  compare `DiskSha256` with the hash of what you wrote).
+
+### Nested member `Path`
+`script.instance_set_value` (`McpScriptFieldSet.Path`), `actor.set_property`
+(`McpActorPropertySet.Path`), and `runtime.set_script_value`
+(`McpRuntimeScriptValueSet.Path`) accept `string[] Path`, 1-4 C# identifiers
+(`^[A-Za-z_][A-Za-z0-9_]*$`, at most 128 characters each; the `Type.Member` form
+is not available inside a path). Flag: `NestedMemberPathSupported`.
+
+- When `Path` is given the plain name (`Field` / `Property` / `Member`) must be
+  omitted; the bridge accepts it only if it equals `Path[0]`, Node rejects it.
+  `Path` always takes the generic member route (never the five legacy
+  `actor.set_property` aliases).
+- `Path[0]` resolves like a plain member name on the target (script, actor, or UI
+  control actor) with the usual v33 rules (`MemberWriteBlockReason`:
+  engine-declared script members, Actor base members, unsupported leaf types).
+  Every deeper level must be an editor-visible member of the value in front of it
+  (the `GenericEditor.GetItemsForType` selection: public or `[ShowInEditor]`,
+  never `[HideInEditor]`), and every level must be writable: `[ReadOnly]` or
+  setter-less members are refused, and at edit time `[NoSerialize]` members are
+  refused too (play-mode `runtime.set_script_value` keeps the runtime rules: no
+  `[NoSerialize]` refusal).
+- Intermediate levels are a non-engine user struct, or a non-null class instance
+  that is not an engine object (`Asset`, `SceneObject`, any `FlaxEngine.Object`),
+  array, list, dictionary, or other collection. A null class instance, a
+  collection, an engine struct (`FlaxEngine.*`, `System.*`), and members of a
+  supported leaf kind (vectors, colors, strings, asset references, brushes, ...)
+  are refused. Arrays and lists are not addressable in this version. The leaf
+  must be a supported member type and goes through `CoerceMemberValue` like a
+  top-level member.
+- Write, like the property grid (`CustomEditor.SetValue` / `RefreshInternal` /
+  `SyncParent`): the chain of values is read from the root member down, the leaf
+  is set on the innermost value (a boxed copy for a struct), then every parent is
+  written back to its own member with `ScriptMemberInfo.SetValue`, always, for
+  structs and classes alike. Edit time: one snapshot undo record
+  (`Undo.RecordBegin` / `RecordEnd`) on the owning script or actor, before and
+  after. Runtime: no undo, no scene edit.
+- `DryRun` validates the whole path and returns `Before` / `After` of the leaf
+  plus the resolved `Path` (member names as declared) with `WouldChange`; nothing
+  is written. The result's `Field` / `Property` / `Member` is the dotted resolved
+  path and `Type` is the leaf type. A write of the value the leaf already holds
+  reports `WouldChange:false` and changes nothing (no undo record, scene not
+  marked edited).
+- Errors are `VALIDATION_FAILED` with a message beginning `Path segment <index>
+  ('<name>'):` and details `{ Path, SegmentIndex, Segment }`.
+
+### `script.instance_set_value` value forms and `script.instance_get` values (v34)
+`script.instance_set_value` now runs the `actor.set_property` pipeline instead of
+the v28 whitelist (flag `ScriptAssetReferenceWriteSupported`): the member must be
+one the property grid shows (properties as well as public fields; `Type.Member`
+is still rejected, `Field` stays a plain identifier), `MemberWriteBlockReason` and
+the edit-time `[NoSerialize]` refusal apply, and the value is coerced by
+`CoerceMemberValue`. Request and response field names, `DryRun` (`WouldChange`,
+`Before`, `After`), and the error codes are unchanged. New value forms: asset
+references as a 32-hex GUID, a project `Content/...` path, or `engine:<path>`
+(`""` clears), actor and script GUIDs, Quaternion (`"x,y,z,w"`), rectangles,
+margins, flag enums, brushes, and fonts, that is exactly the `actor.set_property`
+shapes. Undo is one snapshot record on the script (instead of the old per-field
+action).
+
+`script.instance_get` with `IncludeValues`: asset-reference fields are projected
+as `{ Kind: "asset", AssetId: "<N guid>", TypeName }` (a null reference as
+`Kind: "null"` with `TypeName`) instead of null plus `Reason`. Values of
+user-defined struct and class fields appear as `Value.Kind: "struct"` or
+`"object"` with `Value.TypeName` and a `Fields` array (same shape as a top-level
+entry), up to two levels deep, at most 32 members per level and 128 nested entries
+per field; deeper values and collections stay null with a `Reason`.
+
+### Visject graphs: archetype listing, batched edits, nested and transition contexts
+`graph.list_archetypes` and `graph.edit` generalise the root-only graph writes of
+v16-v20. Both work on any window-backed graph asset (`AnimationGraph`,
+`Material`, `ParticleEmitter`, and new in v34 `MaterialFunction` and
+`ParticleEmitterFunction`), on any context of it, and use the same window path as
+the older graph tools: the asset's Editor window, `AssetEditorWindow.Save()`, no
+headless writes, no direct `.flax` edits. They are gated by
+`EnsureGraphEditorReady` (not headless; real runs also not while playing,
+compiling, reloading, or importing), by the per-asset edit lease, and by
+`IdempotencyKey` exactly like `graph.set_node_values`. Flags:
+`GraphArchetypeListSupported`, `GraphEditSupported`,
+`MaterialFunctionGraphSupported`.
+
+**`context_path` grammar.** `ContextPath` (Node: `context_path`) is an array of at
+most 8 strings walked from the root context. Empty or omitted is the root
+context. Each element is one of:
+
+| Element | Meaning |
+|---|---|
+| decimal surface node id, for example `"4"` | The sub-context owned by that node of the current context (a State Machine node, a State node, a function node, ...). The walk is the one `graph_inspect` uses for sub-contexts: `OpenContext(ISurfaceContext)` on the node. |
+| `"transition:<fromStateNodeId>:<toStateNodeId>"` | The rule graph of the transition from state `<from>` (a State or Any node) to state `<to>`, in the current context, which must be a state-machine context. Both ids are decimal. |
+
+A transition is not a surface node, so no node id reaches it. The bridge finds it
+through the Editor's internal `Animation+StateMachineStateBase.Transitions` field
+and opens it with `OpenContext(transition)`, which is what the Editor's own
+`EditRule()` does. This is the user-approved reflection exception described under
+"`animgraph.set_transition`"; the lookup is read-only and every member is checked
+at run time. A missing member answers `UNSUPPORTED_FLAX_VERSION` and names the
+member. Typical errors: `NOT_FOUND` (no node or transition, with the segment
+index) and `VALIDATION_FAILED` (node owns no sub-context, malformed element, too
+many segments). Every read and write remembers the window's original context
+chain and restores it afterwards, also on failure.
+
+**`graph.list_archetypes`.** `McpGraphListArchetypes { AssetId | Path,
+ContextPath }` -> `McpGraphArchetypeList { AssetId, ContextKind, Archetypes[],
+ExistingNodes[], Warnings[] }`. Read-only. `ContextKind` is `root`,
+`state_machine`, `state`, `transition`, or `nested`. An archetype is `{ GroupId,
+TypeId, Title, Description, Inputs[{Id,Name,Type}], Outputs[{Id,Name,Type}],
+DefaultValueKinds[] }`. `DefaultValueKinds` has one entry per default value slot:
+`boolean`, `integer`, `number`, `string`, `vector2/3/4`, `color`, `asset_id` (a
+Guid slot), `bytes` (an opaque slot, not writable), or `null`.
+
+Allowed archetype rules (exactly the Editor's menus, live-verified in Flax 1.12):
+
+- Normal contexts (root, state graph, MaterialFunction, particle emitter, ...):
+  every archetype with `!NodeFlags.NoSpawnViaGUI` and
+  `surface.CanUseNodeType(group, archetype)`. Counts seen: AnimationGraph root and
+  state 180, Material 203, MaterialFunction 205, ParticleEmitter 155 (particle
+  modules are group 15).
+- A state-machine context offers only `(9,20)` State and `(9,34)` Any. The bridge
+  reads the private static `AnimGraphSurface.StateMachineGroupArchetypes` by
+  reflection when present and otherwise uses those two ids.
+- A transition rule context offers the normal list plus `(9,23)` Transition
+  Source State Anim. The bridge reads
+  `AnimGraphSurface.StateMachineTransitionGroupArchetype` when present and
+  otherwise uses `(9,23)`.
+
+`SpawnNode` itself enforces none of this, so `graph.edit` checks every `add_node`
+against the same list. `ExistingNodes` is `McpGraphNodeDto[]` (id, group, type,
+title, position, value count) of the context: use it to find a node id that
+already exists, for example the Rule Output node of a transition rule graph (a
+fresh rule graph has it with id 1).
+
+**`graph.edit`.**
+
+```text
+McpGraphEdit { AssetId | Path, Ops[1..64], DryRun = true, Confirm, LeaseId, IdempotencyKey }
+McpGraphEditOp { Op, ContextPath, Ref, GroupId, TypeId, X, Y, Values[], NodeId, FromNodeId, FromBoxId, ToNodeId, ToBoxId }
+McpGraphEditResult { AssetId, DryRun, Saved, Ops[], Refs[], ProjectRevision, Warnings[] }
+McpGraphEditOpResult { Index, Op, Ref, NodeId, Applied, Warnings[] }
+```
+
+Every op carries its own `ContextPath`, so one batch can touch several contexts.
+Ops run in order.
+
+| `Op` | Fields | Behaviour |
+|---|---|---|
+| `add_node` | `GroupId`, `TypeId`, `X`, `Y`, optional `Ref`, optional `Values` | Checks the archetype against the context's allowed list, coerces `Values` before spawning, then `SpawnNode`. `Ref` (`$name`) binds the new node for later ops of the same batch and context. Particle modules are plain `add_node` of group 15 in the emitter context. |
+| `connect` | `FromNodeId/FromBoxId`, `ToNodeId/ToBoxId` | One endpoint must be an output box and the other an input box (either order). `Box.CanConnectWith`, then the Editor's undo-aware `Box.Connect`, then the wire is verified. An existing wire is refused. In a state-machine context, connecting two states (State or Any to a State) creates a transition instead (box ids are ignored, use 0). |
+| `disconnect` | same fields | The wire must exist. Uses the same Editor connect toggle, so it is undo-aware. Removing a state transition is not supported. |
+| `set_values` | `NodeId`, `Values[{Index, Value}]` | Same value coercion as `graph.set_node_values`, applied with one `SetValues`. |
+| `move` | `NodeId`, `X`, `Y` | Moves the node; the bridge records its own undo step. |
+| `remove` | `NodeId` | Undo-aware delete with its wires; engine-protected (`NoRemove`) nodes are refused. |
+
+`NodeId`, `FromNodeId`, and `ToNodeId` are a decimal id or a `$ref`; a `$ref` is
+valid only in the context where `add_node` created it. Node ids of `add_node` ops
+are assigned when the batch is applied (dry runs report `NodeId: null`); use
+`Refs[]` or `Ops[].NodeId` of the real result.
+
+**Value layouts.** Values are `{ Index, Value }` entries using the
+`graph.set_node_values` value shapes (`boolean`, `number` / `integer`, `string`,
+`vector2/3/4`, `color`, `asset_id`):
+
+- `asset_id` fills a Guid slot. An all-zero id clears it. A Guid slot also
+  accepts one of the graph's own parameter ids (from `graph_inspect`
+  `Parameters[].Id`), which is how the Get Parameter node `(6,1)` is bound:
+  value 0 = the parameter id.
+- A `vector4` fills a `Float4` slot.
+- Animation `(9,2)`: `[Guid clip, float speed, bool loop, float start]`. (The v33
+  comment that said `[null, float, int, float]` was wrong.)
+- Slot `(9,32)`: `[string slot name]`.
+- Multi Blend 1D `(9,12)` and 2D `(9,13)`: `[Float4 range, float speed, bool loop,
+  float start]`, then for blend point `i` `[4+2i] Float4(x, y, 0, speed)` and
+  `[5+2i] Guid clip`. 1D ranges use X/Y of the first Float4, 2D uses all four. A
+  node starts with one empty point. These are the only nodes that can grow:
+  setting an index past the end appends whole point pairs (missing slots default
+  to `Float4(0,0,0,1)` and an empty clip) up to 255 points. The Node tool limits
+  value indexes to 64 and 32 entries per op, so a Node call sets at most about 30
+  points per node.
+- State `(9,20)`: `[string name, bytes, bytes]`; only the name is writable.
+
+**Dry run and real run.** `DryRun` (default true) runs the whole batch as a
+validation pass against the live window and reports `Ops[]` with warnings, `Refs[]`
+and no ids. It changes nothing, saves nothing, and leaves the window on its
+original context. Checks it makes: op shape, context paths, node and box
+existence, ref use, archetype allowed, value slots and types, wire direction, and
+(for nodes that already exist and no earlier op touched) box compatibility.
+Anything that depends on nodes created in the same batch (box types of new nodes,
+a transition created by an earlier op) is checked when the batch is applied.
+
+A real run needs `DryRun:false` and `Confirm:true`. It runs the validation pass
+again, applies the ops in order, marks every context on each op's path modified
+(`VisjectSurfaceContext.Save` only descends into children with `IsModified`), then
+calls `AssetEditorWindow.Save()` once. If an op fails, the bridge flushes the
+surface's batched undo actions, rewinds the window's undo stack to where the batch
+started, saves nothing, and answers the op's error code with `graph.edit op <i>
+(<op>) failed: <reason>`, `Details { OpIndex, Op, RolledBack, Saved:false }`. If
+the undo stack cannot rewind (no undo stack), `RolledBack` is false and the
+message says the edits stay in the window unsaved. After a successful batch the
+window undo stack holds the batch as one entry; saving cannot be undone. The
+undo-aware pieces: `add_node`, `set_values`, `remove`, `connect`, `disconnect`,
+and state links use the Editor's own undo actions; `move` uses a bridge-owned
+action because `Control.Location` records none.
+
+**MaterialFunction windows.** `MaterialFunction` windows (and
+`ParticleEmitterFunction`, which shares the base class) are `AssetEditorWindow`s
+with a public `Surface` but are not `IVisjectSurfaceWindow`: the bridge uses that
+`Surface`, readiness is `Surface.Enabled` plus the cloned asset being loaded, and
+saving is `AssetEditorWindow.Save()`. This applies to `graph_inspect`,
+`graph_list_archetypes`, `graph_edit`, and the older graph writes. Function
+windows have no parameters, so `graph_add_parameter` answers
+`UNSUPPORTED_FLAX_VERSION` for them. `AnimationGraphFunction`, VisualScript, and
+BehaviorTree stay out of scope. (`ParticleEmitterFunction` shares
+`MaterialFunction`'s base class but was not separately live-verified.)
+
+**Worked example: a state machine with an `Any -> Dead` transition rule
+`State == 3`.** Assumes an AnimationGraph `Content/Anim/Zombie.flax` that already
+has an integer parameter `State` (`graph_add_parameter` with `type: "integer"`).
+Arguments are the Node tool's snake_case; every write shown uses
+`dry_run:false, confirm:true`, and each step is best run once as a dry run first.
+
+1. Add the state machine node at the root (group 9, type 18) and read its id from
+   the real result (`ops[0].node_id`, say `10`):
+
+```json
+{ "path": "Content/Anim/Zombie.flax",
+  "ops": [{ "op": "add_node", "ref": "$sm", "group_id": 9, "type_id": 18, "x": 200, "y": 100 }],
+  "dry_run": false, "confirm": true }
+```
+
+2. In the state machine context add two states and the Any node, and wire the Any
+   node to Dead. States are named through value 0; connecting states creates the
+   transition. Read the new ids from `refs` (say `$idle=11`, `$dead=12`,
+   `$any=13`):
+
+```json
+{ "path": "Content/Anim/Zombie.flax",
+  "ops": [
+    { "op": "add_node", "context_path": ["10"], "ref": "$idle", "group_id": 9, "type_id": 20, "x": 100, "y": 100,
+      "values": [{ "index": 0, "value": "Idle" }] },
+    { "op": "add_node", "context_path": ["10"], "ref": "$dead", "group_id": 9, "type_id": 20, "x": 400, "y": 100,
+      "values": [{ "index": 0, "value": "Dead" }] },
+    { "op": "add_node", "context_path": ["10"], "ref": "$any", "group_id": 9, "type_id": 34, "x": 250, "y": -80 },
+    { "op": "connect", "context_path": ["10"], "from_node_id": "$any", "from_box_id": 0, "to_node_id": "$dead", "to_box_id": 0 }
+  ],
+  "dry_run": false, "confirm": true }
+```
+
+3. Find the Rule Output node of the new transition rule graph and the archetype
+   ids allowed there (`graph_list_archetypes`):
+
+```json
+{ "path": "Content/Anim/Zombie.flax", "context_path": ["10", "transition:13:12"] }
+```
+
+   `existing_nodes` lists `Rule Output` (group 9, type 22, id `1`); `archetypes`
+   includes Get Parameter `(6,1)`, `==` `(12,1)`, and Integer `(2,2)`. Get the
+   `State` parameter id from `graph_inspect` (`Parameters[].Id`, say `P`).
+
+4. Build `State == 3` in the transition's rule graph and wire it to Rule Output
+   box 0 (`Can Start Transition`):
+
+```json
+{ "path": "Content/Anim/Zombie.flax",
+  "ops": [
+    { "op": "add_node", "context_path": ["10", "transition:13:12"], "ref": "$get", "group_id": 6, "type_id": 1, "x": -400, "y": 0,
+      "values": [{ "index": 0, "value": { "asset_id": "<P>" } }] },
+    { "op": "add_node", "context_path": ["10", "transition:13:12"], "ref": "$eq", "group_id": 12, "type_id": 1, "x": -200, "y": 0 },
+    { "op": "add_node", "context_path": ["10", "transition:13:12"], "ref": "$three", "group_id": 2, "type_id": 2, "x": -400, "y": 120,
+      "values": [{ "index": 0, "value": 3 }] },
+    { "op": "connect", "context_path": ["10", "transition:13:12"], "from_node_id": "$get", "from_box_id": 0, "to_node_id": "$eq", "to_box_id": 0 },
+    { "op": "connect", "context_path": ["10", "transition:13:12"], "from_node_id": "$three", "from_box_id": 0, "to_node_id": "$eq", "to_box_id": 1 },
+    { "op": "connect", "context_path": ["10", "transition:13:12"], "from_node_id": "$eq", "from_box_id": 2, "to_node_id": 1, "to_box_id": 0 }
+  ],
+  "dry_run": false, "confirm": true }
+```
+
+   Transition settings (blend time, `use_default_rule`, interruption) are
+   `animgraph_set_transition`. The default (entry) state of the machine and each
+   state's clip are separate steps (`animgraph_set_state_clip`, or `graph_edit`
+   inside the state context `["10", "11"]` with an Animation node `(9,2)` whose
+   value 0 is the clip id wired to the State Output node). The box ids above
+   (`==` boxes 0 and 1 inputs and 2 output; Get Parameter output 0; Integer
+   output 0) are the ones the Flax 1.12 live probe used; `graph_list_archetypes`
+   returns the authoritative box ids for any other node.
+
+### `animgraph.set_transition` and the reflection exception
+`animgraph.set_transition` `{AssetId?|Path?, StateMachineNodeId?,
+FromStateNodeId, ToStateNodeId, BlendDuration?, BlendMode?, Enabled?, Solo?,
+UseDefaultRule?, Interruption?, Order?, DryRun = true, Confirm, LeaseId?,
+IdempotencyKey?}` changes the settings of one **existing** state-machine
+transition. Create the transition first with `animgraph.add_transition`; the
+conditional rule graph of a transition is built with `graph.edit` (`ContextPath`
+`"transition:<from>:<to>"`). Flag: `AnimgraphTransitionSettingsSupported`.
+
+- Selection: the state machine is `StateMachineNodeId` (decimal node id of a
+  `(9,18)` node in the root context) or, when omitted, the first one, exactly as
+  `animgraph.add_transition` does. `FromStateNodeId` and `ToStateNodeId` are
+  decimal node ids inside that state machine; the transition is the entry of the
+  source state's `Transitions` list whose destination is `ToStateNodeId`. A
+  missing machine, state, or transition answers `NOT_FOUND`.
+- Fields (all optional, at least one required; omitted fields are left alone):
+  - `BlendDuration` seconds, finite, 0 to 20 (the Editor's own limit).
+  - `BlendMode` an `AlphaBlendMode` name (`Linear`, `Cubic`, `HermiteCubic`,
+    `Sinusoidal`, `QuadraticInOut`, ...), matched by name, case-insensitive;
+    numbers are refused.
+  - `Enabled`, `Solo`, `UseDefaultRule` booleans.
+  - `Interruption` string array of `RuleRechecking`, `Instant`, `SourceState`,
+    `DestinationState`; `[]` clears every flag.
+  - `Order` integer; transitions with a higher order are evaluated first. The
+    bridge accepts -1000000 to 1000000, the Node tool schema -1024 to 1024. If
+    the Editor build has no `Order` member the bridge answers `VALIDATION_FAILED`
+    naming `Order` for that field only.
+- Result: `{AssetId, StateMachineNodeId, FromStateNodeId, ToStateNodeId, Before,
+  After, DryRun, WouldChange, Saved, ProjectRevision, Warnings}` where `Before` /
+  `After` are `{BlendDuration, BlendMode, Enabled, Solo, UseDefaultRule,
+  Interruption[], Order}`. `Before` is read from the live transition. A dry run
+  (the default) returns the planned `After` without writing and without saving. A
+  request that changes nothing is a no-op (`WouldChange:false`, `Saved:false`). A
+  real write needs `DryRun:false` and `Confirm:true`, honors the per-asset edit
+  lease and idempotency key, reads `After` back from the live transition, and
+  persists with `AssetEditorWindow.Save()` (not undoable after the save). Gates are
+  the same as `animgraph.add_transition` (`EnsureGraphEditorReady`,
+  play/compile/import busy refusal, `INVALID_STATE` + `NotReady` retry contract).
+
+**Reflection exception (user-approved).** Flax exposes no public API for
+state-machine transitions, so `animgraph.set_transition` and the `transition:`
+context walk are the one bridge path that reaches `FlaxEditor` internals by
+reflection (live-verified on Flax 1.12). The members used:
+
+| Member | Use |
+|---|---|
+| `FlaxEditor.Surface.Archetypes.Animation+StateMachineStateBase` (type) | the source state node is an instance of it |
+| `Animation+StateMachineStateBase.Transitions` (field, `List<StateMachineTransition>`) | enumerate the transitions of the source state |
+| `Animation+StateMachineTransition` (type) and field `DestinationState` | match the destination state node id |
+| `Animation+StateMachineTransition.BlendDuration` (float), `BlendMode` (enum), `Enabled`, `Solo`, `UseDefaultRule` (bool), `Interruption` (flags enum) | read before-values and set through the property setters |
+| `Animation+StateMachineTransition.Order` (int, optional) | same; the only optional member |
+| `Animation+StateMachineTransition+InterruptionFlags` names `RuleRechecking`, `Instant`, `SourceState`, `DestinationState` | each name is verified at runtime |
+
+Every member is checked at runtime before any window is touched; the bridge
+answers `UNSUPPORTED_FLAX_VERSION` with `details.Member` naming the first missing
+member (for example `Animation+StateMachineStateBase.Transitions`) and changes
+nothing. The bridge never encodes the transition byte blob and never calls
+`SaveTransitions` itself: the Editor's property setters call
+`SaveTransitions(withUndo:true)`, so one write is one batched Editor undo entry,
+then the window save runs like every other graph write. If a setter throws,
+already applied fields are reverted and nothing is saved. A contract test
+(`bridgeV34TransitionContract.test.ts`) pins the existence checks and the
+setter-only write path.
+
+### `asset.create`: GameplayGlobals
+`asset.create` now accepts `Kind: "GameplayGlobals"` with `Variables: [{Name,
+Type, Value}]`. Flag: `GameplayGlobalsCreateSupported`.
+
+- `Editor.CreateAsset("GameplayGlobals")` fails in Flax 1.12. The bridge uses the
+  path the Content Browser uses (`GameplayGlobalsProxy.Create`):
+  `Content.CreateVirtualAsset<GameplayGlobals>()`, `Save(destination)`, destroy
+  the virtual asset. With variables it then loads the new asset, copies
+  `DefaultValues`, adds the entries, assigns the dictionary back (the getter
+  returns a copy), and calls `Save()`, the same sequence
+  `GameplayGlobalsWindow.Save` performs.
+- `Variables` is only valid with this kind (`VALIDATION_FAILED` otherwise, even
+  when empty). At most 64 entries. `Name` is 1 to 128 characters without control
+  characters and unique (ordinal). `Type` is one of `float`, `int`, `bool`,
+  `Float2`, `Float3`, `Float4`, `Color` (case-insensitive on input); anything else
+  is refused. `Value` is parsed with the invariant culture: `float` `1.5`, `int`
+  `3`, `bool` `true` / `false`, vectors comma-separated (`"1,2"`, `"1,2,3"`,
+  `"1,2,3,4"`, optional surrounding parentheses or brackets), `Color` `"r,g,b"` or
+  `"r,g,b,a"` (alpha defaults to 1). Everything is validated before the dry-run
+  answer; invalid variables never create a file.
+- Conventions are those of every v33 creation: `Content/` destination with
+  `.flax`, never overwrites (`FILE_EXISTS`), `DryRun` then `Confirm:true`,
+  content database refresh, result `Asset` metadata from the created-asset helper
+  (ID read from the file header if the registry has not listed it yet), no Editor
+  undo record. The file is saved under the engine path spelling
+  (`EngineAssetPath`), so no duplicate asset ID is registered. If any step after
+  the first save fails, the half-created file is deleted and
+  `ASSET_OPERATION_FAILED` is returned.
+- The Node server requires bridge v34 only for `kind: "GameplayGlobals"`; the
+  other kinds still work on v33.
+
+### GUID forms
+Three spellings of the same 16 bytes occur around a project:
+
+| Form | Where | Layout |
+|---|---|---|
+| raw header bytes | `.flax` header, 16 bytes at offset `0x1c` (magic `CFWF`) | four little-endian `uint32` words A, B, C, D |
+| managed "N" | the bridge (`asset.get`, every `AssetId` field), all tool inputs and outputs | `new Guid(rawBytes).ToString("N")` |
+| native "N" | `.scene`, `.prefab`, `.json` text, the engine `Register asset` log | A, B, C, D each printed as `%08x` (each 4-byte group of the raw bytes reversed) |
+
+Conversion between managed and native is an involution: keep the first 8 hex
+digits (word A), swap the two 4-digit halves of the second word, and reverse the
+bytes of the third and fourth words independently. `src/guid.ts` implements
+`nativeToManaged`, `managedToNative`, and `headerBytesToManaged` (raw header bytes
+to managed). Vector (AR15, `docs/GUID_AUDIT_P7.md`): raw
+`36b2fba2c2103341abe253a0c8d1839c`, managed `a2fbb23610c24133abe253a0c8d1839c`,
+native `a2fbb236413310c2a053e2ab9c83d1c8`. Verified against `flax-test/Content`:
+native-form references to 44 binary assets in scenes, prefabs, and JSON matched
+the converted header GUIDs, and none matched the managed spelling.
+
+Rules:
+- Tools print and accept managed IDs. A native ID typed into a tool field is a
+  different GUID.
+- The offline readers (`list_assets`, `get_asset_info`, `read_settings`,
+  `validate_project`) print the managed form for `.flax` headers and for IDs found
+  in `.scene` / `.json` files, so an offline ID matches what `asset_get` returns.
+  Before v34 they printed the raw header hex, which is a third spelling.
+- The legacy offline `create_actor` / `modify_actor` accept a managed `parent_id`
+  / `actor_id_or_name` (the native spelling also works) and write native IDs into
+  the scene file.
+- Hand-written `.scene` / `.prefab` / `.json` content must use the native
+  spelling; a managed spelling only resolves through the bridge and is fragile.
+- `validate_project` (FLAX002) converts native scene references before comparing
+  them with the `.flax` headers; a reference to an existing binary asset is no
+  longer reported missing. Findings carry `assetId` (managed) and `assetIdNative`
+  (as written in the file).
+
+### Headless workflow
+A headless Editor (`-headless`) runs the bridge like a headed one, and
+`status.IsHeadless` tells a client which mode it is talking to. The refusals come
+from the bridge's `IsHeadlessMode` gates and are mapped to `HEADLESS_MODE` (see
+"Headless refusals and timeouts (Node mapping)").
+
+- Works headless: `editor_get_status` (including `wait_ready`), `editor_quit`,
+  `editor_options`, `code_compile` / `code_get_diagnostics` /
+  `code_generate_project`, logs, asset search / import / reimport / organize /
+  create and import settings (import success still depends on the installed
+  importer backend), content folder creation, project-settings writes, scene
+  create / open / close / save / list, scene file edits, `actor_create` /
+  `actor_update` / `actor_delete`, `script_attach` / `script_detach`, `edit_undo`,
+  the member reads (`actor_get_properties`, `ui_control_get_properties`,
+  `script_instance_get`), the physics, navigation, lighting, and terrain/foliage
+  read queries, and `navigation_build` (new in v34).
+- Refused headless with `HEADLESS_MODE`: play start (`play_start_scenes`,
+  `play_start_game`, `test_run_scenario`), `editor_set_selection`, viewport
+  capture, the Visject graph tools (`graph_inspect`, `graph_list_archetypes`,
+  `graph_edit`, graph writes, `graph_undo`, `animgraph_*` writes), the member
+  writes that need Editor windows (`actor_set_property`,
+  `script_instance_set_value`, `ui_control_*` writes, `particle_set_parameter`,
+  material writes), the other bakes (`lighting_bake`, `environment_probe_bake`),
+  and foliage writes.
+- Typical cycle for an agent driving a headless Editor: `editor_launch` (when the
+  server runs with `--flax-editor`) -> `editor_get_status` with `wait_ready:true`
+  -> edit and `code_compile` -> `editor_quit` (`unsaved:"save"` or `"discard"`,
+  `stop_play:true` if needed) when done or before replacing the bridge file.
+
+### Error mapping addendum (Node)
+- Remote `UNAUTHORIZED` (the bridge session token changed because the Editor
+  reloaded scripts, another Editor took over `Cache/MCP`, or another Editor
+  answered this project's bridge) maps to `EDITOR_BUSY` with `details: {
+  retryable: true, reason: "bridge_session_changed", details }`. Reads may be
+  repeated; writes are never retried automatically (use an idempotency key, or
+  re-read state first).
+- The shared mapper also maps `IMPORT_SOURCE_NOT_ALLOWED`, `IMPORT_FAILED`,
+  `FILE_EXISTS`, and `OPERATION_NOT_FOUND` to the same-named tool error codes, and
+  `DIRTY_SCENE` to `DIRTY_SCENES`.
+- A `TIMEOUT` on a write still means the outcome is unknown. A timed-out
+  `asset_import` start returns `operation_id` in `error.details`; poll
+  `asset_import_status` with it.
+
+### Node-only surfaces (no bridge method)
+- `editor_launch` (enabled with the server flag `--flax-editor <FlaxEditor.exe>`)
+  runs `FlaxEditor.exe -project <project path>` with `-headless` and / or
+  `-skipcompile` only when requested; no other argument can be passed. The process
+  is detached with stdio ignored and its pid returned. It refuses with
+  `EDITOR_BUSY` when this project's `Cache/MCP/bridge.json` heartbeat is live or a
+  `FlaxEditor` process already has `-project <this project>` on its command line.
+  With `wait_ready` (default true) it polls the heartbeat until it is live
+  (`timeout_ms`, default 120000, at most 300000); a timeout (`TIMEOUT`) leaves the
+  Editor running, an Editor that exits first yields `EDITOR_NOT_CONNECTED`.
+  Without the flag it answers `UNSUPPORTED_FLAX_VERSION` naming the flag.
+- `flax-mcp call <tool> [json | @file | -]` and `flax-mcp tools [--json]` run the
+  same registry, schema validation, permission policy, and bridge client as the
+  server from a shell, so scripts need no raw `Cache/MCP/requests` writes (see the
+  README "Command line" section).
+
+## Runtime bridge (v35): a cooked game, a second bridge file (178-tool contract)
+
+Server 1.13.0 registers 178 tools: the 175 of v34 plus `game_launch`,
+`game_list_instances`, and `game_stop`. The Editor bridge stays at v34 and does
+not change. `bridge/FlaxMcpRuntimeBridge.cs` is a second, self-contained bridge
+that runs inside a cooked Development game. It reports `BridgeVersion` 35 and
+`Kind` `"game"`, keeps protocol v1, and carries a first-line
+`// MCP-BRIDGE-VERSION: 35` marker like the Editor file (34). Nothing from v1 to
+v34 changes for an Editor client.
+
+### Purpose and safety
+- It is a `GamePlugin` (`FlaxMcpRuntimeBridgePlugin`) for debugging and driving a
+  running game from the MCP server: script-member writes and method calls, actor
+  inspection, captures, logs, time scale, performance, and a clean quit.
+- The whole file is inside `#if FLAX_GAME && !BUILD_RELEASE` and, defensively,
+  `#if !FLAX_EDITOR`. The Editor bridge is `#if FLAX_EDITOR`, so the two files
+  never compile together (which is why the runtime file may reuse the Editor
+  bridge's DTO class names). A Release game build, including a Release cook,
+  contains none of it; it also compiles to nothing in the Editor.
+- It is inert without `-mcpdir`. Like the Editor bridge it uses files only, opens
+  no network listener, and requires the per-start session token on every request.
+- `install_editor_bridge` with `include_runtime:true` copies it next to
+  `FlaxMcpBridge.cs` (see the README). The installer reads the installed version
+  from `BridgeVersion = 35`.
+
+### Activation
+- `Initialize` does nothing unless `Engine.CommandLine` contains
+  `-mcpdir=<absolute path>`. The value may be unquoted, quoted as a whole argument
+  (`"-mcpdir=C:\a b\c"`, the form Node produces on Windows for a path with
+  spaces), or quoted after the equals sign (`-mcpdir="C:\a b\c"`). The switch name
+  is matched case-insensitively and must be its own argument.
+- A missing value, a relative path, or a path longer than 240 characters logs a
+  warning and the bridge stays inert.
+- `-mcpinstance=<name>` must match `[A-Za-z0-9_-]{1,64}`. The default, and the
+  fallback for an invalid name (with a warning), is the process id.
+- If the directory already holds a heartbeat from another process that is alive
+  and younger than 30 s, the bridge stays inert and warns. The leftovers of a dead
+  process are replaced.
+- On deinitialize the bridge deletes `bridge.json` and `token` when they are its
+  own (the heartbeat pid is this process).
+
+### Directory and transport
+`<mcpdir>` is the instance directory itself. The MCP server passes
+`<project>/Cache/MCP-Runtime/<instance>` (`RUNTIME_BRIDGE_CACHE_DIRECTORY =
+'Cache/MCP-Runtime'`). The layout is the Editor's: `requests/`, `processing/`,
+`responses/`, `captures/`, `token`, `bridge.json`. The transport is the Editor's
+unchanged: request `{ id, token, method, paramsJson, deadlineUnixMs }` (the same
+64 KiB and 128 KiB caps and 60 s deadline rule), response `{ id, token, ok,
+errorCode, error, errorDetails, resultJson, timestamp }` (512 KiB result cap,
+`RESPONSE_TOO_LARGE`), the request claimed by moving it into `processing/`, the
+response published with a temporary file plus rename, a fresh 256-bit token on
+every start, a heartbeat every two seconds, and at most four requests picked up
+per poll. Work that touches the engine runs on the game's update thread
+(`Scripting.InvokeOnUpdate`) and is bounded by the request deadline.
+
+### Heartbeat and status
+`bridge.json` is `McpRuntimeBridgeInfo { BridgeVersion = 35, ProtocolVersion = 1,
+Kind = "game", Pid, Instance, ProductName, EngineVersion, Timestamp }`
+(`Timestamp` is Unix milliseconds). There is no project path: the directory is the
+identity.
+
+`status` returns `McpRuntimeStatus { BridgeVersion, ProtocolVersion, Kind, Pid,
+Instance, ProductName, EngineVersion, FrameCount, TimeScale, LoadedSceneCount,
+Methods }`. `Methods` is the list below. An unknown method answers
+`METHOD_NOT_FOUND` with `{ Method, Methods }` in the error details.
+
+### Methods
+Request and response DTOs, field names, and error codes are the Editor bridge's
+wherever the method exists there.
+
+| Method | Notes |
+|---|---|
+| `status` | `McpRuntimeStatus` as above |
+| `runtime.set_script_value` | `McpRuntimeScriptValueSet` / `McpRuntimeScriptValueResult`, including the nested `Path` (1-4 member names, `Member` omitted). No play-mode gate (the game is always running); `PlaySessionId` is always null |
+| `runtime.invoke_script_method` | At most 4 scalar arguments, overloads chosen by argument count (two overloads with the same count are refused). A game exception comes back as data (`Threw`, `ExceptionType`, `ExceptionMessage`), not as an error |
+| `runtime.inspect_actor` | `McpRuntimeActorInspect` -> `McpRuntimeActorInspection`; `Depth` 0-4; `ProjectRevision` and `SceneRevision` are 0 (there is no editing session) |
+| `capture.start` / `capture.status` | `Screenshot.Capture(<instance>/captures/<id>.png)`. `Viewport` must be `"game"` (empty and `"main"` are accepted as the same viewport); a non-zero `Width` or `Height` is `VALIDATION_FAILED`, so the size is fixed (Flax 1.12 main-render capture) and cannot be chosen. `capture.status` reports `Phase` `Pending`, then `Completed` once the file exists with size > 0; `Path` is `captures/<id>.png`, relative to the instance directory. An id this session did not start is `NOT_FOUND`. At most 64 captures are kept, none older than 24 h |
+| `log.query` | The Editor's `McpLogQuery` / `McpLogQueryResult`, fed by a ring of 2000 entries from `Debug.Logger.LogHandler` (`SendLog`, `SendExceptionLog`). `Category` is always `"engine"` and `PlaySessionId` is always null (a game has no play sessions). The project folder and the instance directory are redacted from messages and stacks |
+| `play.set_time_scale` | `Time.TimeScale`, 0 to 10 (else `VALIDATION_FAILED`); returns `McpRuntimePlayStatus { State, IsPlayMode, IsPaused, FrameCount, TimeScale, PreviousTimeScale }` |
+| `perf.snapshot` | The Editor's `McpPerfSnapshot`; `IsPlayMode` is always true |
+| `game.quit` | Answers `McpRuntimeQuitResult { Accepted, Phase = "exiting", Pid }` first. `Engine.RequestExit()` runs from the update loop on a later frame, after the response file is on disk (or after 5 s at the latest) |
+
+### Differences from the Editor contract
+- **System.Reflection, not ScriptMemberInfo.** A game build has no `FlaxEditor`
+  types (`ScriptType`, `ScriptMemberInfo`). The v28 rule that script members are
+  resolved through `ScriptMemberInfo` only applies to the Editor bridge; the
+  runtime bridge resolves members with `System.Reflection`.
+- **Visible members.** Only public instance fields and properties declared by game
+  types are visible, found by walking up the base chain until the first engine or
+  framework type (a type whose full name starts with `FlaxEngine.`, `FlaxEditor.`,
+  `System.`, or `Microsoft.`). Members of engine base classes (`Enabled`, `Actor`,
+  lifecycle methods) are never writable or invocable. `[HideInEditor]` members are
+  hidden; `[ReadOnly]` members and members without a public setter are read-only.
+  Non-public `[ShowInEditor]` members are not visible (the Editor shows them).
+  Invocable methods are public, non-generic instance methods declared in game
+  types.
+- **Writable value types.** bool, integers, float and double, string, enum (name,
+  or a defined number), Guid (32 hex), `Vector2/3/4`, `Float2/3/4`, `Color`,
+  `Quaternion`, asset references by 32-hex GUID (`Content.LoadAsync(Guid, Type)`;
+  an empty string clears), and actor and script references by GUID. There is no
+  `Content/...` path and no `engine:` lookup in a cooked game. Asset values are
+  reported as GUID and type only.
+- **No persistence machinery.** `[NoSerialize]` is not refused (nothing is
+  saved). There is no undo, no revision counter, no edit lease, and no dry run; a
+  write is gone when the game exits.
+- **No input injection.** The runtime bridge has no `input.*` methods. Flax 1.12
+  exposes no managed key or mouse injection API (`FlaxEngine.Input` is read-only
+  from C#), and the bridge stays managed-API-only and never uses OS-level input;
+  the Editor bridge's `input_key_press` and `input_mouse_click` are
+  `UNSUPPORTED_FLAX_VERSION` for the same reason. Drive a cooked game through its
+  own script methods and members.
+- **No play state.** There are no play, pause, or play-session methods and no
+  headless gate, so the Editor play-mode and headless refusals do not occur.
+
+### Node side
+- **Heartbeat validation (`inspectRuntimeBridge`).** An instance is connected only
+  when `bridge.json` parses with `Kind` `"game"`, an `Instance` equal to the
+  directory name (when present), a positive `Pid` whose process is alive, and a
+  `Timestamp` no older than 30 s and not more than 5 s in the future. The client
+  then requires `ProtocolVersion` 1 and `BridgeVersion` >= 35, else
+  `BRIDGE_UNSUPPORTED`. A missing `bridge.json` is retried briefly while the token
+  exists (the replace window), as for the Editor. One request at a time is allowed
+  per instance directory (`BRIDGE_CONCURRENT_CALL`); different instances run in
+  parallel. Instance names are validated (`^[A-Za-z0-9_-]{1,64}$`) before any path
+  is built, so a name can never leave `Cache/MCP-Runtime`.
+- **Routing by `instance`.** `runtime_set_script_value`,
+  `runtime_invoke_script_method`, `runtime_inspect_actor`, `viewport_capture`
+  (only `viewport:"game"`), `log_get_recent`, `log_search`,
+  `log_get_runtime_errors`, `perf_get_snapshot`, and `play_set_time_scale` accept
+  an optional `instance`. With it the same request DTOs go to that game's runtime
+  bridge: no Editor, play mode, or headless gate applies, `PlaySessionId` is never
+  sent (`play_session_id` together with `instance` is `INVALID_ARGUMENT`), and the
+  scene-revision and edit-lease fields do not exist. Without `instance` nothing
+  changes. `status` and `game.quit` are reached only through `game_launch` and
+  `game_stop`.
+- **Captures.** For `viewport_capture` with `instance`, Node calls `capture.start`
+  with `Viewport:"game"` only, polls `capture.status` until `Phase` is completed,
+  validates the file (a regular file inside `<instance>/captures`, PNG signature,
+  at most 16 MiB), copies it to `Cache/MCP/captures/<new 32-hex id>.png`, deletes
+  the source, and answers with `flax://capture/<new id>`, so the existing resource
+  reader, size limit, and 24 h expiry apply.
+- **`GAME_NOT_CONNECTED`.** For a runtime call, `BRIDGE_UNAVAILABLE` and
+  `BRIDGE_AUTH_FAILED` (no live heartbeat, a dead or hung process, a missing or
+  changed token) map to the new tool error code `GAME_NOT_CONNECTED`, the game
+  counterpart of `EDITOR_NOT_CONNECTED`. Everything else maps like the Editor
+  (`mapRuntimeBridgeError` delegates to the shared mapper), so a remote
+  `INVALID_STATE` keeps the `EDITOR_BUSY` meaning ("retry later") and a capture
+  refusal is `CAPTURE_UNAVAILABLE`.
+- **Envelope mode.** The tool envelope `mode` is `offline`, `editor-connected`, or
+  `game-connected` (new). A call that reached a game is `game-connected`.
+- **Node-only tools.** `game_launch`, `game_list_instances`, and `game_stop` wrap
+  the runtime-only methods. `game_launch` (enabled with `--allow-game-launch`,
+  parsed next to `--flax-editor`, so also by `flax-mcp call`) resolves `exe` with
+  `realpath` against the realpath of the project root and refuses anything outside
+  it, a non-file, and (on Windows) a non-`.exe`. It starts the process detached,
+  with stdio ignored and the exe's folder as the working directory, with exactly
+  `-mcpdir=<absolute instance dir> -mcpinstance=<name>` followed by up to 32
+  validated switches (`-name` or `-name=value`, never `-mcpdir` or `-mcpinstance`
+  in any letter case). It first clears a stale `bridge.json` and `token` of that
+  instance and refuses with `EDITOR_BUSY` when the instance already has a live
+  heartbeat or was started by this server and still runs. The pid is remembered in
+  a process-local set until the child exits. With `wait_ready` (default true) it
+  polls the heartbeat every 250 ms and then calls `status`; a child that exits
+  first is `GAME_NOT_CONNECTED`, a missed `timeout_ms` is `TIMEOUT` (the game keeps
+  running). `game_stop` sends `game.quit`, waits for the pid to exit, and with
+  `force:true` kills only a pid in the launched set (any other instance is
+  `PERMISSION_DENIED` before anything is sent). `game_list_instances` reads the
+  heartbeat files only and never returns a path.
+
+### Smoke builds
+```
+dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Source\Platforms\Windows\Binaries\Game\x64\Development\FlaxEngine.CSharp.dll'
+dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:RuntimeBuildConfig=Release -p:FlaxEngineCSharpPath='...same dll...'
+```
+The first compiles the file with `FLAX_GAME;BUILD_DEVELOPMENT` against the game
+assembly (no `FlaxEditor` namespace). The second (`BUILD_RELEASE`) must build with
+0 warnings too and produces an assembly with no types. The Editor smoke
+(`BridgeCompileSmoke.csproj`, `FLAX_EDITOR`) lists its one source file explicitly
+and is unaffected. A live run of a cooked Development build is not yet recorded;
+`test/compatibility-matrix.json` declares the v35 surface as pending live
+verification.

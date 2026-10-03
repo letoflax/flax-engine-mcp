@@ -23,12 +23,12 @@ await writeFile(path.join(projectPath, 'Source', 'Game', 'Fixture.cs'), 'public 
 const ctx = await createProjectContext(projectPath);
 const tools = buildToolRegistry(ctx);
 
-  test('release registry has a unique, version-aligned 169-tool contract', async () => {
+  test('release registry has a unique, version-aligned 178-tool contract', async () => {
   const names = tools.map(tool => tool.name);
   const packageMetadata = JSON.parse(await readFile(path.join(process.cwd(), 'package.json'), 'utf8')) as { version?: string };
-  assert.equal(tools.length, 169);
+  assert.equal(tools.length, 178);
   assert.equal(new Set(names).size, tools.length);
-  assert.equal(SERVER_VERSION, '1.11.0');
+  assert.equal(SERVER_VERSION, '1.13.0');
   assert.equal(packageMetadata.version, SERVER_VERSION);
 });
 
@@ -73,7 +73,7 @@ test('permission policy parses profiles and repeated overrides', () => {
 
 test('permission profiles cover the registry and fail closed by default', () => {
   const names = tools.map(tool => tool.name);
-  assert.equal(allowedToolNames(names, { profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false }).length, 169);
+  assert.equal(allowedToolNames(names, { profile: 'full', allowTools: [], denyTools: [], emergencyReadOnly: false }).length, 178);
   assert.equal(isToolAllowed('read_script', { profile: 'read-only', allowTools: [], denyTools: [], emergencyReadOnly: false }), true);
   assert.equal(isToolAllowed('write_script', { profile: 'read-only', allowTools: [], denyTools: [], emergencyReadOnly: false }), false);
   assert.equal(isToolAllowed('code_compile', { profile: 'code-edit', allowTools: [], denyTools: [], emergencyReadOnly: false }), true);
@@ -168,7 +168,7 @@ test('stdio advertises contracts and enforces them at the MCP boundary', async t
   const assets = listed.result.tools.find((tool: { name: string }) => tool.name === 'list_assets');
   assert.equal(assets.inputSchema.additionalProperties, false);
   assert.ok(assets.outputSchema);
-  assert.deepEqual(assets.outputSchema.properties.mode.enum, ['offline', 'editor-connected']);
+  assert.deepEqual(assets.outputSchema.properties.mode.enum, ['offline', 'editor-connected', 'game-connected']);
   assert.equal(assets.annotations.readOnlyHint, true);
 
   const valid = await server.request(3, 'tools/call', { name: 'list_assets', arguments: {} });

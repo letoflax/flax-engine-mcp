@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { assetImportPolicyForContext, chooseAssetImportDestination, verifyAssetImportDestination, verifyAssetImportSource } from '../assetImportPolicy.js';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
+import { mapBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, type ToolResponse } from '../errors.js';
 import type { ProjectMeta } from '../projectContext.js';
 import { startHeavyOperation } from '../operations.js';
 import { reportProgress } from '../progress.js';
+import { BRIDGE_V34 } from './liveToolSupport.js';
 
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
 const OperationId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character operation ID.');
@@ -23,16 +25,48 @@ const WaitArgs = {
   timeout_ms: z.number().int().min(250).max(30_000).optional().default(10_000),
 };
 
-export const AssetImportSchema = z.object({
+const ModelImportType = z.enum(['Model', 'SkinnedModel', 'Animation', 'Prefab']);
+
+export const MAX_ASSET_IMPORT_ITEMS = 32;
+
+const AssetImportItemSchema = z.object({
   source_path: z.string().min(1).max(1024),
   destination: ProjectContentPath,
-  collision_policy: z.enum(['error', 'rename']).optional().default('error'),
-  dry_run: z.boolean().optional().default(false),
-  model_import_type: z.enum(['Model', 'SkinnedModel', 'Animation', 'Prefab']).optional(),
-  operation_id: OperationId.optional(),
-  idempotency_key: IdempotencyKey.optional(),
-  ...WaitArgs,
+  model_import_type: ModelImportType.optional(),
 }).strict();
+
+export const AssetImportSchema = z.object({
+  source_path: z.string().min(1).max(1024).optional()
+    .describe('Single-item form: external source file under a configured --asset-import-root. Mutually exclusive with items.'),
+  destination: ProjectContentPath.optional()
+    .describe('Single-item form: Content/...flax output path. Mutually exclusive with items.'),
+  items: z.array(AssetImportItemSchema).min(1).max(MAX_ASSET_IMPORT_ITEMS).optional()
+    .describe('Batch form (1-32 items, mutually exclusive with source_path/destination/model_import_type/operation_id): imported one after another, each with its own generated operation id. collision_policy, dry_run, confirm and wait apply to every item. Returns per-item results and an aggregate status (succeeded, partial, pending or failed).'),
+  collision_policy: z.enum(['error', 'rename', 'replace']).optional().default('error')
+    .describe('error (default) refuses an existing destination, rename picks <name>-N.flax, replace reimports into the existing asset keeping its identity and requires confirm:true (bridge v34).'),
+  confirm: z.boolean().optional()
+    .describe('Required with collision_policy:replace (unless dry_run:true).'),
+  dry_run: z.boolean().optional().default(false),
+  model_import_type: ModelImportType.optional(),
+  operation_id: OperationId.optional(),
+  idempotency_key: IdempotencyKey.optional()
+    .describe('With items, item N uses "<key>:<N>" (the key may then be at most 120 characters).'),
+  ...WaitArgs,
+}).strict().superRefine((value, ctx) => {
+  if (value.items !== undefined) {
+    for (const key of ['source_path', 'destination', 'model_import_type', 'operation_id'] as const) {
+      if (value[key] !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} cannot be combined with items; put it on each item (operation ids are generated per item).` });
+      }
+    }
+    if (value.idempotency_key !== undefined && value.idempotency_key.length > 120) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['idempotency_key'], message: 'With items the idempotency_key is limited to 120 characters.' });
+    }
+    return;
+  }
+  if (value.source_path === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['source_path'], message: 'Provide source_path and destination, or items.' });
+  if (value.destination === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['destination'], message: 'Provide source_path and destination, or items.' });
+});
 
 const AssetSelectorShape = { asset_id: FlaxId.optional(), path: ProjectContentPath.optional() };
 function exactlyOneSelector(value: { asset_id?: string; path?: string }, ctx: z.RefinementCtx): void {
@@ -137,30 +171,29 @@ export const AssetSetImportSettingsSchema = z.object({
 
 type AssetOperation = Record<string, unknown> & { OperationId?: string; Phase?: string; ErrorCode?: string; Error?: string };
 
+/**
+ * Local policy errors carry a plain `code`; every bridge failure goes through the shared mapper
+ * (which already knows the import codes IMPORT_SOURCE_NOT_ALLOWED, IMPORT_FAILED, FILE_EXISTS,
+ * OPERATION_NOT_FOUND and the generic transport/lease/headless ones).
+ */
 function importError(error: unknown): ToolDomainError {
   if (error instanceof ToolDomainError) return error;
-  const localCode = (error as { code?: unknown } | null)?.code;
-  if (localCode === 'IMPORT_SOURCE_NOT_ALLOWED' || localCode === 'FILE_EXISTS' || localCode === 'IMPORT_FAILED' || localCode === 'VALIDATION_FAILED') {
-    return new ToolDomainError(localCode, error instanceof Error ? error.message : String(error));
-  }
   if (!(error instanceof BridgeRpcError)) {
-    return new ToolDomainError('INTERNAL_ERROR', error instanceof Error ? error.message : String(error));
-  }
-  if (error.code === 'BRIDGE_UNAVAILABLE' || error.code === 'BRIDGE_AUTH_FAILED') return new ToolDomainError('EDITOR_NOT_CONNECTED', error.message, error.details);
-  if (error.code === 'BRIDGE_CONCURRENT_CALL') return new ToolDomainError('EDITOR_BUSY', error.message, error.details);
-  if (error.code === 'BRIDGE_TIMEOUT') return new ToolDomainError('TIMEOUT', error.message, error.details);
-  if (error.code === 'BRIDGE_UNSUPPORTED') return new ToolDomainError('UNSUPPORTED_FLAX_VERSION', error.message, error.details);
-  if (error.code === 'BRIDGE_REMOTE_ERROR') {
-    const remote = error.details as { code?: unknown; details?: unknown } | undefined;
-    const code = remote?.code;
-    if (code === 'IMPORT_SOURCE_NOT_ALLOWED' || code === 'IMPORT_FAILED' || code === 'FILE_EXISTS' || code === 'EDITOR_BUSY' || code === 'OPERATION_NOT_FOUND' || code === 'IDEMPOTENCY_KEY_REUSED') {
-      return new ToolDomainError(code, error.message, remote?.details);
+    const localCode = (error as { code?: unknown } | null)?.code;
+    if (localCode === 'IMPORT_SOURCE_NOT_ALLOWED' || localCode === 'FILE_EXISTS' || localCode === 'IMPORT_FAILED' || localCode === 'VALIDATION_FAILED') {
+      return new ToolDomainError(localCode, error instanceof Error ? error.message : String(error));
     }
-    if (code === 'ASSET_NOT_FOUND') return new ToolDomainError('ASSET_NOT_FOUND', error.message, remote?.details);
-    if (code === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, remote?.details);
-    if (code === 'INVALID_REQUEST' || code === 'VALIDATION_FAILED') return new ToolDomainError('VALIDATION_FAILED', error.message, remote?.details);
   }
-  return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
+  return mapBridgeError(error);
+}
+
+/** A timed-out start may still have run in the Editor: hand the caller the id to poll asset_import_status with. */
+function withOperationId(error: ToolDomainError, operation: string): ToolDomainError {
+  if (error.code !== 'TIMEOUT') return error;
+  const existing = error.details !== null && typeof error.details === 'object' && !Array.isArray(error.details)
+    ? error.details as Record<string, unknown>
+    : error.details === undefined ? {} : { details: error.details };
+  return new ToolDomainError('TIMEOUT', error.message, { ...existing, operation_id: operation, hint: 'The import may still have started; poll asset_import_status with operation_id.' });
 }
 
 function operationId(value: string | undefined): string { return value ?? randomUUID().replaceAll('-', ''); }
@@ -174,8 +207,8 @@ function safeOperation(value: AssetOperation): AssetOperation {
   return safe;
 }
 
-async function startImport(params: Record<string, unknown>, ctx: ProjectMeta): Promise<{ data: AssetOperation; bridge: unknown }> {
-  const response = await callEditorBridge<'asset.import_start', Record<string, unknown>, AssetOperation>(ctx, 'asset.import_start', params, { minimumBridgeVersion: 9, deadlineMs: 30_000 });
+async function startImport(params: Record<string, unknown>, ctx: ProjectMeta, minimumBridgeVersion = 9): Promise<{ data: AssetOperation; bridge: unknown }> {
+  const response = await callEditorBridge<'asset.import_start', Record<string, unknown>, AssetOperation>(ctx, 'asset.import_start', params, { minimumBridgeVersion, deadlineMs: 30_000 });
   return { data: safeOperation(response.data), bridge: response.bridge };
 }
 
@@ -252,27 +285,152 @@ function response(kind: 'import' | 'reimport', data: AssetOperation, bridge: unk
   });
 }
 
+interface ImportItemInput { source_path: string; destination: string; model_import_type?: z.infer<typeof ModelImportType> }
+interface ImportCommon {
+  collision_policy: 'error' | 'rename' | 'replace';
+  confirm?: boolean;
+  dry_run: boolean;
+  wait: boolean;
+}
+interface ImportItemOutcome {
+  data: AssetOperation;
+  bridge: unknown;
+  destination: { path: string; requested: string; renamed: boolean };
+}
+
+/** Validates one item against the policy and starts it (optionally waiting). Throws mapped-able errors. */
+async function runImportItem(
+  item: ImportItemInput,
+  common: ImportCommon,
+  operation: string,
+  idempotencyKey: string | undefined,
+  deadline: number,
+  ctx: ProjectMeta,
+): Promise<ImportItemOutcome> {
+  const policy = assetImportPolicyForContext(ctx);
+  const replace = common.collision_policy === 'replace';
+  if (replace && !common.dry_run && common.confirm !== true) {
+    throw new ToolDomainError('VALIDATION_FAILED', "collision_policy 'replace' overwrites an existing asset and requires confirm:true (or dry_run:true to preview).");
+  }
+  const source = await verifyAssetImportSource(item.source_path, policy);
+  const requested = await verifyAssetImportDestination(item.destination, ctx);
+  const destination = await chooseAssetImportDestination(requested, common.collision_policy);
+  const started = await startHeavyOperation(ctx, () => startImport({
+    OperationId: operation,
+    IdempotencyKey: idempotencyKey,
+    SourcePath: source.canonicalPath,
+    SourceSizeBytes: source.sizeBytes,
+    SourceLastWriteUnixMs: source.modifiedUnixMs,
+    DestinationPath: destination.relativePath,
+    CollisionPolicy: common.collision_policy,
+    DryRun: common.dry_run,
+    ModelImportType: item.model_import_type,
+    AllowedImportRoots: policy.roots,
+    MaxSourceBytes: policy.maxSourceBytes,
+    // Only sent for replace so older bridges keep receiving the exact v9 parameter set.
+    ...(replace ? { Confirm: common.confirm === true } : {}),
+  }, ctx, replace ? BRIDGE_V34 : 9));
+  const waited = await maybeWait('import', started.data, common.wait, Math.max(0, deadline - Date.now()), ctx);
+  // The Node side already picked a free name for collision_policy:rename and sent that as the destination,
+  // so the bridge sees no collision and reports Renamed:false. The rename decision is Node's.
+  const data = destination.renamed ? { ...waited.data, Renamed: true } : waited.data;
+  return {
+    data,
+    bridge: waited.bridge ?? started.bridge,
+    destination: { path: destination.relativePath, requested: requested.relativePath, renamed: destination.renamed },
+  };
+}
+
+/** Item errors that say nothing about the next item stay per-item; these mean the Editor cannot take more. */
+const BATCH_STOP_CODES = new Set<string>(['EDITOR_NOT_CONNECTED', 'UNSUPPORTED_FLAX_VERSION', 'EDITOR_BUSY', 'TIMEOUT', 'RATE_LIMITED', 'HEADLESS_MODE']);
+
+interface BatchItemResult {
+  index: number;
+  operation_id?: string;
+  ok: boolean;
+  status: string;
+  destination?: ImportItemOutcome['destination'];
+  operation?: AssetOperation;
+  error?: { code: string; message: string; details?: unknown };
+}
+
+async function importBatch(args: z.infer<typeof AssetImportSchema>, items: ImportItemInput[], ctx: ProjectMeta): Promise<ToolResponse> {
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = item.destination.toLowerCase();
+    if (seen.has(key)) throw new ToolDomainError('VALIDATION_FAILED', `items contains the destination "${item.destination}" more than once.`);
+    seen.add(key);
+  }
+  const common: ImportCommon = { collision_policy: args.collision_policy, confirm: args.confirm, dry_run: args.dry_run, wait: args.wait };
+  const deadline = Date.now() + args.timeout_ms;
+  const results: BatchItemResult[] = [];
+  let aborted: ToolDomainError | undefined;
+  let lastBridge: unknown;
+  for (const [index, item] of items.entries()) {
+    if (aborted) {
+      results.push({ index, ok: false, status: 'skipped', error: { code: aborted.code, message: `Skipped: an earlier item failed with ${aborted.code}.` } });
+      continue;
+    }
+    const operation = operationId(undefined);
+    try {
+      const outcome = await runImportItem(item, common, operation, args.idempotency_key === undefined ? undefined : `${args.idempotency_key}:${index}`, deadline, ctx);
+      lastBridge = outcome.bridge;
+      const phase = String(outcome.data.Phase ?? '').toLowerCase();
+      if (phase === 'failed') {
+        const code = OPERATION_ERROR_CODES.find(candidate => candidate === outcome.data.ErrorCode) ?? 'IMPORT_FAILED';
+        results.push({ index, operation_id: operation, ok: false, status: 'failed', destination: outcome.destination, operation: outcome.data, error: { code, message: typeof outcome.data.Error === 'string' ? outcome.data.Error : 'import asset operation failed.' } });
+      } else if (terminal(outcome.data)) {
+        results.push({ index, operation_id: operation, ok: true, status: phase, destination: outcome.destination, operation: outcome.data });
+      } else {
+        results.push({ index, operation_id: operation, ok: true, status: 'pending', destination: outcome.destination, operation: outcome.data });
+      }
+    } catch (error) {
+      const mapped = withOperationId(importError(error), operation);
+      results.push({ index, operation_id: operation, ok: false, status: 'failed', error: { code: mapped.code, message: mapped.message, ...(mapped.details === undefined ? {} : { details: mapped.details }) } });
+      if (BATCH_STOP_CODES.has(mapped.code)) aborted = mapped;
+    }
+  }
+  const counts = {
+    total: results.length,
+    succeeded: results.filter(result => result.ok && (result.status === 'succeeded' || result.status === 'dry_run')).length,
+    pending: results.filter(result => result.status === 'pending').length,
+    failed: results.filter(result => result.status === 'failed').length,
+    skipped: results.filter(result => result.status === 'skipped').length,
+  };
+  const bad = counts.failed + counts.skipped;
+  const status = bad > 0 ? (counts.succeeded + counts.pending > 0 ? 'partial' : 'failed') : counts.pending > 0 ? 'pending' : 'succeeded';
+  const output = { status, counts, items: results, ...(lastBridge === undefined ? {} : { bridge: lastBridge }) };
+  if (status === 'failed') {
+    const first = results.find(result => result.error)?.error;
+    throw new ToolDomainError((first?.code as ToolDomainError['code'] | undefined) ?? 'IMPORT_FAILED', `All ${counts.total} import item(s) failed. First error: ${first?.message ?? 'unknown'}`, output);
+  }
+  return toolResult(JSON.stringify(output, null, 2), {
+    mode: 'editor-connected',
+    data: output,
+    warnings: [
+      ...(counts.pending > 0 ? ['Some imports are still running; poll asset_import_status with each pending item operation_id.'] : []),
+      ...(bad > 0 ? [`${bad} of ${counts.total} import item(s) did not succeed; see items[].error. Items that succeeded stay imported.`] : []),
+    ],
+    changes: args.dry_run ? [] : results.filter(result => result.ok && result.status === 'succeeded').map(result => ({ kind: 'import-asset', operationId: result.operation_id })),
+  });
+}
+
 export async function handleAssetImport(args: z.infer<typeof AssetImportSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
-    const policy = assetImportPolicyForContext(ctx);
-    const source = await verifyAssetImportSource(args.source_path, policy);
-    const requested = await verifyAssetImportDestination(args.destination, ctx);
-    const destination = await chooseAssetImportDestination(requested, args.collision_policy);
-    const started = await startHeavyOperation(ctx, () => startImport({
-      OperationId: operationId(args.operation_id),
-      IdempotencyKey: args.idempotency_key,
-      SourcePath: source.canonicalPath,
-      SourceSizeBytes: source.sizeBytes,
-      SourceLastWriteUnixMs: source.modifiedUnixMs,
-      DestinationPath: destination.relativePath,
-      CollisionPolicy: args.collision_policy,
-      DryRun: args.dry_run,
-      ModelImportType: args.model_import_type,
-      AllowedImportRoots: policy.roots,
-      MaxSourceBytes: policy.maxSourceBytes,
-    }, ctx));
-    const waited = await maybeWait('import', started.data, args.wait, args.timeout_ms, ctx);
-    return response('import', waited.data, waited.bridge ?? started.bridge, !terminal(waited.data));
+    if (args.items !== undefined) return await importBatch(args, args.items, ctx);
+    if (args.source_path === undefined || args.destination === undefined) {
+      throw new ToolDomainError('VALIDATION_FAILED', 'Provide source_path and destination, or items.');
+    }
+    const operation = operationId(args.operation_id);
+    try {
+      const outcome = await runImportItem(
+        { source_path: args.source_path, destination: args.destination, model_import_type: args.model_import_type },
+        { collision_policy: args.collision_policy, confirm: args.confirm, dry_run: args.dry_run, wait: args.wait },
+        operation, args.idempotency_key, Date.now() + args.timeout_ms, ctx);
+      return response('import', outcome.data, outcome.bridge, !terminal(outcome.data), { data: { destination: outcome.destination } });
+    } catch (error) {
+      throw withOperationId(importError(error), operation);
+    }
   } catch (error) {
     return toolError(importError(error));
   }

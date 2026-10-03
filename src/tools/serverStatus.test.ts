@@ -35,6 +35,37 @@ test('readProjectIdentity uses explicit project metadata without exposing its pa
   }
 });
 
+test('a heartbeat file that is missing for a moment while the token exists is retried (Windows replace window)', async () => {
+  const f = await fixture();
+  const now = Date.now();
+  try {
+    const dir = path.join(f.root, 'Cache', 'MCP');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'token'), 'session-token');
+    const writer = setTimeout(() => {
+      void fs.writeFile(path.join(dir, 'bridge.json'), JSON.stringify({ projectPath: f.root, pid: 1234, heartbeatAt: now, editorVersion: '1.12' }));
+    }, 60);
+    const status = await inspectEditorBridge(await createProjectContext(f.root), now, () => true);
+    clearTimeout(writer);
+    assert.equal(status.connected, true);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('a missing heartbeat file without a session token is reported at once', async () => {
+  const f = await fixture();
+  try {
+    await fs.mkdir(path.join(f.root, 'Cache', 'MCP'), { recursive: true });
+    const started = Date.now();
+    const status = await inspectEditorBridge(await createProjectContext(f.root), started, () => true);
+    assert.equal(status.reason, 'heartbeat_missing');
+    assert.ok(Date.now() - started < 35, 'no retry delay without a token');
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test('bridge connects only for a matching, live, fresh heartbeat', async () => {
   const f = await fixture();
   const now = Date.now();

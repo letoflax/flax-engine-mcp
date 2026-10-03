@@ -33,10 +33,15 @@ const TOOL_FAMILIES = {
     'lighting_get_status', 'lighting_validate', 'terrain_get_summary', 'foliage_get_summary', 'list_docs',
     'read_doc', 'capture_compare', 'get_latest_log', 'perf_get_snapshot',
     'actor_get_properties', 'ui_control_get_properties', 'particle_get_parameters',
+    'graph_list_archetypes',
+    // Bridge v35: heartbeat scan of running cooked game instances.
+    'game_list_instances',
   ],
   code: [
     'install_editor_bridge', 'code_compile', 'code_generate_project', 'operation_cancel', 'write_script',
     'apply_script_patch', 'generate_script',
+    // Changes a user-global Editor option (not project data); reading is allowed through the same tool.
+    'editor_options',
   ],
   scene: [
     'scene_save', 'scene_open', 'project_save_all', 'actor_create', 'actor_update', 'actor_set_property', 'actor_delete',
@@ -49,11 +54,15 @@ const TOOL_FAMILIES = {
   asset: ['reimport_asset', 'asset_import', 'asset_reimport', 'asset_set_import_settings', 'asset_move', 'asset_rename', 'asset_duplicate', 'asset_delete', 'prefab_create_from_actor', 'prefab_apply_overrides', 'material_set_parameters', 'material_create_instance', 'graph_set_default_parameter', 'graph_add_parameter', 'animgraph_add_state', 'animgraph_add_transition', 'graph_remove_node', 'graph_disconnect', 'graph_set_node_values', 'graph_move_node', 'graph_set_model', 'animgraph_set_state_clip',
     // Project settings and new Content files persist to disk without an Editor undo record.
     'settings_set_input_action', 'settings_set_input_axis', 'settings_remove_input_mapping', 'settings_set_layer_name', 'settings_add_tag', 'settings_set_first_scene',
-    'scene_create', 'content_create_folder', 'asset_create'],
+    'scene_create', 'content_create_folder', 'asset_create',
+    'graph_edit', 'animgraph_set_transition'],
   runtime: [
     'play_start_scenes', 'play_start_game', 'play_stop', 'play_pause', 'play_resume',
     'play_step_frame', 'play_set_time_scale', 'input_key_press', 'input_mouse_click', 'play_run_for', 'test_run_scenario', 'viewport_capture', 'runtime_inspect_actor', 'build_cook', 'build_cancel', 'navigation_build', 'lighting_bake', 'environment_probe_bake',
     'runtime_set_script_value', 'runtime_invoke_script_method',
+    'editor_quit', 'editor_launch',
+    // Bridge v35: start, and gracefully stop, a cooked game that runs the runtime bridge.
+    'game_launch', 'game_stop',
   ],
 } as const;
 

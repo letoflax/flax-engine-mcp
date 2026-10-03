@@ -7,6 +7,8 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createProjectContext, ProjectMeta } from '../projectContext.js';
 import { decodeText } from '../textEncoding.js';
 import { handleGetSceneActors, handleListAssets } from './assets.js';
+import { handleGetAssetInfo } from './assetInfo.js';
+import { nativeToManaged } from '../guid.js';
 import { handleGetScriptClasses } from './codeAnalysis.js';
 import { handleSearchInFiles } from './files.js';
 import { handleValidateProject } from './intelligence.js';
@@ -113,7 +115,46 @@ test('binary Flax material header is classified and exposes its GUID', async () 
 
     const output = resultText(await handleListAssets({ type: 'all' }, f.ctx));
     assert.match(output, /material\s+Test\.flax/);
-    assert.match(output, /00112233445566778899aabbccddeeff/);
+    // Printed in the bridge's managed "N" form (new Guid(byte[]) over the raw header bytes).
+    assert.match(output, /33221100554477668899aabbccddeeff/);
+    assert.doesNotMatch(output, /00112233445566778899aabbccddeeff/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('scene reference to an existing binary asset (native text form) is not reported missing', async () => {
+  const f = await fixture();
+  try {
+    // AR15 vector from docs/GUID_AUDIT_P7.md: header bytes, scene text (native) form.
+    const header = Buffer.from('36b2fba2c2103341abe253a0c8d1839c', 'hex');
+    const typeName = Buffer.from('FlaxEngine.Model\0', 'utf16le');
+    const asset = Buffer.alloc(0x2c + typeName.length);
+    asset.write('CFWF', 0, 'ascii');
+    header.copy(asset, 0x1c);
+    typeName.copy(asset, 0x2c);
+    await fs.writeFile(path.join(f.ctx.contentDir, 'AR15.flax'), asset);
+    await fs.writeFile(path.join(f.ctx.contentDir, 'Refs.scene'), JSON.stringify({
+      ID: '11111111111111111111111111111111',
+      Data: [{ ID: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', TypeName: 'FlaxEngine.StaticModel', Model: 'a2fbb236413310c2a053e2ab9c83d1c8', Material: '0123456789abcdef0123456789abcdef' }],
+    }));
+    const result = await handleValidateProject({ checks: ['assets'] }, f.ctx);
+    const findings = (result.structuredContent as any).data.findings as Array<{ ruleId: string; metadata: { referenceField: string; assetId: string; assetIdNative: string } }>;
+    assert.deepEqual(findings.map(x => [x.ruleId, x.metadata.referenceField]), [['FLAX002', 'Material']]);
+    assert.equal(findings[0]!.metadata.assetIdNative, '0123456789abcdef0123456789abcdef');
+    assert.equal(findings[0]!.metadata.assetId, nativeToManaged('0123456789abcdef0123456789abcdef'));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('scene asset IDs are printed in managed form by list_assets and get_asset_info', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(path.join(f.ctx.contentDir, 'Ids.scene'), JSON.stringify({ ID: 'a2fbb236413310c2a053e2ab9c83d1c8', Data: [] }));
+    assert.match(resultText(await handleListAssets({ type: 'all' }, f.ctx)), /a2fbb23610c24133abe253a0c8d1839c/);
+    const info = resultText(await handleGetAssetInfo({ path: 'Content/Ids.scene' }, f.ctx));
+    assert.match(info, /ID:\s+a2fbb23610c24133abe253a0c8d1839c/);
   } finally {
     await f.cleanup();
   }

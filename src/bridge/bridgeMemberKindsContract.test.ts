@@ -21,7 +21,7 @@ function method(source: string, signature: string): string {
 
 test('member kinds cover brushes and font references without widening the wire shape', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*33/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*34/);
   const kinds = method(source, 'private static string MemberKindName(Type type)');
   assert.match(kinds, /if \(IsBrushType\(type\)\) return "brush";/);
   assert.match(kinds, /if \(type == typeof\(FontReference\)\) return "font";/);
@@ -32,7 +32,7 @@ test('member kinds cover brushes and font references without widening the wire s
   assert.match(coerce, /if \(IsBrushType\(type\)\) return CoerceBrushValue\(type, text, need, memberName\);/);
   assert.match(coerce, /if \(type == typeof\(FontReference\)\) return CoerceFontValue\(text, need, memberName\);/);
   // The request DTO gained no field for these kinds.
-  assert.match(source, /public class McpActorPropertySet \{ public string ActorId; public string Property; public bool\? Bool; public double\? Number; public string Text; public bool DryRun; public long\? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; \}/);
+  assert.match(source, /public class McpActorPropertySet \{ public string ActorId; public string Property; public string\[\] Path; public bool\? Bool; public double\? Number; public string Text; public bool DryRun; public long\? ExpectedSceneRevision; public string LeaseId; public string IdempotencyKey; \}/);
 });
 
 test('brush strings build only the brush types the Editor picker offers and a scene serializes', async () => {

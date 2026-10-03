@@ -3,12 +3,13 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
-import { isHeadlessRefusal } from '../bridge/mapBridgeError.js';
+import { isHeadlessRefusal, mapRuntimeBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
 import { startHeavyOperation } from '../operations.js';
 import { reportProgress } from '../progress.js';
+import { InstanceParam, callGame, gameToolResult } from './gameRuntime.js';
 
 type RuntimeBridgeMethod =
   | 'code.status' | 'code.compile_start' | 'code.diagnostics'
@@ -65,6 +66,7 @@ export const PlayStepFrameSchema = PlayMutation.extend({
 });
 export const PlaySetTimeScaleSchema = z.object({
   time_scale: z.number().min(0).max(10),
+  instance: InstanceParam,
 });
 // Bridge v26 play-mode input simulation. The bridge validates + gates fully
 // but key/button injection has no verified managed Flax API, so valid calls
@@ -513,6 +515,15 @@ export async function handlePlayStepFrame(args: z.infer<typeof PlayStepFrameSche
 }
 
 export async function handlePlaySetTimeScale(args: z.infer<typeof PlaySetTimeScaleSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  if (args.instance !== undefined) {
+    // A cooked game has no play mode and no play-state gate: Time.TimeScale is set directly.
+    try {
+      const response = await callGame<unknown>(ctx, args.instance, 'play.set_time_scale', { TimeScale: args.time_scale });
+      const timeScale = numberField(response.data, 'TimeScale', 'timeScale', 'time_scale') ?? args.time_scale;
+      return gameToolResult({ time_scale: timeScale, instance: args.instance, result: response.data, bridge: response.bridge }, response.warnings,
+        [{ kind: 'play.time_scale', time_scale: timeScale, instance: args.instance }]);
+    } catch (error) { return toolError(mapRuntimeBridgeError(error)); }
+  }
   try {
     const response = await callEditorBridge(ctx, asBridgeMethod('play.set_time_scale'), { TimeScale: args.time_scale }, { minimumBridgeVersion: 23 });
     const observed = numberField(response.data, 'TimeScale', 'timeScale', 'time_scale');

@@ -10,7 +10,7 @@ const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import
  * constant only; the per-feature tests below assert their own feature and do
  * not repeat the version.
  */
-const CURRENT_BRIDGE_VERSION = 33;
+const CURRENT_BRIDGE_VERSION = 34;
 
 test('every place the bridge source states its version agrees with the current version', async () => {
   const source = await readFile(bridgePath, 'utf8');
@@ -23,6 +23,105 @@ test('every place the bridge source states its version agrees with the current v
   assert.ok(declared.every(version => version === CURRENT_BRIDGE_VERSION), `BridgeVersion declarations: ${declared.join(', ')}`);
   // The startup log line.
   assert.deepEqual(found(/Debug\.Log\("\[Flax MCP\] Bridge v(\d+) listening/g), [CURRENT_BRIDGE_VERSION]);
+});
+
+test('bridge dispatch case labels equal KnownMethods and an unknown method fails with METHOD_NOT_FOUND', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  const switchStart = source.indexOf('switch (request.method)');
+  assert.notEqual(switchStart, -1, 'dispatch switch must exist');
+  const defaultStart = source.indexOf('default:', switchStart);
+  assert.notEqual(defaultStart, -1, 'dispatch switch must have a default case');
+  const labels = [...source.slice(switchStart, defaultStart).matchAll(/^\s*case "([^"]+)":/gm)].map(match => match[1]);
+  assert.equal(new Set(labels).size, labels.length, 'dispatch case labels must be unique');
+
+  const arrayStart = source.indexOf('private static readonly string[] KnownMethods');
+  assert.notEqual(arrayStart, -1, 'bridge must declare KnownMethods');
+  const arrayBody = source.slice(source.indexOf('{', arrayStart), source.indexOf('};', arrayStart));
+  const known = [...arrayBody.matchAll(/"([^"]+)"/g)].map(match => match[1]);
+  assert.equal(new Set(known).size, known.length, 'KnownMethods must not repeat a method');
+  assert.deepEqual([...new Set(known)].sort(), [...new Set(labels)].sort());
+
+  // The default case reports the method list and Status() publishes it.
+  const defaultLine = source.slice(defaultStart, source.indexOf('\n', defaultStart));
+  assert.match(defaultLine, /throw new McpProtocolException\("METHOD_NOT_FOUND"/);
+  assert.match(defaultLine, /is not a bridge method\./);
+  assert.match(defaultLine, /new \{ Method = .*Methods = KnownMethods \}/);
+  assert.doesNotMatch(source, /"METHOD_NOT_ALLOWED"/);
+  assert.match(source, /status\.Methods = KnownMethods;/);
+  assert.match(source, /status\.MethodDiscoverySupported = true;/);
+});
+
+test('bridge v34 implements all six new methods and sets every v34 capability flag', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.doesNotMatch(source, /NotImplementedV34/);
+  assert.doesNotMatch(source, /is declared in bridge v34 but not implemented yet/);
+  const flags = ['MethodDiscoverySupported', 'AssetImportResultIdSupported', 'AssetImportReplaceSupported', 'BridgeOwnershipSupported', 'EditorReadinessSupported', 'EditorQuitSupported', 'EditorOptionsSupported', 'SceneReplaceSupported', 'SceneReloadSupported', 'NestedMemberPathSupported', 'ScriptAssetReferenceWriteSupported', 'GraphArchetypeListSupported', 'GraphEditSupported', 'AnimgraphTransitionSettingsSupported', 'GameplayGlobalsCreateSupported', 'MaterialFunctionGraphSupported'];
+  for (const flag of flags) {
+    assert.match(source, new RegExp(`public bool ${flag};`));
+    assert.match(source, new RegExp(`^\\s+status\\.${flag} = true;`, 'm'));
+  }
+});
+
+test('bridge v34 editor.quit defers RequestExit to the update loop, after the response is written', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "editor\.quit":.*OnMain\(\(\) => EditorQuit\(q\)/);
+  // Engine.RequestExit is called exactly once, from the pending-quit tick that OnUpdate runs, never inside the request.
+  assert.equal(source.match(/Engine\.RequestExit\(/g)?.length, 1);
+  const tick = source.slice(source.indexOf('private void TickPendingQuit('), source.indexOf('private McpEditorOptions GetEditorOptions('));
+  assert.match(tick, /Engine\.RequestExit\(\);/);
+  assert.match(source, /private void OnUpdate\(\)[\s\S]*?TickPendingQuit\(now\);/);
+  const request = source.slice(source.indexOf('private McpEditorQuitResult EditorQuit('), source.indexOf('private void TickPendingQuit('));
+  assert.doesNotMatch(request, /RequestExit/);
+  assert.match(request, /_pendingQuit = pending;/);
+  // The exit waits for the response file (ProcessFile marks it), a later frame, async scene saves and the end of play mode.
+  assert.match(source, /request\.method, "editor\.quit"[\s\S]{0,200}ResponseWritten = true/);
+  assert.match(tick, /ResponseWritten/);
+  assert.match(tick, /Engine\.FrameCount <= pending\.ArmedFrame/);
+  assert.match(tick, /Level\.IsAnyActionPending/);
+  assert.match(tick, /IsPlayModeRequested/);
+  // Gates and unsaved detection use the Editor's own state.
+  assert.match(request, /ScriptsBuilder\.IsCompiling[\s\S]*?"EDITOR_BUSY"/);
+  assert.match(request, /ContentImporting\.IsImporting/);
+  assert.match(request, /GameCooker\.IsRunning/);
+  assert.match(request, /"INVALID_STATE", "Editor quit is refused: play mode active/);
+  assert.match(request, /"DIRTY_SCENE"/);
+  assert.match(request, /editor\.Scene\.SaveScenes\(\)/);
+  assert.match(request, /RequestStopPlay\(\)/);
+  assert.match(source, /AssetEditorWindow;?[\s\S]{0,40}\bwindow\.IsEdited|window != null && window\.IsEdited/);
+  assert.match(source, /window\.Save\(\);/);
+  // Exit never goes through the user-closing path that shows the save prompt.
+  assert.doesNotMatch(source, /Windows\.MainWindow\.Close\(/);
+});
+
+test('bridge v34 editor.set_option writes through Options.Apply on a deep copy and refuses while the options window is open', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /case "editor\.get_options": result = OnMain\(GetEditorOptions/);
+  assert.match(source, /case "editor\.set_option":.*OnMain\(\(\) => SetEditorOption\(q\)/);
+  const body = source.slice(source.indexOf('private McpEditorSetOptionResult SetEditorOption('), source.indexOf('private McpPlayStatus PausePlay('));
+  // Allow-list: exactly the two General options.
+  assert.deepEqual([...new Set([...body.matchAll(/"(\w+)"/g)].map(match => match[1]).filter(name => /^[A-Z]/.test(name!) && !/^(INVALID_REQUEST|EDITOR_BUSY)$/.test(name!)))].sort(), ['AutoReloadScriptsOnMainWindowFocus', 'ForceScriptCompilationOnStartup']);
+  assert.match(body, /DeepClone\(editor\.Options\.Options\)/);
+  assert.match(body, /editor\.Options\.Apply\(copy\);/);
+  assert.match(body, /Confirm/);
+  assert.match(body, /if \(request\.DryRun\) return result;/);
+  // Dry run returns before any write; the window gate and Apply come after Confirm.
+  assert.ok(body.indexOf('request.DryRun') < body.indexOf('EditorOptionsWin'));
+  assert.ok(body.indexOf('EditorOptionsWin') < body.indexOf('Options.Apply('));
+  assert.match(body, /"EDITOR_BUSY", "The Editor Options window is open/);
+  assert.match(body, /!optionsWindow\.IsHidden/);
+  // Never reports a file path.
+  assert.doesNotMatch(body, /EditorOptions\.json|OptionsFilePath|Path\.Combine/);
+});
+
+test('bridge v34 status assigns the readiness fields and never throws for them', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /FillEditorReadiness\(status\);/);
+  const body = source.slice(source.indexOf('private static void FillEditorReadiness('), source.indexOf('private sealed class PendingQuit'));
+  for (const assignment of [/status\.EditorState = .*StateMachine|status\.EditorState = state == null \? null : state\.GetType\(\)\.Name/, /status\.IsEditMode = /, /status\.IsCompiling = ScriptsBuilder\.IsCompiling/, /status\.ScriptsReady = ScriptsBuilder\.IsReady/, /status\.IsImporting = .*ContentImporting\.IsImporting/, /status\.LastCompileFailed = ScriptsBuilder\.LastCompilationFailed/, /status\.LoadedSceneCount = Level\.ScenesCount/]) {
+    assert.match(body, assignment);
+  }
+  assert.ok((body.match(/catch/g) ?? []).length >= 3, 'every probe group is guarded');
+  assert.match(source, /^\s+status\.EditorReadinessSupported = true;/m);
 });
 
 test('bridge v20 keeps read-only sub-context inspection with navigate-and-restore traversal', async () => {
@@ -52,6 +151,8 @@ test('bridge v21 binds AnimationGraph BaseModel plus the v20 clip/value/move sur
 
 test('bridge v20 keeps the bounded P5ab removal pair without headless saves or hardcoded archetypes', async () => {
   const source = await readFile(bridgePath, 'utf8');
+  // v34 note: this test only covers the removal pair. GraphAllowedArchetypes reads the AnimGraphSurface private lists by
+  // reflection and keeps the ids (9,20), (9,34), (9,23) as a documented fallback only when those lists are missing.
   assert.match(source, /case "graph\.remove_node"/);
   assert.match(source, /case "graph\.disconnect"/);
   assert.match(source, /NodeFlags\.NoRemove/);
@@ -119,7 +220,7 @@ test('bridge v9 keeps actor/script editing allowlisted, validated before undo, a
   assert.match(source, /if \(p == null \|\| !p\.Enabled\.HasValue\) throw new McpProtocolException\("INVALID_REQUEST"/);
   assert.match(source, /McpScriptEnabledUndo/);
   assert.doesNotMatch(source, /PropertyInfo\.SetValue/);
-  assert.match(source, /METHOD_NOT_ALLOWED", "Method '" \+ \(request == null \|\| request\.method == null/);
+  assert.match(source, /METHOD_NOT_FOUND", "Method '" \+ \(request == null \|\| request\.method == null/);
 });
 
 test('bridge v9 exposes only verified, bounded public Content APIs for asset registry and graphs', async () => {
@@ -134,7 +235,7 @@ test('bridge v9 exposes only verified, bounded public Content APIs for asset reg
   assert.match(source, /case "asset\.import_start"/);
   assert.match(source, /case "asset\.reimport_start"/);
   assert.match(source, /AssetImportSupported = true/);
-  assert.match(source, /FEditor\.Import\(source, output/);
+  assert.match(source, /FEditor\.Import\(source, importOutput/);
   assert.match(source, /ContentImporting\.Reimport\(item, BuildModelReimportSettings\(item/);
   assert.match(source, /ImportFileEnd \+= OnAssetImportFileEnd/);
   assert.doesNotMatch(source, /Process\.Start\(/);
@@ -158,7 +259,7 @@ test('bridge v10 exposes safe editor Content move, rename, and duplicate operati
   assert.match(source, /AssetOrganizationUndoSupported = false/);
   assert.match(source, /AssetOrganizationLeaseSupported = false/);
   assert.match(source, /ContentDatabase\.Move\(contentItem, output\)/);
-  assert.match(source, /Content\.RenameAsset\(sourceAbsolutePath, output\)/);
+  assert.match(source, /Content\.RenameAsset\(EngineAssetPath\(source\.Path\), EngineAssetPathFromAbsolute\(output\)\)/); // v34 path-spelling trap
   assert.match(source, /ContentDatabase\.Copy\(contentItem, output\)/);
   assert.match(source, /ASSET_REVISION_CONFLICT/);
   assert.match(source, /MaxAssetReferenceImpactEntries = 50/);
@@ -374,8 +475,11 @@ test('bridge v24 reads and replaces editor selection through verified SceneEditi
   assert.match(source, /Editor selection is unavailable in headless editor mode/);
 });
 
-test('bridge v25 opens canonical Content scenes through verified Level.LoadSceneAsync', async () => {
+test('bridge v25 opens canonical Content scenes through verified Level.LoadSceneAsync (v34: Replace/Reload through the scene state machine)', async () => {
   const source = await readFile(bridgePath, 'utf8');
+  // The additive open and the not-loaded reload still use LoadSceneAsync; Replace and the
+  // single-scene Reload go through ChangingScenesState.ChangeScenes (see bridgeV34SceneMemberContract.test.ts).
+  assert.match(source, /editor\.StateMachine\.ChangingScenesState\.ChangeScenes\(/);
   assert.match(source, /SceneOpenSupported = true/);
   assert.match(source, /McpSceneOpen\b/);
   assert.match(source, /McpSceneOpenResult/);
@@ -434,7 +538,11 @@ test('bridge v26 gates play-mode input simulation to managed Flax APIs only', as
   assert.match(source, /Capability = "input_mouse_click"/);
   assert.match(source, /KeyboardKeys\.None/);
   assert.match(source, /KeyboardKeys\.MAX/);
-  assert.doesNotMatch(source, /\[\s*DllImport/);
+  // The only native imports are the three kernel32 process-liveness calls of the v34 directory ownership check
+  // (OpenProcess/GetExitCodeProcess/CloseHandle: System.Diagnostics.Process is not referenced by Flax's script build).
+  assert.deepEqual(source.match(/\[\s*DllImport\("[^"]+"[^\]]*\]\s*private static extern \w+ \w+/g)?.map(entry => entry.replace(/\s+/g, ' ').replace(/^.*extern \w+ /, '')), ['OpenProcess', 'GetExitCodeProcess', 'CloseHandle']);
+  assert.equal(source.match(/\[\s*DllImport\(/g)?.length, 3);
+  assert.doesNotMatch(source, /DllImport\("(?!kernel32\.dll)/);
   assert.doesNotMatch(source, /user32\.dll/i);
   assert.doesNotMatch(source, /SendInput\s*\(/);
   // Input simulation never sleeps: the only Thread.Sleep calls in the bridge
@@ -464,9 +572,9 @@ test('bridge v27 reads one instantaneous engine performance snapshot without all
   assert.match(source, /device\.RendererType/);
   assert.match(source, /adapter\.Description/);
   assert.match(source, /FEditor\.Instance\.IsHeadlessMode/);
-  // The only main-thread-external sleeps are the two v31 background poll
-  // cadences (navmesh/probe); PerfSnapshot itself never sleeps.
-  assert.deepEqual(source.match(/Thread\.Sleep\s*\([^)]*\)/g) ?? [], ['Thread.Sleep(100)', 'Thread.Sleep(100)']);
+  // The only main-thread-external sleeps are the background poll cadences
+  // (v34 navmesh 1 ms sampling after a 3 s spin, v31 probe 100 ms); PerfSnapshot itself never sleeps.
+  assert.deepEqual(source.match(/Thread\.Sleep\s*\([^)]*\)/g) ?? [], ['Thread.Sleep(1)', 'Thread.Sleep(100)']);
 });
 
 test('bridge v29 keeps the v28 bounded script/component write surface', async () => {
@@ -484,16 +592,20 @@ test('bridge v29 keeps the v28 bounded script/component write surface', async ()
   assert.match(source, /RequireEditTime\(/);
   assert.match(source, /is an edit-time operation and is unavailable while the editor is in play mode/);
   assert.match(source, /is unavailable in headless editor mode/);
-  // The ONLY reflection-backed setter on game objects is the Editor
-  // property-grid wrapper ScriptMemberInfo.SetValue; raw
-  // PropertyInfo.SetValue is never used on game objects.
-  assert.match(source, /ONLY reflection-backed setter/);
-  assert.match(source, /new ScriptMemberInfo\(field\)/);
-  assert.match(source, /\.SetValue\(script, value\)/);
-  assert.match(source, /McpScriptFieldUndo/);
-  assert.match(source, /FEditor\.Instance\.Undo\.AddAction\(action\)/);
+  // Bridge v34: script writes run the actor_set_property pipeline. The only
+  // reflection-backed setter on game objects stays the Editor property-grid
+  // wrapper ScriptMemberInfo.SetValue (never raw PropertyInfo.SetValue), the
+  // value goes through CoerceMemberValue, and undo is one snapshot record on
+  // the script instead of the old whitelist converter and McpScriptFieldUndo.
+  const scriptWrite = source.slice(source.indexOf('private McpScriptFieldSetResult SetScriptField('), source.indexOf('private const string ActorPropertyAllowlist'));
+  assert.match(scriptWrite, /PlanMemberWrite\(script, path, MemberTargetScript, true, nested/);
+  assert.match(scriptWrite, /undo\.RecordBegin\(script, "Set script member"\)/);
+  assert.match(scriptWrite, /finally \{ undo\.RecordEnd\(script\); \}/);
+  assert.match(source, /Chain\.Slots\[last\]\.Info\.SetValue\(|chain\.Slots\[last\]\.Info\.SetValue\(/);
   assert.match(source, /HasSet/);
-  assert.match(source, /IsSupportedScriptFieldType/);
+  assert.doesNotMatch(source, /McpScriptFieldUndo\b[^\n]*\{/);
+  assert.doesNotMatch(source, /IsSupportedScriptFieldType\(/);
+  assert.doesNotMatch(source, /ResolveScriptField\(/);
   assert.match(source, /Unknown actor property/);
   assert.match(source, /Light\.Color, Light\.Brightness, Camera\.FieldOfView, StaticModel\.Model, Script\.Enabled/);
   assert.match(source, /light\.Color = color/);
@@ -529,7 +641,7 @@ test('bridge v31 backs foliage/navmesh/bake/probe writes with verified public AP
   assert.match(source, /RequireEditTime\("terrain\.paint"\)/);
   assert.match(source, /RequireEditTime\("foliage\.add_instances"\)/);
   assert.match(source, /RequireEditTime\("foliage\.remove_instances"\)/);
-  assert.match(source, /RequireEditTime\("navigation\.build"\)/);
+  assert.match(source, /RequireNotPlaying\("navigation\.build"\)/); // v34: headless allowed, play mode refused
   assert.match(source, /RequireEditTime\("lighting\.bake"\)/);
   assert.match(source, /RequireEditTime\("environment_probe\.bake"\)/);
   assert.match(source, /MaxFoliageBatch = 200/);
@@ -539,9 +651,9 @@ test('bridge v31 backs foliage/navmesh/bake/probe writes with verified public AP
   assert.match(source, /foliage\.RebuildClusters\(\);/);
   assert.match(source, /foliage\.UpdateCullDistance\(\);/);
   assert.match(source, /Array\.Reverse\(ordered\)/);
-  assert.match(source, /Navigation\.BuildNavMesh\(bounds, sceneForCall, timeoutForCall\)/);
-  assert.match(source, /Navigation\.BuildNavMesh\(sceneForCall, timeoutForCall\)/);
-  assert.match(source, /Phase = building \? "timeout" : "completed"/);
+  assert.match(source, /Navigation\.BuildNavMesh\(bounds, sceneForCall, BuildDelayMs\)/);
+  assert.match(source, /Navigation\.BuildNavMesh\(sceneForCall, BuildDelayMs\)/);
+  assert.match(source, /Phase = completed \? "completed" : \(building \? "running" : "queued"\)/);
   assert.match(source, /no navmesh cancel API/);
   assert.match(source, /FEditor\.LightmapsBakeProgress \+= OnLightmapsBakeProgress;/);
   assert.match(source, /FEditor\.LightmapsBakeEnd \+= OnLightmapsBakeEnd;/);
@@ -734,8 +846,8 @@ test('bridge v33 writes settings and creates content only through Editor APIs wi
   assert.match(source, /Content\.GetAssetInfo\(EngineAssetPath\(normalized\), out clash\)/);
   assert.match(source, /Content\.GetAssetInfo\(EngineAssetPath\(normalized\), out info\)/);
   assert.doesNotMatch(source, /Content\.GetAssetInfo\((?:absolute|output), out/);
-  // The modal "save before closing?" path is never taken.
-  assert.doesNotMatch(source, /CheckSaveBeforeClose/);
+  // The modal "save before closing?" path is never taken (v34 scene.open Replace/Reload mention it in comments only).
+  assert.doesNotMatch(source, /\.CheckSaveBeforeClose\(/);
   assert.doesNotMatch(source, /MessageBox\.Show/);
 });
 

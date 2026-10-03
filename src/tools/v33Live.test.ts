@@ -5,12 +5,12 @@ import path from 'node:path';
 import test from 'node:test';
 import { createProjectContext, type ProjectMeta } from '../projectContext.js';
 import type { ToolResponse } from '../errors.js';
-import { ActorSetPropertySchema, handleActorSetProperty } from './editorLive.js';
+import { ActorSetPropertySchema, MemberValueSchema, handleActorSetProperty } from './editorLive.js';
 import {
   ActorGetPropertiesSchema, ParticleGetParametersSchema, ParticleSetParameterSchema, UiControlCreateSchema, UiControlGetPropertiesSchema, UiControlSetPropertySchema,
   handleActorGetProperties, handleParticleGetParameters, handleParticleSetParameter, handleUiControlCreate, handleUiControlGetProperties, handleUiControlSetProperty,
 } from './memberLive.js';
-import { RuntimeInvokeScriptMethodSchema, RuntimeSetScriptValueSchema, handleRuntimeInvokeScriptMethod, handleRuntimeSetScriptValue } from './runtimeScriptLive.js';
+import { RuntimeInvokeScriptMethodSchema, RuntimeSetScriptValueMemberSchema, RuntimeSetScriptValueSchema, handleRuntimeInvokeScriptMethod, handleRuntimeSetScriptValue } from './runtimeScriptLive.js';
 import {
   SettingsAddTagSchema, SettingsRemoveInputMappingSchema, SettingsSetFirstSceneSchema, SettingsSetInputActionSchema, SettingsSetInputAxisSchema, SettingsSetLayerNameSchema,
   handleSettingsAddTag, handleSettingsRemoveInputMapping, handleSettingsSetFirstScene, handleSettingsSetInputAction, handleSettingsSetInputAxis, handleSettingsSetLayerName,
@@ -412,11 +412,11 @@ test('member value schemas document every brush kind, the font form, and engine 
     assert.match(text, /engine:Editor\/Primitives\/Cube/);
     assert.match(text, /"" clears/);
   }
-  const actorValue = ActorSetPropertySchema.shape.value.description ?? '';
+  const actorValue = MemberValueSchema.description ?? '';
   assert.match(actorValue, /engine:<path>/);
   assert.match(actorValue, /;size=<points>/);
   assert.match(actorValue, /solid, gradient, texture, texture9, sprite, sprite9, material, ui_brush, and video/);
-  assert.match(RuntimeSetScriptValueSchema.shape.value.description ?? '', /engine:<path>/);
+  assert.match(RuntimeSetScriptValueMemberSchema.shape.value.description ?? '', /engine:<path>/);
 
   // The value is still one bounded scalar: no object or array form was added.
   assert.equal(UiControlSetPropertySchema.safeParse({ actor_id: ACTOR, property: 'Brush', value: { kind: 'texture' } }).success, false);

@@ -16,7 +16,7 @@ import {
 import { BRIDGE_V33, ScalarValue, ScalarValueInput } from './liveToolSupport.js';
 import {
   RuntimeInvokeScriptMethodSchema,
-  RuntimeSetScriptValueSchema,
+  RuntimeSetScriptValueMemberSchema,
   handleRuntimeInvokeScriptMethod,
   handleRuntimeSetScriptValue,
 } from './runtimeScriptLive.js';
@@ -61,7 +61,7 @@ const StepAtSeconds = z.number().min(0).max(60)
 
 // Step payloads reuse the runtime_* tool schemas, so the members, arguments, and
 // limits are exactly the ones those tools enforce.
-const SetScriptValueStepSchema = RuntimeSetScriptValueSchema.extend({
+const SetScriptValueStepSchema = RuntimeSetScriptValueMemberSchema.extend({
   type: z.literal('set_script_value'),
   at_seconds: StepAtSeconds,
 }).strict();

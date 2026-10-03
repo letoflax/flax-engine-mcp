@@ -5,6 +5,7 @@ import { ProjectMeta } from '../projectContext.js';
 import { EditorBridgeStatus, inspectEditorBridge } from '../tools/serverStatus.js';
 import { recordIpcFailure } from '../observability.js';
 import { reportProgress } from '../progress.js';
+import { RuntimeBridgeStatus, RUNTIME_BRIDGE_MIN_VERSION, assertRuntimeInstanceName, inspectRuntimeBridge, runtimeInstanceDirectory } from './runtimeHeartbeat.js';
 import {
   BRIDGE_CACHE_DIRECTORY,
   BRIDGE_REQUESTS_DIRECTORY,
@@ -32,6 +33,12 @@ export interface FileRpcClientOptions {
   pollIntervalMs?: number;
   /** Require a newer additive bridge capability for this call. */
   minimumBridgeVersion?: number;
+  /**
+   * Talk to the runtime bridge of one cooked game instance (<project>/Cache/MCP-Runtime/<instance>,
+   * Kind "game", bridge v35+) instead of the Flax Editor bridge. The name is validated
+   * (^[A-Za-z0-9_-]{1,64}$) so it can never leave that folder.
+   */
+  runtimeInstance?: string;
 }
 
 export interface BridgeCallOptions {
@@ -42,6 +49,13 @@ export interface BridgeCallOptions {
 export interface EditorBridgeCall<R = unknown> {
   data: R;
   mode: 'editor-connected';
+  bridge: BridgeConnectionMetadata;
+  warnings: string[];
+}
+
+export interface RuntimeBridgeCall<R = unknown> {
+  data: R;
+  mode: 'game-connected';
   bridge: BridgeConnectionMetadata;
   warnings: string[];
 }
@@ -78,6 +92,19 @@ function bridgeMetadata(status: EditorBridgeStatus): BridgeConnectionMetadata {
   };
 }
 
+function runtimeBridgeMetadata(status: RuntimeBridgeStatus): BridgeConnectionMetadata {
+  return {
+    connected: true,
+    reason: 'connected',
+    pid: status.pid,
+    heartbeatAgeMs: status.heartbeatAgeMs,
+    editorVersion: status.engineVersion,
+    bridgeVersion: status.bridgeVersion,
+    protocolVersion: status.protocolVersion,
+    endpoint: null,
+  };
+}
+
 function parseResponse(value: unknown): BridgeResponse {
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.token !== 'string' || typeof value.ok !== 'boolean') {
     throw new BridgeRpcError('BRIDGE_RESPONSE_INVALID', 'Bridge response is missing required fields.');
@@ -110,6 +137,7 @@ export class FileRpcClient {
   private readonly maxMessageBytes: number;
   private readonly pollIntervalMs: number;
   private readonly optionsMinimumBridgeVersion: number | undefined;
+  private readonly runtimeInstance: string | undefined;
 
   constructor(
     private readonly ctx: ProjectMeta,
@@ -121,6 +149,7 @@ export class FileRpcClient {
     this.optionsMinimumBridgeVersion = options.minimumBridgeVersion === undefined
       ? undefined
       : boundedInteger(options.minimumBridgeVersion, 5, 5, 100);
+    this.runtimeInstance = options.runtimeInstance === undefined ? undefined : assertRuntimeInstanceName(options.runtimeInstance);
   }
 
   async call<M extends BridgeMethod, P, R>(
@@ -128,11 +157,15 @@ export class FileRpcClient {
     params: P,
     options: BridgeCallOptions = {},
   ): Promise<BridgeCallResult<R>> {
-    const projectLockKey = process.platform === 'win32'
-      ? path.resolve(this.ctx.projectPath).toLowerCase()
-      : path.resolve(this.ctx.projectPath);
+    // One request at a time per bridge: the editor bridge of a project, or one game instance directory.
+    const lockTarget = this.runtimeInstance === undefined
+      ? path.resolve(this.ctx.projectPath)
+      : path.resolve(runtimeInstanceDirectory(this.ctx, this.runtimeInstance));
+    const projectLockKey = process.platform === 'win32' ? lockTarget.toLowerCase() : lockTarget;
     if (this.inFlight || FileRpcClient.inFlightProjects.has(projectLockKey)) {
-      throw new BridgeRpcError('BRIDGE_CONCURRENT_CALL', 'A bridge request is already in flight for this project.');
+      throw new BridgeRpcError('BRIDGE_CONCURRENT_CALL', this.runtimeInstance === undefined
+        ? 'A bridge request is already in flight for this project.'
+        : `A bridge request is already in flight for game instance "${this.runtimeInstance}".`);
     }
     this.inFlight = true;
     FileRpcClient.inFlightProjects.add(projectLockKey);
@@ -148,7 +181,9 @@ export class FileRpcClient {
   }
 
   private paths(): BridgePaths {
-    const root = path.join(this.ctx.projectPath, BRIDGE_CACHE_DIRECTORY);
+    const root = this.runtimeInstance === undefined
+      ? path.join(this.ctx.projectPath, BRIDGE_CACHE_DIRECTORY)
+      : runtimeInstanceDirectory(this.ctx, this.runtimeInstance);
     return {
       root,
       token: path.join(root, BRIDGE_TOKEN_FILE),
@@ -163,9 +198,16 @@ export class FileRpcClient {
     options: BridgeCallOptions,
   ): Promise<BridgeCallResult<R>> {
     const deadlineMs = boundedInteger(options.deadlineMs, this.deadlineMs, MIN_DEADLINE_MS, MAX_DEADLINE_MS);
-    const bridge = await inspectEditorBridge(this.ctx);
+    const runtimeInstance = this.runtimeInstance;
+    const bridge = runtimeInstance === undefined ? await inspectEditorBridge(this.ctx) : await inspectRuntimeBridge(this.ctx, runtimeInstance);
     if (!bridge.connected) {
-      throw new BridgeRpcError('BRIDGE_UNAVAILABLE', `Editor bridge is unavailable: ${bridge.reason}.`, { reason: bridge.reason });
+      throw new BridgeRpcError(
+        'BRIDGE_UNAVAILABLE',
+        runtimeInstance === undefined
+          ? `Editor bridge is unavailable: ${bridge.reason}.`
+          : `Game instance "${runtimeInstance}" is not running or its bridge is unavailable: ${bridge.reason}.`,
+        runtimeInstance === undefined ? { reason: bridge.reason } : { reason: bridge.reason, instance: runtimeInstance },
+      );
     }
     const bridgeVersion = Number(bridge.bridgeVersion);
     const phase2Method = /^(?:code|play|log|capture|runtime)\./.test(method);
@@ -173,11 +215,15 @@ export class FileRpcClient {
     const assetRegistryMethod = /^asset\./.test(method);
     const operationMethod = /^operation\./.test(method);
     const requestedMinimum = options.minimumBridgeVersion ?? this.optionsMinimumBridgeVersion;
-    const minimumBridgeVersion = Math.max(phase2Method ? 6 : 5, phase3Method ? 7 : 5, assetRegistryMethod ? 8 : 5, operationMethod ? 11 : 5, requestedMinimum ?? 5);
+    const editorMinimum = Math.max(phase2Method ? 6 : 5, phase3Method ? 7 : 5, assetRegistryMethod ? 8 : 5, operationMethod ? 11 : 5, requestedMinimum ?? 5);
+    // A runtime bridge speaks v35+ from its first release; the editor-era per-method minimums do not apply to it.
+    const minimumBridgeVersion = runtimeInstance === undefined ? editorMinimum : RUNTIME_BRIDGE_MIN_VERSION;
     if (bridge.protocolVersion !== '1' || !Number.isInteger(bridgeVersion) || bridgeVersion < minimumBridgeVersion) {
       throw new BridgeRpcError(
         'BRIDGE_UNSUPPORTED',
-        'Editor bridge protocol is not compatible with this server.',
+        runtimeInstance === undefined
+          ? 'Editor bridge protocol is not compatible with this server.'
+          : `Runtime bridge of game instance "${runtimeInstance}" is not compatible with this server (needs bridge ${RUNTIME_BRIDGE_MIN_VERSION}+, protocol 1).`,
         { bridgeVersion: bridge.bridgeVersion, protocolVersion: bridge.protocolVersion, minimumBridgeVersion },
       );
     }
@@ -206,7 +252,7 @@ export class FileRpcClient {
       await fs.mkdir(paths.requests, { recursive: true });
       await fs.mkdir(paths.responses, { recursive: true });
       await this.atomicJsonWrite(requestPath, request);
-      const response = await this.waitForResponse(responsePath, requestId, token, deadlineMs, method);
+      const response = await this.waitForResponse(responsePath, requestId, token, deadlineMs, method, runtimeInstance);
       if (!response.ok) {
         let details: unknown;
         if (response.errorDetails) {
@@ -225,7 +271,7 @@ export class FileRpcClient {
       return {
         result: result as R,
         warnings: [],
-        bridge: bridgeMetadata(bridge),
+        bridge: runtimeInstance === undefined ? bridgeMetadata(bridge as EditorBridgeStatus) : runtimeBridgeMetadata(bridge as RuntimeBridgeStatus),
       };
     } finally {
       await Promise.allSettled([fs.unlink(requestPath), fs.unlink(responsePath)]);
@@ -270,13 +316,14 @@ export class FileRpcClient {
     expectedToken: string,
     deadlineMs: number,
     method: string,
+    runtimeInstance?: string,
   ): Promise<BridgeResponse> {
     const startedAt = Date.now();
     const end = startedAt + deadlineMs;
     while (Date.now() <= end) {
       // Most calls answer within a frame or two. Only a call the editor is
       // still working on (navmesh build, probe bake, asset load) reports.
-      if (Date.now() - startedAt >= PROGRESS_AFTER_MS) reportProgress(`Waiting for Flax Editor (${method})`);
+      if (Date.now() - startedAt >= PROGRESS_AFTER_MS) reportProgress(runtimeInstance === undefined ? `Waiting for Flax Editor (${method})` : `Waiting for game instance ${runtimeInstance} (${method})`);
       try {
         const raw = await this.readBounded(responsePath);
         let parsed: unknown;
@@ -292,7 +339,7 @@ export class FileRpcClient {
         const actualToken = Buffer.from(response.token, 'utf8');
         const trustedToken = Buffer.from(expectedToken, 'utf8');
         if (actualToken.length !== trustedToken.length || !timingSafeEqual(actualToken, trustedToken)) {
-          throw new BridgeRpcError('BRIDGE_AUTH_FAILED', 'Bridge response token does not match the active editor session.');
+          throw new BridgeRpcError('BRIDGE_AUTH_FAILED', runtimeInstance === undefined ? 'Bridge response token does not match the active editor session.' : 'Bridge response token does not match the active game instance session.');
         }
         return response;
       } catch (error) {
@@ -300,7 +347,7 @@ export class FileRpcClient {
       }
       await delay(this.pollIntervalMs);
     }
-    throw new BridgeRpcError('BRIDGE_TIMEOUT', `Editor bridge did not respond within ${deadlineMs}ms.`);
+    throw new BridgeRpcError('BRIDGE_TIMEOUT', runtimeInstance === undefined ? `Editor bridge did not respond within ${deadlineMs}ms.` : `Game instance "${runtimeInstance}" did not respond within ${deadlineMs}ms.`);
   }
 
   private async readBounded(filePath: string): Promise<string> {
@@ -332,6 +379,28 @@ export async function callEditorBridge<M extends BridgeMethod, P, R>(
   return {
     data: response.result,
     mode: 'editor-connected',
+    bridge: response.bridge,
+    warnings: response.warnings,
+  };
+}
+
+/**
+ * Calls the runtime bridge of one running game instance (bridge v35, Kind "game").
+ * `instance` is validated against ^[A-Za-z0-9_-]{1,64}$; the tool layer never sees
+ * the instance directory, paths, or the session token.
+ */
+export async function callRuntimeBridge<M extends BridgeMethod, P, R>(
+  ctx: ProjectMeta,
+  instance: string,
+  method: M,
+  params: P,
+  options: Omit<FileRpcClientOptions, 'runtimeInstance'> = {},
+): Promise<RuntimeBridgeCall<R>> {
+  const client = new FileRpcClient(ctx, { ...options, runtimeInstance: instance });
+  const response = await client.call<M, P, R>(method, params, { deadlineMs: options.deadlineMs, minimumBridgeVersion: options.minimumBridgeVersion });
+  return {
+    data: response.result,
+    mode: 'game-connected',
     bridge: response.bridge,
     warnings: response.warnings,
   };

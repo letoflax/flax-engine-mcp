@@ -148,15 +148,27 @@ export async function handleNavigationBuild(args: z.infer<typeof NavigationBuild
     }, { minimumBridgeVersion: 31, deadlineMs: Math.min(60_000, args.timeout_ms + 5_000) });
     const data = record(response.data);
     warnings.push(...response.warnings, ...bridgeWarnings(response.data));
-    if ((data.Phase ?? data.phase) === 'timeout') {
-      return toolError(new ToolDomainError('TIMEOUT', `Navmesh build did not finish within timeout_ms (${args.timeout_ms}). The build continues in the background (Flax 1.12 exposes no navmesh cancel API); poll navigation_get_status for progress.`, {
-        phase: 'timeout',
+    const bridgeVersion = Number((response.bridge as { bridgeVersion?: unknown } | null | undefined)?.bridgeVersion);
+    if (Number.isInteger(bridgeVersion) && bridgeVersion < 34) {
+      warnings.push(`Bridge v${bridgeVersion} passes timeout_ms to Flax as the navmesh build START DELAY and may report completed before the build ran (fixed in bridge v34); it also refuses a headless Editor.`);
+    }
+    // Bridge v34: BuildNavMesh runs with a 0 start delay and timeout_ms is only the bridge's wait
+    // budget. Only an observed build (IsBuildingNavMesh true then false, or new navmesh data) is
+    // "completed"; "running" and "queued" (legacy "timeout") are reported as unfinished.
+    const phase = String(data.Phase ?? data.phase ?? 'completed');
+    if (phase !== 'completed') {
+      const detail = phase === 'queued'
+        ? 'the engine had not started the build yet (requests enqueue until the next game-scripts update)'
+        : 'the build is still running';
+      return toolError(new ToolDomainError('TIMEOUT', `Navmesh build did not finish within timeout_ms (${args.timeout_ms}): ${detail}. It continues in the background (Flax 1.12 exposes no navmesh cancel API); poll navigation_get_status for progress.`, {
+        phase,
         progress: data.Progress ?? data.progress ?? null,
         sceneId: data.SceneId ?? data.sceneId ?? null,
+        observedBuilding: data.ObservedBuilding ?? data.observedBuilding ?? null,
       }));
     }
     return success({ result: response.data, bridge: response.bridge }, response.bridge, warnings,
-      [{ kind: 'navigation.build.completed', phase: data.Phase ?? data.phase ?? 'completed' }]);
+      [{ kind: 'navigation.build.completed', phase }]);
   } catch (error) { return toolError(domainError(error)); }
 }
 export const handleNavigationGetStatus = (_: z.infer<typeof NavigationGetStatusSchema>, ctx: ProjectMeta) => query(ctx, 'navigation.get_status');

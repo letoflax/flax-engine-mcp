@@ -68,11 +68,20 @@ export function mapBridgeError(error: unknown): ToolDomainError {
       if (isHeadlessRefusal(error)) return new ToolDomainError('HEADLESS_MODE', error.message, details);
       return new ToolDomainError('EDITOR_BUSY', error.message, details);
     }
+    if (code === 'UNAUTHORIZED') {
+      // The session token rotated: the Editor reloaded scripts, or a different Editor answered this
+      // project's bridge. A read can simply be repeated; a write must not be retried automatically
+      // (it may or may not have run), so callers decide using idempotency keys or a re-read.
+      return new ToolDomainError('EDITOR_BUSY', error.message, { retryable: true, reason: 'bridge_session_changed', details });
+    }
+    if (code === 'IMPORT_SOURCE_NOT_ALLOWED' || code === 'IMPORT_FAILED' || code === 'FILE_EXISTS' || code === 'OPERATION_NOT_FOUND') {
+      return new ToolDomainError(code, error.message, details);
+    }
     if (code === 'DEADLINE_EXCEEDED') return new ToolDomainError('TIMEOUT', error.message, details);
     if (code === 'REQUEST_TOO_LARGE' || code === 'RESPONSE_TOO_LARGE') {
       return new ToolDomainError('CONTENT_TOO_LARGE', error.message, details);
     }
-    if (code === 'METHOD_NOT_ALLOWED') {
+    if (code === 'METHOD_NOT_ALLOWED' || code === 'METHOD_NOT_FOUND') {
       return new ToolDomainError(
         'UNSUPPORTED_FLAX_VERSION',
         `${error.message} (capability: check bridge status/PROTOCOL for supported methods)`,
@@ -95,4 +104,17 @@ export function mapBridgeError(error: unknown): ToolDomainError {
     }
   }
   return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
+}
+
+/**
+ * Error mapper for calls to a runtime (cooked game) bridge (v35). A game that is not running, whose
+ * heartbeat is stale, or whose session token is gone is GAME_NOT_CONNECTED (the game counterpart of
+ * EDITOR_NOT_CONNECTED); everything else maps exactly like the editor bridge. A cooked game has no
+ * play state, so INVALID_STATE keeps the shared EDITOR_BUSY meaning ("retry later").
+ */
+export function mapRuntimeBridgeError(error: unknown): ToolDomainError {
+  if (error instanceof BridgeRpcError && (error.code === 'BRIDGE_UNAVAILABLE' || error.code === 'BRIDGE_AUTH_FAILED')) {
+    return new ToolDomainError('GAME_NOT_CONNECTED', error.message, error.details);
+  }
+  return mapBridgeError(error);
 }

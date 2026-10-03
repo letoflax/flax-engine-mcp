@@ -1,10 +1,12 @@
 import path from 'node:path';
 import { z } from 'zod';
 import { callEditorBridge } from '../bridge/fileRpcClient.js';
+import { mapRuntimeBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ProjectMeta } from '../projectContext.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { reportProgress } from '../progress.js';
+import { InstanceParam, callGame, importGameCapture } from './gameRuntime.js';
 
 type Row = Record<string, unknown>;
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
@@ -14,6 +16,7 @@ const filters = {
   severities: z.array(Severity).max(6).optional(),
   category: z.string().min(1).max(128).optional(),
   play_session_id: z.string().min(1).max(128).optional(),
+  instance: InstanceParam,
 };
 
 export const LogGetRecentSchema = z.object({
@@ -37,18 +40,28 @@ export const ViewportCaptureSchema = z.object({
   viewport: z.enum(['game', 'editor']).optional().default('game'),
   timeout_ms: z.number().int().min(500).max(30_000).optional().default(10_000),
   poll_interval_ms: z.number().int().min(50).max(1_000).optional().default(100),
+  instance: InstanceParam,
 });
 export const RuntimeInspectActorSchema = z.object({
   actor_id: FlaxId,
   depth: z.number().int().min(0).max(4).optional().default(1),
   include_scripts: z.boolean().optional().default(true),
+  instance: InstanceParam,
 });
 // Bridge v27 engine performance snapshot. No arguments: the bridge returns
 // one instantaneous, read-only sample (null = backing API had no data).
-export const PerfGetSnapshotSchema = z.object({});
+export const PerfGetSnapshotSchema = z.object({ instance: InstanceParam });
 
-function bridgeError(error: unknown, capture = false): ToolDomainError {
+function bridgeError(error: unknown, capture = false, runtime = false): ToolDomainError {
   if (!(error instanceof BridgeRpcError)) return new ToolDomainError('INTERNAL_ERROR', error instanceof Error ? error.message : String(error));
+  if (runtime) {
+    // A cooked game has no play mode: only a capture refusal keeps its own code, everything else maps like any bridge error.
+    const remoteCode = (error.details as { code?: unknown } | undefined)?.code;
+    if (capture && error.code === 'BRIDGE_REMOTE_ERROR' && (remoteCode === 'INVALID_STATE' || remoteCode === 'CAPTURE_UNAVAILABLE')) {
+      return new ToolDomainError('CAPTURE_UNAVAILABLE', error.message, error.details);
+    }
+    return mapRuntimeBridgeError(error);
+  }
   if (error.code === 'BRIDGE_UNAVAILABLE' || error.code === 'BRIDGE_AUTH_FAILED') return new ToolDomainError('EDITOR_NOT_CONNECTED', error.message, error.details);
   if (error.code === 'BRIDGE_CONCURRENT_CALL') return new ToolDomainError('EDITOR_BUSY', error.message, error.details);
   if (error.code === 'BRIDGE_TIMEOUT') return new ToolDomainError('TIMEOUT', error.message, error.details);
@@ -64,8 +77,16 @@ function bridgeError(error: unknown, capture = false): ToolDomainError {
   return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
 }
 
-async function call<R>(ctx: ProjectMeta, method: string, params: Row, deadlineMs?: number) {
+async function call<R>(ctx: ProjectMeta, method: string, params: Row, deadlineMs?: number, instance?: string) {
+  if (instance !== undefined) return callGame<R>(ctx, instance, method as BridgeMethod, params, deadlineMs);
   return callEditorBridge<BridgeMethod, Row, R>(ctx, method as BridgeMethod, params, deadlineMs ? { deadlineMs } : undefined);
+}
+
+/** A cooked game has no play sessions; refuse the filter instead of silently ignoring it. */
+function assertNoPlaySession(args: { instance?: string; play_session_id?: string }): void {
+  if (args.instance !== undefined && args.play_session_id !== undefined) {
+    throw new ToolDomainError('INVALID_ARGUMENT', 'play_session_id does not apply to a game instance (a cooked game has no play sessions).');
+  }
 }
 
 function val(row: Row, ...keys: string[]): unknown {
@@ -133,29 +154,30 @@ function queryParams(args: z.infer<typeof LogGetRecentSchema>, limit: number, si
     SinceSequence: since, Limit: limit,
     ...(args.severities ? { Severities: args.severities } : {}),
     ...(args.category ? { Category: args.category } : {}),
-    ...(args.play_session_id ? { PlaySessionId: args.play_session_id } : {}),
+    ...(args.play_session_id && args.instance === undefined ? { PlaySessionId: args.play_session_id } : {}),
     ...(contains ? { Contains: contains } : {}),
   };
 }
 
 async function fetchPage(ctx: ProjectMeta, args: z.infer<typeof LogGetRecentSchema>, limit: number, since: number, contains?: string) {
-  const response = await call<unknown>(ctx, 'log.query', queryParams(args, limit, since, contains));
+  const response = await call<unknown>(ctx, 'log.query', queryParams(args, limit, since, contains), undefined, args.instance);
   return { response, page: normalizePage(response.data, since) };
 }
 
-function ok(data: unknown, warnings: string[] = []): ToolResponse {
-  return toolResult(JSON.stringify(data, null, 2), { mode: 'editor-connected', data, warnings });
+function ok(data: unknown, warnings: string[] = [], instance?: string): ToolResponse {
+  return toolResult(JSON.stringify(data, null, 2), { mode: instance === undefined ? 'editor-connected' : 'game-connected', data, warnings });
 }
 
 export async function handleLogGetRecent(args: z.infer<typeof LogGetRecentSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
+    assertNoPlaySession(args);
     const response = await call<unknown>(ctx, 'log.query', {
       ...queryParams(args, args.limit, args.since_sequence),
       Tail: args.since_sequence === 0,
-    });
+    }, undefined, args.instance);
     const page = normalizePage(response.data, args.since_sequence);
-    return ok(clean({ entries: page.entries, next_sequence: page.nextSequence, has_more: page.hasMore, dropped_count: page.droppedCount }, ctx), response.warnings);
-  } catch (error) { return toolError(bridgeError(error)); }
+    return ok(clean({ entries: page.entries, next_sequence: page.nextSequence, has_more: page.hasMore, dropped_count: page.droppedCount }, ctx), response.warnings, args.instance);
+  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, false, args.instance !== undefined)); }
 }
 
 function safePattern(source: string, caseSensitive: boolean): RegExp {
@@ -192,30 +214,69 @@ async function scanLogs(
 
 export async function handleLogSearch(args: z.infer<typeof LogSearchSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
+    assertNoPlaySession(args);
     const regex = args.match === 'regex' ? safePattern(args.query, args.case_sensitive) : undefined;
     const needle = args.case_sensitive ? args.query : args.query.toLocaleLowerCase();
     const found = await scanLogs(args, ctx, row => {
       const haystack = JSON.stringify(row).slice(0, 16_384);
       return regex ? regex.test(haystack) : (args.case_sensitive ? haystack : haystack.toLocaleLowerCase()).includes(needle);
     }, args.match === 'substring' ? args.query : undefined);
-    return ok(clean({ entries: found.entries, next_sequence: found.next_sequence, scanned: found.scanned, truncated: found.truncated }, ctx), found.warnings);
-  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error)); }
+    return ok(clean({ entries: found.entries, next_sequence: found.next_sequence, scanned: found.scanned, truncated: found.truncated }, ctx), found.warnings, args.instance);
+  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, false, args.instance !== undefined)); }
 }
 
 export async function handleLogGetRuntimeErrors(args: z.infer<typeof LogGetRuntimeErrorsSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
+    assertNoPlaySession(args);
     const scanArgs = { ...args, query: '', match: 'substring' as const, case_sensitive: false };
     const found = await scanLogs(scanArgs, ctx, row => {
       const severity = String(val(row, 'Severity', 'severity', 'Level', 'level') ?? '').toLowerCase();
       const text = JSON.stringify(row).toLowerCase();
       return severity === 'error' || severity === 'fatal' || text.includes('exception');
     });
-    return ok(clean({ errors: found.entries, next_sequence: found.next_sequence, scanned: found.scanned, truncated: found.truncated }, ctx), found.warnings);
-  } catch (error) { return toolError(bridgeError(error)); }
+    return ok(clean({ errors: found.entries, next_sequence: found.next_sequence, scanned: found.scanned, truncated: found.truncated }, ctx), found.warnings, args.instance);
+  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, false, args.instance !== undefined)); }
 }
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+/** viewport_capture against a cooked game: the game writes the PNG into its instance directory; it is imported into the capture cache. */
+async function captureFromGame(args: z.infer<typeof ViewportCaptureSchema>, ctx: ProjectMeta, instance: string): Promise<ToolResponse> {
+  try {
+    if (args.viewport !== 'game') throw new ToolDomainError('INVALID_ARGUMENT', 'A game instance only has the "game" viewport.');
+    const started = await callGame<unknown>(ctx, instance, 'capture.start', { Viewport: 'game' });
+    const start = started.data && typeof started.data === 'object' ? started.data as Row : {};
+    const id = String(val(start, 'CaptureId', 'captureId', 'Id', 'id') ?? '');
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new ToolDomainError('INTERNAL_ERROR', 'The game returned an invalid capture identifier.');
+    const deadline = Date.now() + args.timeout_ms;
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      const statusResponse = await callGame<unknown>(ctx, instance, 'capture.status', { CaptureId: id }, Math.max(50, Math.min(5_000, remaining)));
+      const status = statusResponse.data && typeof statusResponse.data === 'object' ? statusResponse.data as Row : {};
+      const state = String(val(status, 'Phase', 'phase', 'State', 'state', 'Status', 'status') ?? '').toLowerCase();
+      if (state === 'completed' || state === 'ready' || state === 'succeeded') {
+        const reported = val(status, 'RelativePath', 'relativePath', 'Path', 'path', 'File', 'file', 'FileName', 'fileName');
+        const imported = await importGameCapture(ctx, instance, id, typeof reported === 'string' ? reported : undefined);
+        return ok({
+          capture_id: imported.id,
+          uri: `flax://capture/${imported.id}`,
+          viewport: 'game',
+          instance,
+          phase: 'completed',
+          size_bytes: imported.size,
+          started_unix_ms: val(status, 'StartedUnixMs', 'startedUnixMs'),
+          completed_unix_ms: val(status, 'CompletedUnixMs', 'completedUnixMs'),
+        }, [...started.warnings, ...statusResponse.warnings], instance);
+      }
+      if (state === 'failed' || state === 'cancelled') throw new ToolDomainError('CAPTURE_UNAVAILABLE', String(val(status, 'Error', 'error') ?? `Capture ${state}.`));
+      reportProgress('Waiting for the game capture', args.timeout_ms);
+      await delay(Math.min(args.poll_interval_ms, Math.max(0, deadline - Date.now())));
+    }
+    throw new ToolDomainError('TIMEOUT', `Capture did not complete within ${args.timeout_ms} ms.`);
+  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, true, true)); }
+}
+
 export async function handleViewportCapture(args: z.infer<typeof ViewportCaptureSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+  if (args.instance !== undefined) return captureFromGame(args, ctx, args.instance);
   try {
     const started = await callEditorBridge(ctx, 'capture.start', { Viewport: args.viewport }, args.viewport === 'editor' ? { minimumBridgeVersion: 22 } : undefined);
     const start = started.data && typeof started.data === 'object' ? started.data as Row : {};
@@ -249,11 +310,11 @@ export async function handleViewportCapture(args: z.infer<typeof ViewportCapture
 
 export async function handleRuntimeInspectActor(args: z.infer<typeof RuntimeInspectActorSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
-    const response = await call<unknown>(ctx, 'runtime.inspect_actor', { ActorId: args.actor_id, Depth: args.depth, IncludeScripts: args.include_scripts });
+    const response = await call<unknown>(ctx, 'runtime.inspect_actor', { ActorId: args.actor_id, Depth: args.depth, IncludeScripts: args.include_scripts }, undefined, args.instance);
     const result = clean(response.data, ctx);
     if (JSON.stringify(result).length > 262_144) throw new ToolDomainError('CONTENT_TOO_LARGE', 'Runtime actor inspection exceeded 256 KiB.');
-    return ok({ actor: result }, response.warnings);
-  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error)); }
+    return ok({ actor: result }, response.warnings, args.instance);
+  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, false, args.instance !== undefined)); }
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -284,9 +345,11 @@ function cleanPerfSnapshot(raw: unknown): Row {
   };
 }
 
-export async function handlePerfGetSnapshot(_args: z.infer<typeof PerfGetSnapshotSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
+export async function handlePerfGetSnapshot(args: z.infer<typeof PerfGetSnapshotSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   try {
-    const response = await callEditorBridge(ctx, 'perf.snapshot', {}, { minimumBridgeVersion: 27 });
-    return ok({ snapshot: clean(cleanPerfSnapshot(response.data), ctx) }, response.warnings);
-  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error)); }
+    const response = args.instance === undefined
+      ? await callEditorBridge(ctx, 'perf.snapshot', {}, { minimumBridgeVersion: 27 })
+      : await callGame<unknown>(ctx, args.instance, 'perf.snapshot', {});
+    return ok({ snapshot: clean(cleanPerfSnapshot(response.data), ctx) }, response.warnings, args.instance);
+  } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, false, args.instance !== undefined)); }
 }

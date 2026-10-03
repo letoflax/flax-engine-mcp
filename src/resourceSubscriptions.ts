@@ -97,6 +97,8 @@ export class ResourceSubscriptionManager {
     // mutation tool notifies subscribers without being listed here again.
     const family = toolFamily(name);
     if (!family || family === 'read') return;
+    // A cooked game instance is not the Editor: starting or stopping one changes no subscribed Editor resource.
+    if (name === 'game_launch' || name === 'game_stop') return;
     // A capture adds a resource but changes no scene, log, or editor state.
     if (name === 'viewport_capture') { this.notifyResourceListChanged(); return; }
     const sceneMutation = (family === 'scene' && !SceneToolsWithoutTreeChange.has(name)) || AssetToolsChangingSceneTree.has(name);

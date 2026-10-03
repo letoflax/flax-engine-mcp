@@ -6,7 +6,7 @@
       "os": "Windows",
       "flax": "1.12",
       "role": "recommended-and-current",
-      "status": "fixture-transport-covered; bridge v33 live-verified on a disposable project",
+      "status": "fixture-transport-covered; editor bridge v34 live-verified on a disposable project",
       "coverage": [
         "bridge status",
         "DTO/IPC",
@@ -16,9 +16,19 @@
         "duplicate retry",
         "remote permission denied"
       ],
-      "headedEditor": "bridge v33 surface and the v32 import-settings surface run manually on 2026-09-30 in two runs (see docs/TESTING.md); no manual run is recorded for other older surfaces beyond what those runs exercised",
-      "headless": "status/compile/diagnostics/logs, member reads, settings writes, scene/content creation, import settings, domain queries, actor create/update and script attach; play, captures, and edit-time writes that need Editor windows or the live scene are refused (HEADLESS_MODE, CAPTURE_UNAVAILABLE)",
+      "headedEditor": "editor bridge v34 surface run manually on 2026-10-03 (see docs/TESTING.md, \"Bridge v34 live run\"); v33 and v32 surfaces were run on 2026-09-30; no manual run is recorded for other older surfaces beyond what those runs exercised",
+      "headless": "status/compile/diagnostics/logs, member reads, settings writes, scene/content creation, import and import settings, navigation_build, domain queries, actor create/update, script attach, editor_quit and editor_get_status readiness; play, captures, graph windows and edit-time writes that need the live scene are refused (HEADLESS_MODE, CAPTURE_UNAVAILABLE)",
       "liveVerified": {
+        "date": "2026-10-03",
+        "flaxBuild": "1.12.6912",
+        "bridgeVersion": 34,
+        "notExercised": [
+          "reading GameplayGlobals values back through a tool (no read tool exists; checked with an Editor probe)",
+          "transition rule contexts in graph_inspect (graph_list_archetypes existing_nodes used instead)",
+          "ParticleEmitterFunction graph windows"
+        ]
+      },
+      "previousLiveVerified": {
         "date": "2026-09-30",
         "flaxBuild": "1.12.6912",
         "bridgeVersion": 33,
@@ -26,6 +36,25 @@
           "an asset-typed particle parameter",
           "a brush type without a string form",
           "restored:false import settings for a Model or an AudioClip"
+        ]
+      }
+    },
+    {
+      "os": "Windows",
+      "flax": "1.12",
+      "role": "runtime-bridge (cooked game, bridge/FlaxMcpRuntimeBridge.cs, Kind game)",
+      "status": "fixture-transport-covered (Node side: instance directories, Kind game heartbeat, game_launch/game_list_instances/game_stop, instance routing); runtime bridge v35 live-verified on cooked Windows Development builds of a disposable project",
+      "liveVerified": {
+        "date": "2026-10-03",
+        "flaxBuild": "1.12.6912",
+        "bridgeVersion": 35,
+        "headedGame": "two cooked Development instances ran side by side (windowed) and were driven through game_launch, the instance tools and game_stop; see docs/TESTING.md",
+        "releaseBuild": "a cooked Release build compiled the game assembly without the runtime bridge types and ignored -mcpdir",
+        "notExercised": [
+          "Linux and macOS cooked games",
+          "path containing non-ASCII characters",
+          "an asset-typed script field other than a Material",
+          "draw call and triangle counters in perf.snapshot (reported null)"
         ]
       }
     },

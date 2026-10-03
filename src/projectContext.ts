@@ -15,6 +15,10 @@ export interface ProjectMeta {
   permissionPolicy?: PermissionPolicy;
   /** Canonical external source policy. Paths are never returned to MCP clients. */
   assetImportPolicy?: AssetImportPolicy;
+  /** Absolute path of FlaxEditor.exe from --flax-editor; editor_launch is disabled without it. */
+  flaxEditorPath?: string;
+  /** True with --allow-game-launch; game_launch is disabled without it. */
+  allowGameLaunch?: boolean;
 }
 
 export async function createProjectContext(projectPath: string): Promise<ProjectMeta> {

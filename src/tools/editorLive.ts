@@ -4,7 +4,7 @@ import { mapBridgeError } from '../bridge/mapBridgeError.js';
 import { BridgeMethod, BridgeRpcError } from '../bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from '../errors.js';
 import { ProjectMeta } from '../projectContext.js';
-import { bridgeWarnings } from './liveToolSupport.js';
+import { BRIDGE_V34, bridgeWarnings } from './liveToolSupport.js';
 
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
 const ContentPath = z.string().min(9).max(512).superRefine((value, ctx) => {
@@ -39,11 +39,46 @@ export const SceneOpenSchema = z.object({
   path: ContentPath.optional(),
   allow_dirty_scenes: z.boolean().optional().default(false)
     .describe('Acknowledge edited loaded scenes before opening. Without it the bridge refuses with DIRTY_SCENE listing dirty scene names (play-start gate convention). Requires bridge v25.'),
+  replace: z.boolean().optional()
+    .describe('Make this scene the only loaded scene: every other loaded scene is unloaded through the Editor scene state machine (the Editor "open scene" path without the save prompt). A target that is already loaded stays loaded and only the others close. Edited scenes that would close are refused with DIRTY_SCENE unless discard_unsaved is true. unloaded_scene_ids lists the scenes being closed. Mutually exclusive with reload. Requires bridge v34.'),
+  reload: z.boolean().optional()
+    .describe('Re-read the scene from its file on disk. A loaded scene is unloaded and loaded again from the refreshed file; a scene that is not loaded is opened from the refreshed file. disk_sha256 is the SHA-256 of the file as read. An edited scene is refused with DIRTY_SCENE unless discard_unsaved is true. Mutually exclusive with replace. Requires bridge v34.'),
+  discard_unsaved: z.boolean().optional()
+    .describe('With replace or reload: drop the unsaved edits of the scenes that get unloaded instead of refusing with DIRTY_SCENE. allow_dirty_scenes never discards edits. Only valid together with replace or reload. Requires bridge v34.'),
 }).strict().superRefine((value, ctx) => {
   if ((value.asset_id === undefined) === (value.path === undefined)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Provide exactly one of asset_id or path.' });
   }
+  if (value.replace && value.reload) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reload'], message: 'replace and reload are mutually exclusive.' });
+  }
+  if (value.discard_unsaved && !value.replace && !value.reload) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['discard_unsaved'], message: 'discard_unsaved applies only together with replace or reload.' });
+  }
 });
+
+/**
+ * Bridge v34 nested member path: member names from the target down to a leaf,
+ * each a C# identifier (the Type.Member form is not available inside a path).
+ * When a path is given, the plain member name (field / property / member)
+ * must be omitted.
+ */
+export const MemberPathSchema = z.array(z.string().min(1).max(128).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Path segments must be C# identifiers.')).min(1).max(4)
+  .describe('Nested member path of 1-4 member names, for example ["Settings","Speed"] or ["Stats","Limits","Max"]. Replaces field/property/member (omit that one when path is given). Every level must be an editor-visible, writable member (not [HideInEditor], [ReadOnly], or at edit time [NoSerialize]); intermediate levels are user-defined structs or non-null classes (not engine objects, arrays, lists, or dictionaries), and the last name is a member of a supported value type. Each parent is written back like the Editor property grid does. Requires bridge v34.');
+
+export function memberNameOrPath(nameKey: 'field' | 'property' | 'member', value: { path?: string[] } & Record<string, unknown>, ctx: z.RefinementCtx): void {
+  const named = value[nameKey] !== undefined;
+  if (value.path !== undefined && named) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [nameKey], message: `Omit ${nameKey} when path is given: path already names the whole member chain.` });
+  }
+  if (value.path === undefined && !named) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [nameKey], message: `Provide ${nameKey}, or path for a nested member.` });
+  }
+}
+
+/** Value shapes shared by actor_set_property, script_instance_set_value, and runtime_set_script_value. */
+export const MemberValueSchema = z.union([z.boolean(), z.number().finite(), z.string()])
+  .describe('Coerced strictly to the member type: boolean, finite number, or string. Strings carry enum names ("A, B" for flags), vectors ("x,y[,z[,w]]"), quaternions ("x,y,z,w"), colors ("#rrggbb[aa]" or "r,g,b[,a]"), rectangles ("x,y,width,height"), margins ("left,right,top,bottom"), and references: an actor or script GUID, or an asset as a GUID, a project "Content/..." path, or engine content as "engine:<path>" (path below the engine Content folder without extension, for example "engine:Editor/Primitives/Cube"); "" clears a reference. Font members (kind font) take "<font asset>;size=<points>", for example "engine:Editor/Fonts/Roboto-Regular;size=24". Brush members (kind brush) take "<kind>:<value>[;option=value]" with the kinds solid, gradient, texture, texture9, sprite, sprite9, material, ui_brush, and video; ui_control_set_property lists every form. actor_get_properties returns references, fonts, and brushes in these same shapes as Value.Text.');
 export const ProjectSaveAllSchema = z.object({});
 export const ActorGetSchema = z.object({ actor_id: FlaxId });
 export const ActorFindSchema = z.object({
@@ -126,7 +161,7 @@ export const ScriptDetachSchema = z.object({
 export const ScriptInstanceGetSchema = z.object({
   script_id: FlaxId,
   include_values: z.boolean().optional().default(false)
-    .describe('Opt-in bounded read of whitelisted public script field values (bool/int/float/string/enum/Guid/Vector2-4/Color; max 64 fields, strings capped at 512 chars, unsupported types are null with a reason). Default false returns only identity and enabled state.'),
+    .describe('Opt-in bounded read of public script field values (bool/int/float/string/enum/Guid/Vector2-4/Color; max 64 fields, strings capped at 512 chars). Bridge v34 also reports asset references as Kind asset (AssetId GUID plus TypeName) and nested user struct and class values up to two levels deep as Kind struct or object with Fields; collections and other unsupported types are null with a reason. Default false returns only identity and enabled state.'),
 });
 export const ScriptInstanceUpdateSchema = z.object({
   script_id: FlaxId,
@@ -137,28 +172,28 @@ export const ScriptInstanceUpdateSchema = z.object({
 });
 export const ScriptInstanceSetValueSchema = z.object({
   script_id: FlaxId,
-  field: z.string().min(1).max(128).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Field must be a C# identifier.')
-    .describe('Public instance field name on the script (C# identifier, 1-128 chars). Static, non-public, read-only, and unsupported-type fields are rejected.'),
-  value: z.union([z.boolean(), z.number().finite(), z.string()])
-    .describe('New value coerced strictly to the field type: bool for bool fields, a finite number for int/float/enum fields, a string for string fields, and strings for Guid ("32-hex"), Vector2/3/4 ("x,y[,z[,w]]"), and Color ("#rrggbb[aa]" or "r,g,b[,a]") fields.'),
+  field: z.string().min(1).max(128).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Field must be a C# identifier.').optional()
+    .describe('Editor-visible member of the script (C# identifier, 1-128 chars): public or [ShowInEditor], never [HideInEditor], [ReadOnly], or (at edit time) [NoSerialize]; engine-declared script members are refused. Omit it when path is given.'),
+  path: MemberPathSchema.optional(),
+  value: MemberValueSchema,
   dry_run: z.boolean().optional().default(false)
     .describe('Preview the coercion and report would_change plus before/after without writing. Requires bridge v28.'),
   ...RevisionedLiveWrite,
-});
+}).superRefine((value, ctx) => memberNameOrPath('field', value, ctx));
 // The five bridge v28 aliases keep their dedicated typed setters and stay
 // wire-identical. Any other name is a bridge v33 editor-visible member.
 const LEGACY_ACTOR_PROPERTIES = new Set(['Light.Color', 'Light.Brightness', 'Camera.FieldOfView', 'StaticModel.Model', 'Script.Enabled']);
 
 export const ActorSetPropertySchema = z.object({
   target_id: FlaxId.describe('Actor GUID. Script.Enabled alone takes a script GUID.'),
-  property: z.string().min(1).max(128)
-    .describe('Member or Type.Member of an editor-visible actor member, for example Mass, RigidBody.IsKinematic, BoxCollider.Size, AudioSource.Clip, Model (bridge v33; list them with actor_get_properties). The v28 aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled still work on older bridges. Name, active, transform, and layer belong to actor_update.'),
-  value: z.union([z.boolean(), z.number().finite(), z.string()])
-    .describe('Coerced strictly to the member type: boolean, finite number, or string. Strings carry enum names ("A, B" for flags), vectors ("x,y[,z[,w]]"), colors ("#rrggbb[aa]" or "r,g,b[,a]"), rectangles ("x,y,width,height"), margins ("left,right,top,bottom"), and references: an actor or script GUID, or an asset as a GUID, a project "Content/..." path, or engine content as "engine:<path>" (path below the engine Content folder without extension, for example "engine:Editor/Primitives/Cube"); "" clears a reference. Font members (kind font) take "<font asset>;size=<points>", for example "engine:Editor/Fonts/Roboto-Regular;size=24". Brush members (kind brush) take "<kind>:<value>[;option=value]" with the kinds solid, gradient, texture, texture9, sprite, sprite9, material, ui_brush, and video; ui_control_set_property lists every form. actor_get_properties returns references, fonts, and brushes in these same shapes as Value.Text.'),
+  property: z.string().min(1).max(128).optional()
+    .describe('Member or Type.Member of an editor-visible actor member, for example Mass, RigidBody.IsKinematic, BoxCollider.Size, AudioSource.Clip, Model (bridge v33; list them with actor_get_properties). The v28 aliases Light.Color, Light.Brightness, Camera.FieldOfView, StaticModel.Model, and Script.Enabled still work on older bridges. Name, active, transform, and layer belong to actor_update. Omit it when path is given.'),
+  path: MemberPathSchema.optional(),
+  value: MemberValueSchema,
   dry_run: z.boolean().optional().default(false)
     .describe('Preview the coercion and report would_change plus before/after without writing. Requires bridge v33.'),
   ...RevisionedLiveWrite,
-});
+}).superRefine((value, ctx) => memberNameOrPath('property', value, ctx));
 export const EditUndoSchema = z.object({});
 export const EditRedoSchema = z.object({});
 export const EditLeaseBeginSchema = z.object({
@@ -271,11 +306,17 @@ export const handleSceneSave = (args: z.infer<typeof SceneSaveSchema>, ctx: Proj
 export const handleSceneOpen = (args: z.infer<typeof SceneOpenSchema>, ctx: ProjectMeta) =>
   // Scene load is async: Phase 'opening' means poll scene_list_loaded; Phase
   // 'already_loaded' is a no-op success for an already-loaded scene ID.
+  // replace/reload/discard_unsaved are sent only when set, so a plain open
+  // stays wire-identical to bridge v25 and runs against it.
   liveCall(ctx, 'scene.open', {
     AssetId: args.asset_id,
     Path: args.path,
     AllowDirtyScenes: args.allow_dirty_scenes,
-  }, [{ kind: 'scene.opened', id: args.asset_id ?? args.path }], 25);
+    ...(args.replace ? { Replace: true } : {}),
+    ...(args.reload ? { Reload: true } : {}),
+    ...(args.discard_unsaved ? { DiscardUnsaved: true } : {}),
+  }, [{ kind: args.replace ? 'scene.replaced' : args.reload ? 'scene.reloaded' : 'scene.opened', id: args.asset_id ?? args.path }],
+  args.replace || args.reload || args.discard_unsaved ? BRIDGE_V34 : 25);
 export const handleProjectSaveAll = (_: unknown, ctx: ProjectMeta) =>
   liveCall(ctx, 'project.save_all', {}, [{ kind: 'project.saved' }]);
 export const handleActorGet = (args: z.infer<typeof ActorGetSchema>, ctx: ProjectMeta) =>
@@ -439,7 +480,7 @@ export async function handleScriptInstanceSetValue(
   // than as a client-side read. Dry runs never consume idempotency keys.
   const params = {
     ScriptId: args.script_id,
-    Field: args.field,
+    ...(args.path === undefined ? { Field: args.field } : { Path: args.path }),
     ...splitScalarValue(args.value),
     DryRun: args.dry_run,
     ExpectedSceneRevision: args.expected_scene_revision,
@@ -450,8 +491,11 @@ export async function handleScriptInstanceSetValue(
     ctx,
     'script.instance_set_value',
     params,
-    args.dry_run ? [] : [{ kind: 'script.field_set', id: args.script_id, field: args.field }],
-    28,
+    // The bridge writes nothing (and reports WouldChange:false) when the member already held the value.
+    result => (args.dry_run || (result as { WouldChange?: unknown } | null)?.WouldChange === false
+      ? []
+      : [{ kind: 'script.field_set', id: args.script_id, field: args.path === undefined ? args.field : args.path.join('.') }]),
+    args.path === undefined ? 28 : BRIDGE_V34,
   );
 }
 
@@ -463,7 +507,7 @@ export async function handleActorSetProperty(
   // to bridge v28. Dry runs never consume idempotency keys.
   const params = {
     ActorId: args.target_id,
-    Property: args.property,
+    ...(args.path === undefined ? { Property: args.property } : { Path: args.path }),
     ...splitScalarValue(args.value),
     ...(args.dry_run ? { DryRun: true } : {}),
     ExpectedSceneRevision: args.expected_scene_revision,
@@ -478,8 +522,8 @@ export async function handleActorSetProperty(
     // the value; it then writes nothing. Older bridges omit the field.
     result => (args.dry_run || (result as { WouldChange?: unknown } | null)?.WouldChange === false
       ? []
-      : [{ kind: 'actor.property_set', id: args.target_id, property: args.property }]),
-    LEGACY_ACTOR_PROPERTIES.has(args.property) && !args.dry_run ? 28 : 33,
+      : [{ kind: 'actor.property_set', id: args.target_id, property: args.path === undefined ? args.property : args.path.join('.') }]),
+    args.path !== undefined ? BRIDGE_V34 : args.property !== undefined && LEGACY_ACTOR_PROPERTIES.has(args.property) && !args.dry_run ? 28 : 33,
   );
 }
 

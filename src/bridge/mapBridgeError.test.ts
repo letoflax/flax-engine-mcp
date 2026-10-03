@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ToolDomainError } from '../errors.js';
-import { isHeadlessRefusal, mapBridgeError } from './mapBridgeError.js';
+import { isHeadlessRefusal, mapBridgeError, mapRuntimeBridgeError } from './mapBridgeError.js';
 import { BridgeRpcError } from './protocol.js';
 
 function remote(code: string, details?: unknown, message = `${code} from bridge.`): ToolDomainError {
@@ -60,6 +60,18 @@ test('mapBridgeError maps METHOD_NOT_ALLOWED to UNSUPPORTED_FLAX_VERSION with a 
   assert.deepEqual(mapped.details, { Method: 'mm.tuning' });
 });
 
+test('mapBridgeError maps METHOD_NOT_FOUND exactly like METHOD_NOT_ALLOWED and keeps the method list', () => {
+  const details = { Method: 'editor.nope', Methods: ['status', 'ping'] };
+  const mapped = remote('METHOD_NOT_FOUND', details, "Method 'editor.nope' is not a bridge method.");
+  assert.equal(mapped.code, 'UNSUPPORTED_FLAX_VERSION');
+  assert.match(mapped.message, /Method 'editor\.nope' is not a bridge method\./);
+  assert.match(mapped.message, /capability: check bridge status\/PROTOCOL for supported methods/);
+  assert.deepEqual(mapped.details, details);
+  const allowed = remote('METHOD_NOT_ALLOWED', details, "Method 'editor.nope' is not a bridge method.");
+  assert.equal(mapped.code, allowed.code);
+  assert.equal(mapped.message, allowed.message);
+});
+
 test('mapBridgeError splits headless INVALID_STATE from editor-busy INVALID_STATE', () => {
   const headless = remote('INVALID_STATE', { Reason: 'Headless editor has no GUI surface.' }, 'No surface.');
   assert.equal(headless.code, 'HEADLESS_MODE');
@@ -116,4 +128,23 @@ test('mapBridgeError falls back to INTERNAL_ERROR with bridge context', () => {
   const protocol = mapBridgeError(new BridgeRpcError('BRIDGE_PROTOCOL_ERROR', 'bad frame'));
   assert.equal(protocol.code, 'INTERNAL_ERROR');
   assert.deepEqual(protocol.details, { bridgeCode: 'BRIDGE_PROTOCOL_ERROR', details: undefined });
+});
+
+test('mapBridgeError maps a rotated bridge session token to a retryable EDITOR_BUSY', () => {
+  const mapped = remote('UNAUTHORIZED', { Hint: 'x' }, 'Missing or invalid bridge session token.');
+  assert.equal(mapped.code, 'EDITOR_BUSY');
+  assert.match(mapped.message, /bridge session token/);
+  assert.deepEqual(mapped.details, { retryable: true, reason: 'bridge_session_changed', details: { Hint: 'x' } });
+  assert.deepEqual((remote('UNAUTHORIZED').details as { retryable: boolean }).retryable, true);
+});
+
+test('mapRuntimeBridgeError reports a missing game as GAME_NOT_CONNECTED and otherwise maps like the editor', () => {
+  assert.equal(mapRuntimeBridgeError(new BridgeRpcError('BRIDGE_UNAVAILABLE', 'Game instance "g1" is not running')).code, 'GAME_NOT_CONNECTED');
+  assert.equal(mapRuntimeBridgeError(new BridgeRpcError('BRIDGE_AUTH_FAILED', 'token missing')).code, 'GAME_NOT_CONNECTED');
+  assert.equal(mapRuntimeBridgeError(new BridgeRpcError('BRIDGE_TIMEOUT', 'slow')).code, 'TIMEOUT');
+  assert.equal(mapRuntimeBridgeError(new BridgeRpcError('BRIDGE_UNSUPPORTED', 'old')).code, 'UNSUPPORTED_FLAX_VERSION');
+  assert.equal(mapRuntimeBridgeError(new BridgeRpcError('BRIDGE_REMOTE_ERROR', 'bad', { code: 'VALIDATION_FAILED' })).code, 'VALIDATION_FAILED');
+  assert.equal(mapRuntimeBridgeError(new BridgeRpcError('BRIDGE_REMOTE_ERROR', 'nope', { code: 'METHOD_NOT_FOUND' })).code, 'UNSUPPORTED_FLAX_VERSION');
+  const passthrough = new ToolDomainError('NOT_FOUND', 'already mapped');
+  assert.equal(mapRuntimeBridgeError(passthrough), passthrough);
 });
