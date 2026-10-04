@@ -8,11 +8,23 @@ import { reportProgress } from '../progress.js';
 import type { EditorLaunchSchema } from './editorLifecycle.js';
 import { inspectEditorBridge, type EditorBridgeStatus } from './serverStatus.js';
 import { flaxEditorFileName, flaxEditorPlatformFolder, pathsCaseInsensitive } from '../platform.js';
+import {
+  assertOffscreenSupported,
+  bindEditorToDisplay,
+  defaultOffscreenDeps,
+  reapStaleOffscreenDisplay,
+  startOffscreenDisplay,
+  stopOffscreenDisplay,
+  type OffscreenDeps,
+  type OffscreenSession,
+} from './offscreenDisplay.js';
 
-// editor_launch is the only place this server starts a process. It is enabled by
+// editor_launch is the only place this server starts a process (besides game_launch). It is enabled by
 // --flax-editor <FlaxEditor.exe | FlaxEditor | Flax install folder>, accepts exactly two optional Editor switches
 // (-headless, -skipcompile) plus the fixed "-project <this project>", and never
-// forwards caller text to the command line.
+// forwards caller text to the command line. display:"offscreen" (Linux) additionally starts a private headless
+// Weston compositor first (see offscreenDisplay.ts); the Editor command line stays the same, only its
+// environment changes (WAYLAND_DISPLAY set, DISPLAY removed).
 
 const EDITOR_FILE_NAME = 'flaxeditor.exe';
 const POLL_INTERVAL_MS = 500;
@@ -203,6 +215,8 @@ export interface EditorLaunchDeps {
   inspectBridge: (ctx: ProjectMeta) => Promise<EditorBridgeStatus>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
+  /** Test seams of the off-screen display (platform, env, weston lookup, signals). spawn, sleep and now above are reused. */
+  offscreen?: Partial<OffscreenDeps>;
 }
 
 export const defaultEditorLaunchDeps: EditorLaunchDeps = {
@@ -225,11 +239,28 @@ function started(child: ChildProcess): Promise<void> {
   });
 }
 
+function resolveOffscreenDeps(deps: EditorLaunchDeps): OffscreenDeps {
+  return { ...defaultOffscreenDeps(), spawn: deps.spawn, sleep: deps.sleep, now: deps.now, ...deps.offscreen };
+}
+
 export async function handleEditorLaunch(
   args: z.infer<typeof EditorLaunchSchema>,
   ctx: ProjectMeta,
   deps: EditorLaunchDeps = defaultEditorLaunchDeps,
 ): Promise<ToolResponse> {
+  const offscreenDeps = resolveOffscreenDeps(deps);
+  let session: OffscreenSession | null = null;
+  let editorStarted = false;
+  let shown: OffscreenSession['record'] | null = null;
+  let stopping: Promise<void> | null = null;
+  // Idempotent; every caller (exit event, failure paths) waits for the same stop.
+  const stopDisplay = (): Promise<void> => {
+    const current = session;
+    if (!current) return stopping ?? Promise.resolve();
+    session = null;
+    stopping = stopOffscreenDisplay(ctx, current.record, offscreenDeps).then(() => undefined, () => undefined);
+    return stopping;
+  };
   try {
     if (!ctx.flaxEditorPath) {
       throw new ToolDomainError(
@@ -239,11 +270,21 @@ export async function handleEditorLaunch(
       );
     }
 
+    const offscreen = args.display === 'offscreen';
+    const warnings: string[] = [];
+    if (offscreen) {
+      if (args.headless) {
+        throw new ToolDomainError('INVALID_ARGUMENT', 'display "offscreen" cannot be combined with headless: a headless Editor has no window to hide and no viewport to capture. Pick one.');
+      }
+      assertOffscreenSupported(offscreenDeps.platform);
+    } else if (args.offscreen_size !== undefined) {
+      warnings.push('offscreen_size is ignored because display is "desktop".');
+    }
+
     const bridge = await deps.inspectBridge(ctx);
     if (bridge.connected) {
       throw new ToolDomainError('EDITOR_BUSY', `A Flax Editor (pid ${bridge.pid}) already has a live bridge heartbeat for this project; editor_launch will not start a second one.`, { pid: bridge.pid });
     }
-    const warnings: string[] = [];
     try {
       const running = findProjectEditorPids(await deps.listProcesses(), ctx.projectPath);
       if (running.length > 0) {
@@ -254,24 +295,42 @@ export async function handleEditorLaunch(
       warnings.push('Could not list running FlaxEditor processes, so only the bridge heartbeat was checked for an Editor already open on this project.');
     }
 
+    if (offscreen) {
+      if (await reapStaleOffscreenDisplay(ctx, offscreenDeps)) warnings.push('A private compositor left behind by an earlier off-screen launch (its Editor was gone) was stopped first.');
+      session = await startOffscreenDisplay(ctx, args.offscreen_size, offscreenDeps);
+      shown = { ...session.record };
+    }
+
     const launchArgs = editorLaunchArguments(ctx.projectPath, args);
     const child = deps.spawn(ctx.flaxEditorPath, launchArgs, {
       detached: true,
       stdio: 'ignore',
       windowsHide: args.headless,
       cwd: path.dirname(ctx.flaxEditorPath),
+      ...(session ? { env: session.editorEnv } : {}),
     });
     let exited: { code: number | null; signal: NodeJS.Signals | null } | null = null;
-    child.once('exit', (code, signal) => { exited = { code, signal }; });
+    child.once('exit', (code, signal) => {
+      exited = { code, signal };
+      void stopDisplay();
+    });
     try {
       await started(child);
     } catch (error) {
+      await stopDisplay();
       throw new ToolDomainError('INTERNAL_ERROR', `FlaxEditor could not be started: ${error instanceof Error ? error.message : String(error)}`);
     }
+    editorStarted = true;
     child.unref();
     const pid = child.pid;
-    const launched = { pid, headless: args.headless, skipCompile: args.skip_compile };
-    const changes = [{ kind: 'editor-launch', pid }];
+    if (session && pid !== undefined) await bindEditorToDisplay(ctx, session, pid, offscreenDeps);
+    const display = shown ? {
+      display: 'offscreen' as const,
+      offscreen: { backend: shown.backend, socket: shown.socket, size: shown.size, westonPid: shown.westonPid, log: shown.log },
+    } : { display: 'desktop' as const };
+    const launched = { pid, headless: args.headless, skipCompile: args.skip_compile, ...display };
+    const changes: unknown[] = [{ kind: 'editor-launch', pid }];
+    if (shown) changes.push({ kind: 'offscreen-display-start', backend: shown.backend, pid: shown.westonPid, socket: shown.socket });
 
     if (!args.wait_ready) {
       return toolResult(JSON.stringify({ ...launched, ready: false }, null, 2), {
@@ -297,15 +356,18 @@ export async function handleEditorLaunch(
       }
       const gone = exited as { code: number | null; signal: NodeJS.Signals | null } | null;
       if (gone) {
+        await stopDisplay();
         throw new ToolDomainError('EDITOR_NOT_CONNECTED', `The launched Flax Editor (pid ${pid}) exited (${gone.signal ?? `code ${gone.code}`}) before its bridge became ready.`, { ...launched, ready: false, exitCode: gone.code });
       }
       if (deps.now() >= deadline) {
-        throw new ToolDomainError('TIMEOUT', `The Flax Editor was started (pid ${pid}) but its bridge was not ready within ${args.timeout_ms} ms. It keeps running; poll editor_get_status.`, { ...launched, ready: false, waitedMs: deps.now() - startedAt, bridgeReason: status.reason });
+        throw new ToolDomainError('TIMEOUT', `The Flax Editor was started (pid ${pid}) but its bridge was not ready within ${args.timeout_ms} ms. It keeps running${shown ? ' (with its off-screen display)' : ''}; poll editor_get_status.`, { ...launched, ready: false, waitedMs: deps.now() - startedAt, bridgeReason: status.reason });
       }
       reportProgress(`Waiting for the Editor bridge (${status.reason})`, args.timeout_ms);
       await deps.sleep(POLL_INTERVAL_MS);
     }
   } catch (error) {
+    // A display started for an Editor that never started must not outlive this call.
+    if (!editorStarted) await stopDisplay();
     return toolError(error);
   }
 }

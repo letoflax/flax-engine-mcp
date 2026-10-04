@@ -47,6 +47,37 @@ process list with PowerShell (`Get-CimInstance Win32_Process`) on Windows, `/pro
 `ps` on macOS; project-path comparisons and per-project locks fold letter case on Windows and macOS only. The C#
 bridges check process liveness with kernel32 on Windows, `/proc` on Linux and libc `kill(pid, 0)` on macOS.
 
+### Off-screen Editor (background launch)
+
+`editor_launch` with `display:"offscreen"` starts the Editor so that no window appears on the user's desktop while it
+still renders on the real GPU: play mode, game `viewport_capture` and `perf_get_gpu_events` give real images and
+timings. Use it for unattended agent runs on a machine someone is working on. `headless:true` is different: a headless
+Editor has no window and no viewport at all, and the two options cannot be combined (`INVALID_ARGUMENT`).
+
+| Host | `display:"offscreen"` |
+|---|---|
+| Linux | Supported. The server starts a private headless **Weston** compositor (`weston --backend=headless --renderer=gl --socket=<unique> --width=W --height=H --idle-time=0`; verified with Weston 15, `renderer=gl` needs a working EGL stack), waits for its socket in `$XDG_RUNTIME_DIR`, then starts the Editor with `WAYLAND_DISPLAY=<unique socket>` and **no `DISPLAY`**. SDL then picks Wayland, Vulkan renders on the real GPU and nothing reaches the desktop. A missing `weston` answers `DEPENDENCY_MISSING` with the install hint (`sudo dnf install weston`, `sudo apt install weston`, `sudo pacman -S weston`) and starts nothing. |
+| Windows, macOS | Not implemented: `UNSUPPORTED_PLATFORM`, nothing is started. Use `display:"desktop"`, or `headless:true` when no viewport is needed. |
+
+Lifetime: the compositor never outlives its Editor. It is stopped when the Editor exits (a small detached watcher
+process does this even after the MCP server or the one-shot CLI call that launched it is gone), by `editor_quit` once
+the Editor process has exited (`display` and `offscreenStopped` in its result), and at once when the launch fails
+(Weston did not come up, the Editor could not be started, or it exited before its bridge was ready). A launch that only
+times out keeps both running, like a headed launch. The pids and the socket are recorded in
+`<project>/Cache/MCP/offscreen.json` (Weston's log is `Cache/MCP/offscreen-weston.log`); `editor_get_status` reports
+`display:"offscreen"` and `offscreen` (`backend`, `socket`, `size`, `westonPid`, `westonAlive`) for the Editor that was
+launched this way, and omits them for any other Editor (its display is unknown, not guessed). A record whose Editor is
+gone is reaped by the next off-screen launch. Only a pid whose command line still carries the display's unique
+`--socket=` name is ever signalled.
+
+Limits: a Vulkan client that presents with FIFO (VSync on) stalls in headless Weston, while immediate present works.
+The Flax projects this was verified with have VSync off; if an Editor or game started inside the compositor freezes
+after its first frame, check that VSync is off. `viewport_capture` with `viewport:"editor"` works off-screen too, but
+only while the Editor tab is the selected tab of its dock panel (Flax does not render a hidden viewport, whatever the
+display): a project whose saved layout (`Cache/WindowsLayout.xml`) has the Game tab selected, as it does after a play
+session, timed out on a v36 bridge for exactly that reason (measured off-screen; the engine code never consults the display). Bridge v37 selects the Editor tab for the
+capture and restores the previous one. The game viewport in play mode works off-screen without any of this.
+
 ## Permissions
 
 The default profile is `full`, preserving existing installations. Use a narrower profile for agent sessions that do not need every capability:
@@ -134,7 +165,7 @@ flax-mcp call editor_get_status '{"wait_ready":true}' --project-path D:/Games/My
 ### Editor lifecycle
 | Tool | What it does |
 |------|-------------|
-| `editor_launch` | Start a Flax Editor for this project, optionally `headless` and/or `skip_compile`, and with `wait_ready` (default true) wait until its bridge reports ready (`timeout_ms` default 120000, max 300000). Enabled only with `--flax-editor`; passes only `-project <this project>` plus `-headless`/`-skipcompile`, never any other argument. Refuses with `EDITOR_BUSY` when this project already has a live bridge heartbeat or a `FlaxEditor` process with `-project` for it, and returns the pid (bridge v34 for the readiness wait) |
+| `editor_launch` | Start a Flax Editor for this project, optionally `headless` and/or `skip_compile`, and with `wait_ready` (default true) wait until its bridge reports ready (`timeout_ms` default 120000, max 300000). Enabled only with `--flax-editor`; passes only `-project <this project>` plus `-headless`/`-skipcompile`, never any other argument. Refuses with `EDITOR_BUSY` when this project already has a live bridge heartbeat or a `FlaxEditor` process with `-project` for it, and returns the pid (bridge v34 for the readiness wait). `display:"offscreen"` (default `"desktop"`, optional `offscreen_size` `WIDTHxHEIGHT`, default `1920x1080`) runs the Editor in the background, see [Off-screen Editor](#off-screen-editor-background-launch); the result reports `display` and `offscreen` |
 | `editor_quit` | Quit the connected Editor through its exit path (`Engine.RequestExit`, no save prompt), then wait until its process exits. `unsaved` is `refuse` (default, `DIRTY_SCENES` listing edited scenes and asset windows), `save`, or `discard`; `stop_play:true` stops play mode first (otherwise play mode refuses the quit). Refused with `EDITOR_BUSY` while scripts compile, content imports, or a build runs. Returns `accepted`, `phase`, `savedSceneIds`, `discardedSceneIds`, `discardedAssetWindows`, `exited`, `pid` (`exited:false` plus a warning when the process outlives `timeout_ms`, default 60000, max 120000) (bridge v34) |
 | `editor_options` | Read, or with `set` change, one of two user-global Editor options: `AutoReloadScriptsOnMainWindowFocus` or `ForceScriptCompilationOnStartup`. A change is a dry run by default, needs `confirm:true`, and is refused with `EDITOR_BUSY` while the Editor Options window is open. The options file is shared by all Editors of the user and other running Editors only see a change after a restart. With auto reload off, play mode uses the last compiled assemblies (run `code_compile` first). Never returns file paths (bridge v34) |
 

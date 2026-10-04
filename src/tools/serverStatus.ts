@@ -11,7 +11,8 @@ import { reportProgress } from '../progress.js';
 import { SERVER_VERSION } from '../version.js';
 import { classifiedToolNames, permissionSummary } from '../permissions.js';
 import { assetImportPolicyForContext } from '../assetImportPolicy.js';
-import { comparablePathKey } from '../platform.js';
+import { comparablePathKey, isProcessAlive } from '../platform.js';
+import { describeOffscreenDisplay } from './offscreenDisplay.js';
 
 export const GetServerCapabilitiesSchema = z.object({});
 export const EditorGetStatusSchema = z.object({
@@ -116,15 +117,7 @@ function parseTimestamp(value: unknown): number | null {
   return null;
 }
 
-export function isProcessAlive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
+export { isProcessAlive };
 
 export async function readProjectIdentity(ctx: ProjectMeta): Promise<ProjectIdentity> {
   const raw = await fs.readFile(ctx.flaxprojPath, 'utf8');
@@ -554,6 +547,15 @@ export async function waitForEditorReady(
   }
 }
 
+/**
+ * `display` / `offscreen` fields when this server started the Editor on a private off-screen display
+ * (editor_launch display:"offscreen"). Absent for any other Editor: its display is unknown, not guessed.
+ */
+async function displayFields(ctx: ProjectMeta, editor: EditorBridgeStatus): Promise<Record<string, unknown>> {
+  const info = await describeOffscreenDisplay(ctx, editor.connected ? editor.pid : null).catch(() => null);
+  return info ? { display: 'offscreen', offscreen: info } : {};
+}
+
 export async function handleEditorGetStatus(
   args: Partial<z.infer<typeof EditorGetStatusSchema>> | undefined,
   ctx: ProjectMeta,
@@ -574,6 +576,7 @@ export async function handleEditorGetStatus(
         mode,
         projectId: identity.id,
         ...editor,
+        ...await displayFields(ctx, editor),
         ready: waited.ready,
         waitedMs: waited.waitedMs,
         readiness: waited.observation.readiness,
@@ -591,6 +594,7 @@ export async function handleEditorGetStatus(
       mode,
       projectId: identity.id,
       ...editor,
+      ...await displayFields(ctx, editor),
     };
     return toolResult(JSON.stringify(data, null, 2), { mode, data });
   } catch (error) {

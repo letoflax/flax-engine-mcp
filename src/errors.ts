@@ -51,6 +51,8 @@ export type ToolErrorCode =
   | 'CAPTURE_UNAVAILABLE'
   | 'HEADLESS_MODE'
   | 'UNSUPPORTED_FLAX_VERSION'
+  | 'UNSUPPORTED_PLATFORM'
+  | 'DEPENDENCY_MISSING'
   | 'INTERNAL_ERROR';
 
 export interface ToolErrorData {

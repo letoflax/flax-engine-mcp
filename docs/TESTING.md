@@ -71,6 +71,39 @@ the simulated-peer tests. `animation_set_graph_parameter` and `terrain_paint` re
 stable `UNSUPPORTED_FLAX_VERSION` capabilities, as do `input_key_press` and
 `input_mouse_click` after their gates and validation.
 
+## Off-screen Editor live run (Linux, Flax 1.12.6912, AMD RX 7900 GRE / RADV, Weston 15.0.1, 2026-10-04)
+
+`editor_launch` with `display:"offscreen"` and bridge v37, on a disposable project (one scene with a light, a
+camera and a plane), driven through `node dist/index.js call <tool> '<json>' --project-path <proj> --flax-editor
+~/Applications/FlaxEngine`. Every call was a separate CLI process, so the lifetime handling had to work without
+the launching process.
+
+- Launch: `display:"offscreen"` started `weston --backend=headless --renderer=gl --socket=flaxmcp-<pid>-<hex>
+  --width=1920 --height=1080 --idle-time=0`, waited for the socket, then the Editor; the bridge was ready after
+  3.0-4.0 s. `/proc/<editor pid>/environ` had `WAYLAND_DISPLAY=flaxmcp-...`, `XDG_RUNTIME_DIR=/run/user/1000` and
+  no `DISPLAY`. The result carried `display:"offscreen"` and `offscreen{socket,size,westonPid}`;
+  `editor_get_status` (a different process) repeated them with `westonAlive:true`. Nothing appeared on the desktop.
+- Play mode: `play_start_scenes` -> `PlayingState`; game `viewport_capture` returned the 1091x585 game view (sky
+  and plane, correct colours); `perf_get_gpu_events` returned 56 events, `total_gpu_ms` 0.47-0.48, 228-230 draw
+  calls; `play_stop` stopped it.
+- Edit-mode editor `viewport_capture`, the known timeout: with the v36 bridge it timed out at 8 s, 22 s, 26 s and
+  30 s after launch (editor log: "Cannot take screenshot. Render task output is not allocated."), so it was not a
+  startup race. Cause: the project's `Cache/WindowsLayout.xml` had `MasterPanel SelectedTab="1"` (the Game tab,
+  left by an earlier play session), so the Editor viewport tab was hidden, `RenderOutputControl` kept the task
+  disabled and the back buffer at 0x0. With the v37 bridge the same call succeeded in 0.6-1.0 s (editor view with
+  grid and light icon, mean luma 101-115), also during play mode (the Game tab is selected again afterwards; a
+  following game capture still worked) and after `play_stop`. Capturing on the first frame after the tab switch gave
+  a washed-out image (mean luma 238); waiting 20 frames after the switch fixed it (101-112).
+- Cleanup: `editor_quit` returned `exited:true, display:"offscreen", offscreenStopped:true` and Weston and the
+  watcher were gone; `kill -TERM <editor pid>` (no `editor_quit`) made the detached watcher stop Weston within
+  about 3 s of the Editor exiting (Weston log: "caught signal 15"); a launch whose Editor exited early (a fake
+  `FlaxEditor` that exits with 3) returned `EDITOR_NOT_CONNECTED` and Weston was already stopped and the record
+  deleted. `pgrep -af weston` and `pgrep -af FlaxEditor` showed none of this run's processes afterwards.
+- Not run: Windows and macOS (`UNSUPPORTED_PLATFORM` is covered by unit tests only), a missing `weston`
+  (`DEPENDENCY_MISSING`, unit tests), and a VSync-on Vulkan client. A FIFO-present (VSync on) client was observed to
+  stall in headless Weston while immediate present works (an earlier session, not re-tested); the Flax projects
+  used have VSync off.
+
 ## Bridge v36 live run (Linux, Flax 1.12.6912, AMD RX 7900 GRE / RADV, 2026-10-04)
 
 Run on a disposable project (one scene with a light, a camera and a static model actor; an OBJ cube

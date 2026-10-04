@@ -6,6 +6,7 @@ import { BridgeMethod } from '../bridge/protocol.js';
 import { ProjectMeta } from '../projectContext.js';
 import { reportProgress } from '../progress.js';
 import { BRIDGE_V34 } from './liveToolSupport.js';
+import { stopOffscreenDisplayForEditor } from './offscreenDisplay.js';
 import { inspectEditorBridge, isProcessAlive } from './serverStatus.js';
 
 // Bridge v34 Editor lifecycle and options. editor_quit and editor_options
@@ -29,6 +30,10 @@ export const EditorLaunchSchema = z.object({
     .describe('Start the Editor without a window (-headless).'),
   skip_compile: z.boolean().optional().default(false)
     .describe('Skip the startup script compilation (-skipcompile).'),
+  display: z.enum(['desktop', 'offscreen']).optional().default('desktop')
+    .describe('Where the Editor window lives. desktop (default) is the normal window on the user\'s screen. offscreen starts the Editor inside a private headless compositor on the real GPU so nothing appears on the desktop while play mode, game viewport_capture and perf_get_gpu_events still render for real. Linux only (needs weston); Windows and macOS answer UNSUPPORTED_PLATFORM. Not combinable with headless.'),
+  offscreen_size: z.string().regex(/^\d{3,4}x\d{3,4}$/i, 'Use WIDTHxHEIGHT, for example 1920x1080.').optional()
+    .describe('With display offscreen: size of the private compositor output, WIDTHxHEIGHT, each edge 320 to 8192 (default 1920x1080).'),
   wait_ready: z.boolean().optional().default(true)
     .describe('Wait until the new Editor bridge answers and reports it is ready.'),
   timeout_ms: z.number().int().min(1).max(300000).optional().default(120000)
@@ -58,6 +63,8 @@ export interface EditorLifecycleDeps {
   heartbeatPid: (ctx: ProjectMeta) => Promise<number | null>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
+  /** Stops the off-screen display the exited Editor ran on, if any. Defaults to the recorded display of this project. */
+  stopOffscreen?: (ctx: ProjectMeta, editorPid: number) => Promise<{ stopped: boolean; socket: string } | null>;
 }
 
 const defaultLifecycleDeps: EditorLifecycleDeps = {
@@ -106,6 +113,12 @@ export async function handleEditorQuit(
         if (!exited) warnings.push(`The Editor process ${pid} was still running after ${args.timeout_ms} ms. The quit was accepted and may still complete; check editor_get_status.`);
       }
     }
+    // An Editor started with editor_launch display:"offscreen" leaves its private compositor behind unless it is stopped.
+    let offscreenStop: { stopped: boolean; socket: string } | null = null;
+    if (exited && pid !== null) {
+      try { offscreenStop = await (deps.stopOffscreen ?? ((c, p) => stopOffscreenDisplayForEditor(c, p)))(ctx, pid); }
+      catch { warnings.push('The off-screen display of the Editor could not be stopped; its watcher stops it shortly.'); }
+    }
     const data = {
       accepted,
       phase: typeof result.Phase === 'string' ? result.Phase : null,
@@ -115,6 +128,7 @@ export async function handleEditorQuit(
       exited,
       pid,
       waitedMs: deps.now() - startedAt,
+      ...(offscreenStop ? { display: 'offscreen' as const, offscreenStopped: true, offscreenAlreadyGone: !offscreenStop.stopped } : {}),
     };
     return toolResult(JSON.stringify(data, null, 2), {
       mode: 'editor-connected',
