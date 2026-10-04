@@ -7,9 +7,10 @@ import type { ProjectMeta } from '../projectContext.js';
 import { reportProgress } from '../progress.js';
 import type { EditorLaunchSchema } from './editorLifecycle.js';
 import { inspectEditorBridge, type EditorBridgeStatus } from './serverStatus.js';
+import { flaxEditorFileName, flaxEditorPlatformFolder, pathsCaseInsensitive } from '../platform.js';
 
 // editor_launch is the only place this server starts a process. It is enabled by
-// --flax-editor <FlaxEditor.exe>, accepts exactly two optional Editor switches
+// --flax-editor <FlaxEditor.exe | FlaxEditor | Flax install folder>, accepts exactly two optional Editor switches
 // (-headless, -skipcompile) plus the fixed "-project <this project>", and never
 // forwards caller text to the command line.
 
@@ -21,22 +22,50 @@ export function parseFlaxEditorArgument(argv: readonly string[]): string | null 
   const index = argv.indexOf('--flax-editor');
   if (index === -1) return null;
   const value = argv[index + 1];
-  if (!value || value.startsWith('--')) throw new Error('--flax-editor requires the path of FlaxEditor.exe.');
+  if (!value || value.startsWith('--')) throw new Error('--flax-editor requires the path of FlaxEditor.exe (FlaxEditor on Linux/macOS) or of a Flax install folder.');
   return value;
+}
+
+const EDITOR_CONFIGURATIONS = ['Development', 'Release', 'Debug'] as const;
+
+async function isFile(candidate: string): Promise<boolean> {
+  try { return (await fs.promises.stat(candidate)).isFile(); } catch { return false; }
+}
+
+/**
+ * Maps a directory given to --flax-editor to the Editor binary inside it: a Flax install root
+ * (`Binaries/Editor/<Win64|Linux|Mac>/<Development|Release|Debug>/FlaxEditor[.exe]`, first found)
+ * or a macOS `.app` bundle (`Contents/MacOS/FlaxEditor`). Returns null when nothing matches.
+ */
+export async function findEditorInDirectory(directory: string, platform: NodeJS.Platform = process.platform): Promise<string | null> {
+  const fileName = flaxEditorFileName(platform);
+  const candidates: string[] = [];
+  if (platform === 'darwin' && directory.toLowerCase().endsWith('.app')) candidates.push(path.join(directory, 'Contents', 'MacOS', fileName));
+  const folder = flaxEditorPlatformFolder(platform);
+  if (folder) for (const config of EDITOR_CONFIGURATIONS) candidates.push(path.join(directory, 'Binaries', 'Editor', folder, config, fileName));
+  for (const candidate of candidates) if (await isFile(candidate)) return candidate;
+  return null;
 }
 
 /**
  * Validates the configured editor path once at startup: it must be an existing file named
- * FlaxEditor.exe (case-insensitive; on non-Windows hosts the extension-less FlaxEditor binary too).
- * Returns the absolute path, or undefined when the flag is not given.
+ * FlaxEditor.exe (case-insensitive; on non-Windows hosts the extension-less FlaxEditor binary too),
+ * or a Flax install folder / macOS .app bundle that contains the host's Editor binary.
+ * Returns the absolute path of the binary, or undefined when the flag is not given.
  */
 export async function resolveFlaxEditorPath(argv: readonly string[]): Promise<string | undefined> {
   const requested = parseFlaxEditorArgument(argv);
   if (requested === null) return undefined;
-  const absolute = path.resolve(requested);
+  let absolute = path.resolve(requested);
+  try {
+    if ((await fs.promises.stat(absolute)).isDirectory()) {
+      const found = await findEditorInDirectory(absolute);
+      if (found) absolute = found;
+    }
+  } catch { /* reported below */ }
   const name = path.basename(absolute).toLowerCase();
   if (name !== EDITOR_FILE_NAME && !(process.platform !== 'win32' && name === 'flaxeditor')) {
-    throw new Error('--flax-editor must name FlaxEditor.exe.');
+    throw new Error('--flax-editor must name FlaxEditor.exe (FlaxEditor on Linux/macOS) or a Flax install folder.');
   }
   let stat: fs.Stats;
   try {
@@ -81,7 +110,8 @@ function comparablePath(value: string): string {
   let resolved = path.resolve(value);
   if (resolved.toLowerCase().endsWith('.flaxproj')) resolved = path.dirname(resolved);
   resolved = resolved.replace(/[\\/]+$/, '');
-  return process.platform === 'win32' ? resolved.toLowerCase().replaceAll('/', '\\') : resolved;
+  if (process.platform === 'win32') return resolved.toLowerCase().replaceAll('/', '\\');
+  return pathsCaseInsensitive() ? resolved.toLowerCase() : resolved;
 }
 
 /** Pids of FlaxEditor processes whose command line carries `-project <projectPath>` (folder or .flaxproj spelling). */
@@ -123,8 +153,38 @@ export async function listEditorProcesses(): Promise<EditorProcessInfo[]> {
         : [];
     });
   }
+  if (process.platform === 'linux') {
+    const fromProc = await listProcProcesses();
+    if (fromProc) return fromProc;
+  }
   const out = await run('ps', ['-eo', 'pid=,args=']);
   return parseProcessList(out);
+}
+
+/** Quotes one argv entry so splitCommandLine() gives it back unchanged. */
+export function quoteArgument(arg: string): string {
+  if (arg !== '' && !/[\s"']/.test(arg)) return arg;
+  return arg.includes('"') ? `'${arg}'` : `"${arg}"`;
+}
+
+/**
+ * Linux: reads the exact argv of FlaxEditor processes from /proc/<pid>/cmdline (NUL-separated), so
+ * paths with spaces survive, which `ps` output does not preserve. Null when /proc is unavailable.
+ */
+async function listProcProcesses(): Promise<EditorProcessInfo[] | null> {
+  let entries: string[];
+  try { entries = await fs.promises.readdir('/proc'); } catch { return null; }
+  const found: EditorProcessInfo[] = [];
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    let raw: string;
+    try { raw = await fs.promises.readFile(`/proc/${entry}/cmdline`, 'utf8'); } catch { continue; }
+    const argv = raw.split('\0');
+    if (argv.at(-1) === '') argv.pop();
+    if (argv.length === 0 || !path.basename(argv[0]!).toLowerCase().startsWith('flaxeditor')) continue;
+    found.push({ pid: Number(entry), commandLine: argv.map(quoteArgument).join(' ') });
+  }
+  return found;
 }
 
 /** Parses `ps -eo pid=,args=` output. */
@@ -174,8 +234,8 @@ export async function handleEditorLaunch(
     if (!ctx.flaxEditorPath) {
       throw new ToolDomainError(
         'UNSUPPORTED_FLAX_VERSION',
-        'editor_launch is disabled: start the MCP server with --flax-editor <path to FlaxEditor.exe> to enable it.',
-        { hint: '--flax-editor <FlaxEditor.exe>' },
+        'editor_launch is disabled: start the MCP server with --flax-editor <path to FlaxEditor.exe, FlaxEditor (Linux/macOS) or the Flax install folder> to enable it.',
+        { hint: '--flax-editor <FlaxEditor.exe | FlaxEditor | Flax install folder>' },
       );
     }
 

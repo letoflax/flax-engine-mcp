@@ -3,11 +3,11 @@
     Compiles ONLY bridge/FlaxMcpRuntimeBridge.cs against the GAME FlaxEngine.CSharp.dll
     (no FlaxEditor namespace), so any accidental Editor dependency fails the build.
 
-      dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Source\Platforms\Windows\Binaries\Game\x64\Development\FlaxEngine.CSharp.dll'
+      dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:FlaxEnginePath=<Flax install>   (or set FLAX_ENGINE_PATH)
 
     Release check (the file must compile to no types under BUILD_RELEASE):
 
-      dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:RuntimeBuildConfig=Release -p:FlaxEngineCSharpPath='...'
+      dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:RuntimeBuildConfig=Release -p:FlaxEnginePath=<Flax install>
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -21,7 +21,7 @@
     <AssemblyName>RuntimeBridgeCompileSmoke-$(RuntimeBuildConfig)</AssemblyName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(FlaxEngineCSharpPath)' == ''">
-    <FlaxEngineCSharpPath>D:\Apps\Flax\Flax_1.12\Source\Platforms\Windows\Binaries\Game\x64\Development\FlaxEngine.CSharp.dll</FlaxEngineCSharpPath>
+    <FlaxEngineCSharpPath>$([System.IO.Path]::Combine('$(FlaxEnginePath)', 'Source', 'Platforms', '$(FlaxGamePlatformDir)', 'Binaries', 'Game', '$(FlaxGameArch)', '$(RuntimeBuildConfig)', 'FlaxEngine.CSharp.dll'))</FlaxEngineCSharpPath>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="FlaxEngine.CSharp" HintPath="$(FlaxEngineCSharpPath)" Private="false" />

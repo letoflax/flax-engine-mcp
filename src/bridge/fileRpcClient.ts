@@ -6,6 +6,7 @@ import { EditorBridgeStatus, inspectEditorBridge } from '../tools/serverStatus.j
 import { recordIpcFailure } from '../observability.js';
 import { reportProgress } from '../progress.js';
 import { RuntimeBridgeStatus, RUNTIME_BRIDGE_MIN_VERSION, assertRuntimeInstanceName, inspectRuntimeBridge, runtimeInstanceDirectory } from './runtimeHeartbeat.js';
+import { comparablePathKey } from '../platform.js';
 import {
   BRIDGE_CACHE_DIRECTORY,
   BRIDGE_REQUESTS_DIRECTORY,
@@ -161,7 +162,7 @@ export class FileRpcClient {
     const lockTarget = this.runtimeInstance === undefined
       ? path.resolve(this.ctx.projectPath)
       : path.resolve(runtimeInstanceDirectory(this.ctx, this.runtimeInstance));
-    const projectLockKey = process.platform === 'win32' ? lockTarget.toLowerCase() : lockTarget;
+    const projectLockKey = comparablePathKey(lockTarget);
     if (this.inFlight || FileRpcClient.inFlightProjects.has(projectLockKey)) {
       throw new BridgeRpcError('BRIDGE_CONCURRENT_CALL', this.runtimeInstance === undefined
         ? 'A bridge request is already in flight for this project.'

@@ -239,9 +239,11 @@ test('runtime bridge has no FlaxEditor, ScriptType or Process dependency', async
   assert.doesNotMatch(code, /\bFlaxEditor\b/);
   assert.doesNotMatch(code, /\bFEditor\b/);
   assert.doesNotMatch(code, /\b(ScriptType|ScriptMemberInfo|ScriptsBuilder|GameCooker|Editor\.Instance)\b/);
-  // Process liveness uses blittable kernel32 imports only (disabled runtime marshalling in game assemblies).
+  // Process liveness uses blittable imports only (disabled runtime marshalling in game assemblies): kernel32 on Windows, libc kill on macOS.
   assert.match(source, /Environment\.ProcessId/);
   assert.match(source, /\[DllImport\("kernel32\.dll"\)\] private static extern IntPtr OpenProcess\(uint desiredAccess, int inheritHandle, int processId\);/);
+  assert.match(source, /\[DllImport\("libc", EntryPoint = "kill"\)\] private static extern int UnixKill\(int pid, int signal\);/);
+  assert.doesNotMatch(source, /DllImport\("(?!kernel32\.dll"|libc", EntryPoint = "kill")/);
   assert.doesNotMatch(source, /SetLastError\s*=/);
   // Members are resolved with System.Reflection.
   assert.match(source, /using System\.Reflection;/);
@@ -361,8 +363,9 @@ test('runtime compile smoke project builds only the runtime bridge with the game
   assert.match(project, /<EnableDefaultCompileItems>false<\/EnableDefaultCompileItems>/);
   assert.match(project, /<RuntimeBuildConfig Condition="'\$\(RuntimeBuildConfig\)' == ''">Development<\/RuntimeBuildConfig>/);
   assert.match(project, /<DefineConstants>FLAX_GAME;BUILD_/);
-  assert.match(project, /Game\\x64\\Development\\FlaxEngine\.CSharp\.dll/);
-  assert.doesNotMatch(project, /Binaries\\Editor/);
+  // The game assembly path is built per host OS in Directory.Build.props: Source/Platforms/<OS>/Binaries/Game/<arch>/<config>.
+  assert.match(project, /'Source', 'Platforms', '\$\(FlaxGamePlatformDir\)', 'Binaries', 'Game', '\$\(FlaxGameArch\)', '\$\(RuntimeBuildConfig\)', 'FlaxEngine\.CSharp\.dll'/);
+  assert.doesNotMatch(project, /Binaries[\\/']+\s*,?\s*'?Editor|FlaxEditorCSharpPath/);
   // The editor smoke never globs the runtime file.
   const editorProject = await readFile(fileURLToPath(new URL('../../test/flax-api-smoke/BridgeCompileSmoke.csproj', import.meta.url)), 'utf8');
   assert.match(editorProject, /EnableDefaultCompileItems>false</);

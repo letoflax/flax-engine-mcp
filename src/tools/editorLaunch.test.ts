@@ -8,15 +8,18 @@ import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { createProjectContext, type ProjectMeta } from '../projectContext.js';
 import {
   editorLaunchArguments,
+  findEditorInDirectory,
   findProjectEditorPids,
   handleEditorLaunch,
   parseProcessList,
+  quoteArgument,
   resolveFlaxEditorPath,
   splitCommandLine,
   type EditorLaunchDeps,
 } from './editorLaunch.js';
 import { EditorLaunchSchema } from './editorLifecycle.js';
 import type { EditorBridgeStatus } from './serverStatus.js';
+import { comparablePathKey, flaxEditorFileName, flaxEditorPlatformFolder, pathsCaseInsensitive } from '../platform.js';
 
 const CONNECTED = (pid: number): EditorBridgeStatus => ({ connected: true, reason: 'connected', pid, heartbeatAgeMs: 10, editorVersion: '1.12.0', bridgeVersion: '34', protocolVersion: '1', endpoint: null });
 const DISCONNECTED: EditorBridgeStatus = { connected: false, reason: 'heartbeat_missing', pid: null, heartbeatAgeMs: null, editorVersion: null, bridgeVersion: null, protocolVersion: null, endpoint: null };
@@ -234,4 +237,51 @@ test('editor_launch reports a spawn failure and tolerates an unavailable process
     assert.match(envelope(result).warnings.join(' '), /Could not list running FlaxEditor processes/);
     assert.equal(noPs.spawned.length, 1);
   } finally { await f.cleanup(); }
+});
+
+test('platform helpers name the Editor binary and folder per host and fold case only where the host does', () => {
+  assert.equal(flaxEditorFileName('win32'), 'FlaxEditor.exe');
+  assert.equal(flaxEditorFileName('linux'), 'FlaxEditor');
+  assert.equal(flaxEditorFileName('darwin'), 'FlaxEditor');
+  assert.equal(flaxEditorPlatformFolder('win32'), 'Win64');
+  assert.equal(flaxEditorPlatformFolder('linux'), 'Linux');
+  assert.equal(flaxEditorPlatformFolder('darwin'), 'Mac');
+  assert.equal(flaxEditorPlatformFolder('aix'), null);
+  assert.equal(pathsCaseInsensitive('win32'), true);
+  assert.equal(pathsCaseInsensitive('darwin'), true);
+  assert.equal(pathsCaseInsensitive('linux'), false);
+  assert.equal(comparablePathKey('/A/b', 'linux'), path.resolve('/A/b'));
+  assert.equal(comparablePathKey('/A/b', 'darwin'), path.resolve('/A/b').toLowerCase());
+});
+
+test('--flax-editor accepts a Flax install folder and finds the host Editor binary inside it', async () => {
+  const f = await fixture();
+  try {
+    const install = path.join(f.root, 'Flax_1.12');
+    assert.equal(await findEditorInDirectory(install, 'linux'), null);
+    const linuxEditor = path.join(install, 'Binaries', 'Editor', 'Linux', 'Release', 'FlaxEditor');
+    await fs.mkdir(path.dirname(linuxEditor), { recursive: true });
+    await fs.writeFile(linuxEditor, '');
+    const windowsEditor = path.join(install, 'Binaries', 'Editor', 'Win64', 'Development', 'FlaxEditor.exe');
+    await fs.mkdir(path.dirname(windowsEditor), { recursive: true });
+    await fs.writeFile(windowsEditor, '');
+    assert.equal(await findEditorInDirectory(install, 'linux'), linuxEditor);
+    assert.equal(await findEditorInDirectory(install, 'win32'), windowsEditor);
+    const bundle = path.join(f.root, 'FlaxEditor.app');
+    const macEditor = path.join(bundle, 'Contents', 'MacOS', 'FlaxEditor');
+    await fs.mkdir(path.dirname(macEditor), { recursive: true });
+    await fs.writeFile(macEditor, '');
+    assert.equal(await findEditorInDirectory(bundle, 'darwin'), macEditor);
+    const hostEditor = await findEditorInDirectory(install);
+    if (hostEditor) assert.equal(await resolveFlaxEditorPath(['node', 'server', '--flax-editor', install]), hostEditor);
+    await assert.rejects(() => resolveFlaxEditorPath(['node', 'server', '--flax-editor', path.join(f.root, 'tools')]), /must name FlaxEditor\.exe|existing FlaxEditor\.exe file/);
+  } finally { await f.cleanup(); }
+});
+
+test('quoted /proc argv survives splitCommandLine and matches -project paths with spaces', () => {
+  const argv = ['/opt/Flax Engine/FlaxEditor', '-project', '/home/me/My Game', '-headless', 'say "hi"', ''];
+  assert.deepEqual(splitCommandLine(argv.map(quoteArgument).join(' ')), argv);
+  if (process.platform !== 'win32') {
+    assert.deepEqual(findProjectEditorPids([{ pid: 9, commandLine: argv.map(quoteArgument).join(' ') }], '/home/me/My Game'), [9]);
+  }
 });

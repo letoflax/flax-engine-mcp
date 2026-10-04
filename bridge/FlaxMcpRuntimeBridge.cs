@@ -326,12 +326,13 @@ namespace Game.MCP
             catch { return null; }
         }
 
-        // Flax's script compile has no reference to the process-management assembly (CS1069 for the Process type), so liveness uses kernel32 on Windows and /proc elsewhere.
+        // Flax's script compile has no reference to the process-management assembly (CS1069 for the Process type), so liveness uses kernel32 on Windows, /proc on Linux and libc kill(pid, 0) on macOS.
         // Flax game assemblies disable runtime marshalling: only blittable parameters (no bool, no SetLastError, no out) work, which is why the exit code goes through an unmanaged buffer.
         // Where neither works the answer is "alive" and the 30 s heartbeat staleness decides ownership.
         [DllImport("kernel32.dll")] private static extern IntPtr OpenProcess(uint desiredAccess, int inheritHandle, int processId);
         [DllImport("kernel32.dll")] private static extern int GetExitCodeProcess(IntPtr process, IntPtr exitCode);
         [DllImport("kernel32.dll")] private static extern int CloseHandle(IntPtr handle);
+        [DllImport("libc", EntryPoint = "kill")] private static extern int UnixKill(int pid, int signal);
 
         private static bool IsProcessAlive(int pid)
         {
@@ -353,6 +354,7 @@ namespace Game.MCP
                     finally { Marshal.FreeHGlobal(buffer); CloseHandle(handle); }
                 }
                 if (Directory.Exists("/proc/self")) return Directory.Exists("/proc/" + pid);
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return UnixKill(pid, 0) == 0 || Marshal.GetLastSystemError() == 1; // EPERM: exists but owned by another user. ESRCH (3): no such process.
             }
             catch { }
             return true;

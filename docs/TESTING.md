@@ -44,11 +44,19 @@ against the installed Flax 1.12 managed artifact. The three commands below cover
 holds `VisjectGraphApiCompileProbe.csproj` (graph editing) and `GraphSetModelApiCompileProbe.csproj`
 (`graph_set_model`), built the same way:
 
-```powershell
-dotnet build test/flax-api-smoke/PrefabApiCompileProbe.csproj --nologo --verbosity minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll'
-dotnet build test/flax-api-smoke/MaterialAnimationApiCompileProbe.csproj --nologo --verbosity minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll'
-dotnet build test/flax-api-smoke/BridgeCompileSmoke.csproj --nologo --verbosity minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll'
+```bash
+dotnet build test/flax-api-smoke/PrefabApiCompileProbe.csproj --nologo --verbosity minimal -p:FlaxEnginePath=<Flax install folder>
+dotnet build test/flax-api-smoke/MaterialAnimationApiCompileProbe.csproj --nologo --verbosity minimal -p:FlaxEnginePath=<Flax install folder>
+dotnet build test/flax-api-smoke/BridgeCompileSmoke.csproj --nologo --verbosity minimal -p:FlaxEnginePath=<Flax install folder>
 ```
+
+`test/flax-api-smoke/Directory.Build.props` derives the managed artifact from the Flax install folder and the
+host OS: `Binaries/Editor/<Win64|Linux|Mac>/<FlaxEditorConfig, default Development>/FlaxEngine.CSharp.dll`
+(and `Source/Platforms/<Windows|Linux|Mac>/Binaries/Game/<x64|ARM64>/<RuntimeBuildConfig>/` for
+`RuntimeBridgeCompileSmoke`). The install folder comes from `-p:FlaxEnginePath`, else the `FLAX_ENGINE_PATH`
+environment variable, else a per-OS default (`D:\Apps\Flax\Flax_1.12`, `~/Applications/FlaxEngine`,
+`/Applications/FlaxEngine`). `-p:FlaxEngineCSharpPath=<dll>` still overrides everything. All six probes build
+on Linux against Flax 1.12.6912 (2026-10-04).
 
 The direct probes validate public signatures; the final command compiles the
 whole bridge source with FLAX_EDITOR against the same artifact. Neither starts

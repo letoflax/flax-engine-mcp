@@ -1,0 +1,24 @@
+<Project>
+  <!--
+    Shared FlaxEngine.CSharp.dll discovery for the compile probes (imported before each csproj).
+    Precedence: -p:FlaxEngineCSharpPath=... > -p:FlaxEnginePath=... / FLAX_ENGINE_PATH env var > per-OS default install.
+    The Editor probes use Binaries/Editor/<Win64|Linux|Mac>/<FlaxEditorConfig>; RuntimeBridgeCompileSmoke uses the
+    game assembly under Source/Platforms/<Windows|Linux|Mac>/Binaries/Game/<FlaxGameArch>/<RuntimeBuildConfig>.
+  -->
+  <PropertyGroup>
+    <FlaxEnginePath Condition="'$(FlaxEnginePath)' == '' and '$(FLAX_ENGINE_PATH)' != ''">$(FLAX_ENGINE_PATH)</FlaxEnginePath>
+    <FlaxEnginePath Condition="'$(FlaxEnginePath)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">D:\Apps\Flax\Flax_1.12</FlaxEnginePath>
+    <FlaxEnginePath Condition="'$(FlaxEnginePath)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">$(HOME)/Applications/FlaxEngine</FlaxEnginePath>
+    <FlaxEnginePath Condition="'$(FlaxEnginePath)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">/Applications/FlaxEngine</FlaxEnginePath>
+    <FlaxEditorPlatformDir Condition="$([MSBuild]::IsOSPlatform('Windows'))">Win64</FlaxEditorPlatformDir>
+    <FlaxEditorPlatformDir Condition="$([MSBuild]::IsOSPlatform('Linux'))">Linux</FlaxEditorPlatformDir>
+    <FlaxEditorPlatformDir Condition="$([MSBuild]::IsOSPlatform('OSX'))">Mac</FlaxEditorPlatformDir>
+    <FlaxGamePlatformDir Condition="$([MSBuild]::IsOSPlatform('Windows'))">Windows</FlaxGamePlatformDir>
+    <FlaxGamePlatformDir Condition="$([MSBuild]::IsOSPlatform('Linux'))">Linux</FlaxGamePlatformDir>
+    <FlaxGamePlatformDir Condition="$([MSBuild]::IsOSPlatform('OSX'))">Mac</FlaxGamePlatformDir>
+    <FlaxGameArch Condition="'$(FlaxGameArch)' == '' and '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">ARM64</FlaxGameArch>
+    <FlaxGameArch Condition="'$(FlaxGameArch)' == ''">x64</FlaxGameArch>
+    <FlaxEditorConfig Condition="'$(FlaxEditorConfig)' == ''">Development</FlaxEditorConfig>
+    <FlaxEditorCSharpPath>$([System.IO.Path]::Combine('$(FlaxEnginePath)', 'Binaries', 'Editor', '$(FlaxEditorPlatformDir)', '$(FlaxEditorConfig)', 'FlaxEngine.CSharp.dll'))</FlaxEditorCSharpPath>
+  </PropertyGroup>
+</Project>

@@ -538,11 +538,13 @@ test('bridge v26 gates play-mode input simulation to managed Flax APIs only', as
   assert.match(source, /Capability = "input_mouse_click"/);
   assert.match(source, /KeyboardKeys\.None/);
   assert.match(source, /KeyboardKeys\.MAX/);
-  // The only native imports are the three kernel32 process-liveness calls of the v34 directory ownership check
-  // (OpenProcess/GetExitCodeProcess/CloseHandle: System.Diagnostics.Process is not referenced by Flax's script build).
-  assert.deepEqual(source.match(/\[\s*DllImport\("[^"]+"[^\]]*\]\s*private static extern \w+ \w+/g)?.map(entry => entry.replace(/\s+/g, ' ').replace(/^.*extern \w+ /, '')), ['OpenProcess', 'GetExitCodeProcess', 'CloseHandle']);
-  assert.equal(source.match(/\[\s*DllImport\(/g)?.length, 3);
-  assert.doesNotMatch(source, /DllImport\("(?!kernel32\.dll)/);
+  // The only native imports are the process-liveness calls of the v34 directory ownership check: three kernel32
+  // calls on Windows (OpenProcess/GetExitCodeProcess/CloseHandle) and libc kill(pid, 0) on macOS
+  // (System.Diagnostics.Process is not referenced by Flax's script build).
+  assert.deepEqual(source.match(/\[\s*DllImport\("[^"]+"[^\]]*\]\s*private static extern \w+ \w+/g)?.map(entry => entry.replace(/\s+/g, ' ').replace(/^.*extern \w+ /, '')), ['OpenProcess', 'GetExitCodeProcess', 'CloseHandle', 'UnixKill']);
+  assert.equal(source.match(/\[\s*DllImport\(/g)?.length, 4);
+  assert.doesNotMatch(source, /DllImport\("(?!kernel32\.dll"|libc", EntryPoint = "kill")/);
+  assert.match(source, /UnixKill\(pid, 0\)/);
   assert.doesNotMatch(source, /user32\.dll/i);
   assert.doesNotMatch(source, /SendInput\s*\(/);
   // Input simulation never sleeps: the only Thread.Sleep calls in the bridge

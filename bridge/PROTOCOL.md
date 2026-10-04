@@ -2461,8 +2461,9 @@ from the bridge's `IsHeadlessMode` gates and are mapped to `HEADLESS_MODE` (see
   `asset_import_status` with it.
 
 ### Node-only surfaces (no bridge method)
-- `editor_launch` (enabled with the server flag `--flax-editor <FlaxEditor.exe>`)
-  runs `FlaxEditor.exe -project <project path>` with `-headless` and / or
+- `editor_launch` (enabled with the server flag `--flax-editor <FlaxEditor.exe>`;
+  `FlaxEditor` on Linux/macOS, or a Flax install folder / macOS `.app` bundle)
+  runs `FlaxEditor[.exe] -project <project path>` with `-headless` and / or
   `-skipcompile` only when requested; no other argument can be passed. The process
   is detached with stdio ignored and its pid returned. It refuses with
   `EDITOR_BUSY` when this project's `Cache/MCP/bridge.json` heartbeat is live or a
@@ -2648,8 +2649,8 @@ wherever the method exists there.
 
 ### Smoke builds
 ```
-dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:FlaxEngineCSharpPath='D:\Apps\Flax\Flax_1.12\Source\Platforms\Windows\Binaries\Game\x64\Development\FlaxEngine.CSharp.dll'
-dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:RuntimeBuildConfig=Release -p:FlaxEngineCSharpPath='...same dll...'
+dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:FlaxEnginePath=<Flax install folder>
+dotnet build test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj -nologo -v:minimal -p:RuntimeBuildConfig=Release -p:FlaxEnginePath=<Flax install folder>
 ```
 The first compiles the file with `FLAX_GAME;BUILD_DEVELOPMENT` against the game
 assembly (no `FlaxEditor` namespace). The second (`BUILD_RELEASE`) must build with

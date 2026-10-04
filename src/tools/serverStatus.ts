@@ -11,6 +11,7 @@ import { reportProgress } from '../progress.js';
 import { SERVER_VERSION } from '../version.js';
 import { classifiedToolNames, permissionSummary } from '../permissions.js';
 import { assetImportPolicyForContext } from '../assetImportPolicy.js';
+import { comparablePathKey } from '../platform.js';
 
 export const GetServerCapabilitiesSchema = z.object({});
 export const EditorGetStatusSchema = z.object({
@@ -83,6 +84,21 @@ function versionValue(value: unknown): string | null {
 function normalizeProjectPath(value: string): string {
   const normalized = path.normalize(path.resolve(value));
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+/**
+ * The Editor reports Globals.ProjectFolder, which may differ in spelling from --project-path:
+ * letter case on macOS, or a symlinked / bind-mounted folder on Linux. Equal canonical paths match.
+ */
+async function sameProjectPath(reported: string, projectPath: string): Promise<boolean> {
+  if (normalizeProjectPath(reported) === normalizeProjectPath(projectPath)) return true;
+  if (comparablePathKey(reported) === comparablePathKey(projectPath)) return true;
+  try {
+    const [left, right] = await Promise.all([fs.realpath(path.resolve(reported)), fs.realpath(path.resolve(projectPath))]);
+    return comparablePathKey(left) === comparablePathKey(right);
+  } catch {
+    return false;
+  }
 }
 
 function parseTimestamp(value: unknown): number | null {
@@ -193,8 +209,7 @@ export async function inspectEditorBridge(
   const identity = await readProjectIdentity(ctx);
   const heartbeatProjectPath = stringValue(heartbeat.projectPath ?? heartbeat.project_path ?? heartbeat.Project);
   const heartbeatProjectId = stringValue(heartbeat.projectId ?? heartbeat.projectGuid ?? heartbeat.project_id);
-  const pathMatches = heartbeatProjectPath !== null &&
-    normalizeProjectPath(heartbeatProjectPath) === normalizeProjectPath(ctx.projectPath);
+  const pathMatches = heartbeatProjectPath !== null && await sameProjectPath(heartbeatProjectPath, ctx.projectPath);
   const idMatches = heartbeatProjectId !== null &&
     [identity.id, identity.explicitId, identity.pathHash]
       .some(candidate => candidate !== null && heartbeatProjectId.toLowerCase() === candidate.toLowerCase());

@@ -30,12 +30,22 @@ To use a different project, just change `--project-path`. You can run multiple i
 | `--project-path <dir>` | The Flax project (a directory with a `.flaxproj`). Without it the current directory is used. |
 | `--permission-profile`, `--allow-tool`, `--deny-tool`, `--emergency-read-only` | The permission policy, see Permissions. |
 | `--asset-import-root <dir>` | Approved external source root for `asset_import` / `asset_reimport` (repeatable). May be project-relative, for example `--asset-import-root Content/Raws`: a relative root is resolved against `--project-path`, never against the working directory of the process. Roots are canonicalised once at startup (symlinks and junctions resolved), must exist, and are limited to 32 roots of 1024 characters. |
-| `--flax-editor <path>` | Enables the `editor_launch` tool. The path must be an existing file named `FlaxEditor.exe` (case-insensitive; on non-Windows hosts the extension-less `FlaxEditor` binary is accepted too); a relative path is resolved against the working directory. Without the flag `editor_launch` answers `UNSUPPORTED_FLAX_VERSION` with a hint naming the flag. |
+| `--flax-editor <path>` | Enables the `editor_launch` tool. The path must be an existing file named `FlaxEditor.exe` (case-insensitive; on Linux and macOS the extension-less `FlaxEditor` binary is accepted too), or a directory: a Flax install folder, where the host's `Binaries/Editor/<Win64\|Linux\|Mac>/<Development\|Release\|Debug>/FlaxEditor[.exe]` is used (first found), or a macOS `FlaxEditor.app` bundle (`Contents/MacOS/FlaxEditor`). A relative path is resolved against the working directory. Without the flag `editor_launch` answers `UNSUPPORTED_FLAX_VERSION` with a hint naming the flag. |
 | `--allow-game-launch` | Enables the `game_launch` tool (cooked games that run the runtime bridge, see "Testing a cooked build"). A plain switch without a value; it also works for `flax-mcp call`. Without it `game_launch` answers `UNSUPPORTED_FLAX_VERSION` with a hint naming the flag. `game_list_instances` and `game_stop` do not need it. |
 
 ```bash
+# Windows
 flax-mcp --project-path D:/Games/MyGame --asset-import-root Content/Raws --asset-import-root D:/Art/Incoming --flax-editor "D:/Apps/Flax/Flax_1.12/Binaries/Editor/Win64/Development/FlaxEditor.exe"
+# Linux (the install folder is enough; Binaries/Editor/Linux/Development/FlaxEditor is picked)
+flax-mcp --project-path ~/Games/MyGame --asset-import-root Content/Raws --flax-editor ~/Applications/FlaxEngine
+# macOS
+flax-mcp --project-path ~/Games/MyGame --flax-editor /Applications/FlaxEngine/Binaries/Editor/Mac/Development/FlaxEditor
 ```
+
+The server runs on Windows, Linux and macOS. Platform notes: the running-Editor check of `editor_launch` reads the
+process list with PowerShell (`Get-CimInstance Win32_Process`) on Windows, `/proc/<pid>/cmdline` on Linux and
+`ps` on macOS; project-path comparisons and per-project locks fold letter case on Windows and macOS only. The C#
+bridges check process liveness with kernel32 on Windows, `/proc` on Linux and libc `kill(pid, 0)` on macOS.
 
 ## Permissions
 

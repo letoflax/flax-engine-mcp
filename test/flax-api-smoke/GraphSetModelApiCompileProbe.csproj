@@ -6,7 +6,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <PropertyGroup Condition="'$(FlaxEngineCSharpPath)' == ''">
-    <FlaxEngineCSharpPath>D:\Apps\Flax\Flax_1.12\Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll</FlaxEngineCSharpPath>
+    <FlaxEngineCSharpPath>$(FlaxEditorCSharpPath)</FlaxEngineCSharpPath>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="FlaxEngine.CSharp" HintPath="$(FlaxEngineCSharpPath)" Private="false" />

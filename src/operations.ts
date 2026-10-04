@@ -4,6 +4,7 @@ import { callEditorBridge } from './bridge/fileRpcClient.js';
 import { BridgeRpcError } from './bridge/protocol.js';
 import { ToolDomainError, toolError, toolResult, ToolResponse } from './errors.js';
 import { ProjectMeta } from './projectContext.js';
+import { comparablePathKey } from './platform.js';
 
 const OperationId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character operation ID.');
 export const OperationGetStatusSchema = z.object({ operation_id: OperationId });
@@ -57,7 +58,7 @@ export class HeavyOperationRateLimiter {
   constructor(private readonly maxPerProject = 1) {}
 
   acquire(ctx: ProjectMeta): () => void {
-    const key = process.platform === 'win32' ? path.resolve(ctx.projectPath).toLowerCase() : path.resolve(ctx.projectPath);
+    const key = comparablePathKey(ctx.projectPath);
     const current = this.active.get(key) ?? 0;
     if (current >= this.maxPerProject) {
       throw new ToolDomainError('RATE_LIMITED', `Heavy operation limit (${this.maxPerProject}) is active for this project. Poll or cancel the existing operation before starting another.`);
