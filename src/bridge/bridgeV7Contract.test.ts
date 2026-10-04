@@ -10,7 +10,7 @@ const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import
  * constant only; the per-feature tests below assert their own feature and do
  * not repeat the version.
  */
-const CURRENT_BRIDGE_VERSION = 36;
+const CURRENT_BRIDGE_VERSION = 37;
 
 test('every place the bridge source states its version agrees with the current version', async () => {
   const source = await readFile(bridgePath, 'utf8');
@@ -578,6 +578,32 @@ test('bridge v36 perf.gpu_events mirrors the Profiler window GPU tab and restore
   assert.doesNotMatch(body, /Thread\.Sleep/);
   assert.match(body, /GpuEventsHardMax = 2000/);
   assert.match(body, /Math\.Min\(request\.MaxEvents, GpuEventsHardMax\)/);
+});
+
+test('bridge v37 holds an editor viewport capture, selects the Editor tab and fails it with the reason', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  // Screenshot.Capture(task, path) writes nothing when task.Output is not allocated; the request must not stay Pending.
+  assert.match(source, /public class McpCaptureStatus \{[^}]*public string Error;/);
+  assert.match(source, /SizeBytes = value\.SizeBytes, Error = value\.Error/);
+  assert.match(source, /private void OnUpdate\(\)[\s\S]*?TickPendingEditorCaptures\(now\);/);
+  assert.match(source, /if \(EditorViewportReady\(editorTask\)\) Screenshot\.Capture\(editorTask, path\);\s*else _pendingEditorCaptures\.Add\(/);
+  const body = source.slice(source.indexOf('private static bool EditorViewportReady('), source.indexOf('private static McpRuntimeActorInspection InspectRuntimeActor('));
+  assert.ok(body.length > 1500);
+  // Same conditions RenderOutputControl and RenderTask.CanDraw use: enabled task, allocated output, a frame rendered since the request.
+  for (const probe of ['task.Enabled', 'task.Output.IsAllocated', 'task.FrameCount > pending.StartFrameCount', 'viewport.SyncBackbufferSize()', 'EditorCaptureSettleFrames'])
+    assert.ok(body.includes(probe), `editor capture wait uses ${probe}`);
+  // A hidden Editor tab is selected through the public DockWindow API without focusing, and the previous tab is put back.
+  assert.match(body, /editWin\.IsDocked && !editWin\.IsSelected/);
+  assert.match(body, /editWin\.SelectTab\(false\);/);
+  assert.match(body, /previous\.SelectTab\(false\)/);
+  assert.match(body, /RestoreEditorTab\(pending\);\s*_pendingEditorCaptures\.RemoveAt\(i\);/);
+  // The failure is reported on the status (Node maps Failed + Error to CAPTURE_UNAVAILABLE) before Node's own 10 s default.
+  assert.match(body, /item\.Phase = "Failed";\s*item\.Error = error;/);
+  const wait = Number(/EditorCaptureWaitMs = (\d+);/.exec(source)?.[1]);
+  assert.ok(wait >= 2000 && wait < 10000, `EditorCaptureWaitMs ${wait} must end before the default viewport_capture timeout`);
+  assert.match(source, /DeinitializeEditor\(\)[\s\S]*?AbandonPendingEditorCaptures\(/);
+  // No new wire method, no OS-level input or window calls, no render-task forcing.
+  assert.doesNotMatch(body, /Process\.Start|DllImport|Thread\.Sleep|UseAutomaticTaskManagement/);
 });
 
 test('bridge v36 asset.get_model_stats reads per-LOD counts the way the Editor model window does', async () => {

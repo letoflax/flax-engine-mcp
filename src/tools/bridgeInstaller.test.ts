@@ -248,7 +248,7 @@ test('the installation report works whether or not the runtime bridge is bundled
     assert.equal(info.runtime.installed.present, false);
     if (info.runtime.bundled.available) {
       assert.match(info.runtime.bundled.hash ?? '', /^[a-f0-9]{64}$/);
-      assert.equal(info.runtime.bundled.version, '36');
+      assert.equal(info.runtime.bundled.version, '37');
     } else {
       assert.equal(info.runtime.bundled.version, null);
       assert.equal(info.runtime.bundled.hash, null);

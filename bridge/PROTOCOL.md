@@ -1,15 +1,15 @@
-# Flax MCP Editor Bridge protocol (Editor bridge v36, runtime bridge v36 / protocol v1)
+# Flax MCP Editor Bridge protocol (Editor bridge v37, runtime bridge v37 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
 
 This document is cumulative. The opening sections describe the v5 to v7 baseline;
 each later `## Bridge vNN` section records what that version added or superseded,
-and the "Bridge v36" section describes the newest Editor bridge. The last
+and the "Bridge v37" section describes the newest Editor bridge. The last
 section, "Runtime bridge (v35)", describes the separate bridge file for cooked
 games (server 1.13.0, 180 tools). Sections are
 not in strict version order (after v14 the file continues with v27 down to v16,
-then v28 to v36), so when two statements disagree, the one from the higher bridge
+then v28 to v37), so when two statements disagree, the one from the higher bridge
 version wins (for the Editor bridge; the runtime bridge is a separate file and
 only the "Runtime bridge (v35)" section describes it). The protocol version stays 1: every addition since v5 is optional or
 additive.
@@ -17,7 +17,7 @@ additive.
 At startup the bridge creates `requests/`, `processing/`, and `responses/` (plus
 `captures/` and `operations/`), then writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 36, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 37, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
   Since v34 only one Editor per project owns this directory; see "Bridge directory
   ownership (v34)".
@@ -2602,6 +2602,57 @@ metadata only and returns no geometry counts.
 - Compile smoke: `BridgeCompileSmoke` and `RuntimeBridgeCompileSmoke`
   (Development and Release) build with 0 warnings against Flax 1.12.6912 on
   Linux.
+
+## Bridge v37: editor viewport capture selects its tab and waits (180-tool contract)
+
+Bridge v37 keeps protocol v1, the full v36 surface and the tool count. Editor and
+runtime bridge move to 37 together (the shared number); the runtime bridge changes
+only by the version number and the `Error` field below.
+
+`capture.start` with `Viewport:"editor"` used to call `Screenshot.Capture(task, path)`
+blindly. That call only logs "Cannot take screenshot. Render task output is not
+allocated." and writes nothing when the Editor viewport has no output texture, so the
+capture stayed `Pending` until the client timed out (`viewport_capture` TIMEOUT).
+
+Root cause (live, Linux, Flax 1.12.6912, also reproduced in an Editor inside a private
+headless Weston compositor): Flax renders the Editor viewport only while its tab is the
+selected tab of its dock panel. The viewport is a `RenderOutputControl`
+(`Source/Engine/UI/GUI/RenderOutputControl.cs`) and its `SceneRenderTask` renders into the
+control's back buffer (`task.Output`, no swap chain), so `RenderTask.CanDraw` is just
+`Enabled` plus an allocated output (`RenderTask.cpp`); OS window focus and visibility are
+never consulted. `RenderOutputControl.OnUpdate` sets `task.Enabled = !CanSkipRendering()`
+every update: it skips when the control is smaller than 4 px, is not under a window root,
+or an ancestor is invisible (another tab of the panel is selected). The back buffer is
+allocated by `SyncBackbufferSize()` from the control size, so a viewport that was never
+visible keeps a 0x0 size and no texture for as long as it stays hidden. A project whose
+`Cache/WindowsLayout.xml` was saved with the Game tab selected (`MasterPanel
+SelectedTab="1"`, what a play session leaves behind) therefore starts every Editor with
+the viewport hidden; the log showed the warning at 8 s, 22 s, 26 s and 30 s after launch, so
+this was not a startup race and not caused by the display.
+
+New behaviour:
+- If the viewport task is enabled and its output allocated, the capture is issued at once.
+- Otherwise the request is held and ticked from `OnUpdate` (main thread): when the Editor
+  window is docked but not the selected tab, the bridge selects it with
+  `DockWindow.SelectTab(false)` (what the Editor itself does to show a window; no focus
+  change), calls `SyncBackbufferSize()` while the output is not allocated, waits for the
+  task to render a frame after the request and then 20 more frames (a viewport that was
+  hidden renders its first frames with a cold eye adaptation: the first capture taken on
+  the first frame was washed out, mean luma 238 against 101-115), issues
+  `Screenshot.Capture`, and selects the previously selected tab again.
+- After 6 s (`EditorCaptureWaitMs`, less than the Node default `timeout_ms` of 10 s) the
+  capture becomes `Phase:"Failed"` with `Error` naming the blocker and the observed state
+  (viewport size, Editor tab docked/selected/hidden, task enabled, output allocated).
+  `McpCaptureStatus` gains `Error` (also on the runtime bridge, which shares the DTO
+  name); `capture.status` returns it and Node maps `Failed` + `Error` to
+  `CAPTURE_UNAVAILABLE`. A shutting-down Editor fails pending captures the same way.
+- Visible side effect: during the capture the Editor tab is briefly the selected one
+  (in play mode the Game window is hidden for a moment); the previous tab is restored
+  and `Cache/WindowsLayout.xml` keeps the original selection.
+
+Node: a `viewport_capture` with `viewport:"editor"` that still times out (a bridge older
+than v37) appends a hint naming the hidden tab, `install_editor_bridge`, and the game
+viewport as the alternative.
 
 ## Runtime bridge (v35): a cooked game, a second bridge file (177-tool contract)
 

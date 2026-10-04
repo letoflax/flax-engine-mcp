@@ -1053,7 +1053,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'viewport_capture',
-      description: 'Captures a bounded viewport image (game requires play mode; editor works outside play mode) into the bridge cache and returns a resource URI. With the optional instance parameter (only viewport game) it captures from a running cooked game instance (bridge v35) and returns the same flax://capture resource; the game window size is used and no size can be chosen.',
+      description: 'Captures a bounded viewport image (game requires play mode; editor works outside play mode) into the bridge cache and returns a resource URI. With the optional instance parameter (only viewport game) it captures from a running cooked game instance (bridge v35) and returns the same flax://capture resource; the game window size is used and no size can be chosen. The editor viewport only renders while its tab is the selected one: bridge v37 selects the Editor tab for the capture (and puts the previous tab back), waits for the viewport to render, and answers CAPTURE_UNAVAILABLE with the reason if it cannot; older bridges stay Pending until the timeout.',
       inputSchema: zodToJsonSchema(ViewportCaptureSchema),
       handler: (a, c) => handleViewportCapture(a as Parameters<typeof handleViewportCapture>[0], c),
     },

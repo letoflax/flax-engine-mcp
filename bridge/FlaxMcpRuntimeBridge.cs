@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 36
+// MCP-BRIDGE-VERSION: 37
 // Flax 1.12 runtime (cooked game) bridge for flax-engine-mcp.
 //
 // Install this file in a game module next to FlaxMcpBridge.cs, for example
@@ -30,8 +30,8 @@ namespace Game.MCP
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
     // They deliberately reuse the Editor bridge's names and shapes; the two files
     // never compile together.
-    public class McpRuntimeBridgeInfo { public int BridgeVersion = 36; public int ProtocolVersion = 1; public string Kind = "game"; public int Pid; public string Instance; public string ProductName; public string EngineVersion; public long Timestamp; }
-    public class McpRuntimeStatus { public int BridgeVersion = 36; public int ProtocolVersion = 1; public string Kind = "game"; public int Pid; public string Instance; public string ProductName; public string EngineVersion; public long FrameCount; public float TimeScale; public int LoadedSceneCount; public string[] Methods; }
+    public class McpRuntimeBridgeInfo { public int BridgeVersion = 37; public int ProtocolVersion = 1; public string Kind = "game"; public int Pid; public string Instance; public string ProductName; public string EngineVersion; public long Timestamp; }
+    public class McpRuntimeStatus { public int BridgeVersion = 37; public int ProtocolVersion = 1; public string Kind = "game"; public int Pid; public string Instance; public string ProductName; public string EngineVersion; public long FrameCount; public float TimeScale; public int LoadedSceneCount; public string[] Methods; }
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
     public class McpVector2 { public float X; public float Y; }
@@ -65,7 +65,7 @@ namespace Game.MCP
     public class McpPerfGpuEvents { public bool ProfilerAvailable; public string Reason; public bool ProfilerEnabled; public bool EnabledByBridge; public bool WasEnabled; public bool Restored; public long FrameCount; public bool HasData; public float? DrawGpuTimeMs; public float? DrawCpuTimeMs; public int EventCount; public bool Truncated; public McpPerfGpuEvent[] Events; public string GpuAdapter; public string RendererType; public bool IsPlayMode; public long TimestampUnixMs; }
     public class McpCaptureStart { public string Viewport; public int Width; public int Height; }
     public class McpCaptureStatusRequest { public string CaptureId; }
-    public class McpCaptureStatus { public string CaptureId; public string Phase; public string Path; public long StartedUnixMs; public long CompletedUnixMs; public long SizeBytes; }
+    public class McpCaptureStatus { public string CaptureId; public string Phase; public string Path; public long StartedUnixMs; public long CompletedUnixMs; public long SizeBytes; public string Error; }
     public class McpTimeScaleRequest { public float TimeScale; }
     // play.set_time_scale result. The Editor returns its play status; a cooked
     // game has no play session, so this carries the fields that still apply.
@@ -98,7 +98,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpRuntimeBridgePlugin : GamePlugin
     {
-        private const int BridgeVersion = 36;
+        private const int BridgeVersion = 37;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -158,7 +158,7 @@ namespace Game.MCP
                 Category = "Debug",
                 Author = "flax-engine-mcp",
                 Description = "File-RPC debug bridge for a running game. Inert unless the game is started with -mcpdir=<absolute path>.",
-                Version = new Version(36, 0),
+                Version = new Version(37, 0),
                 IsBeta = true,
             };
         }
@@ -196,7 +196,7 @@ namespace Game.MCP
                 _lastHeartbeat = Environment.TickCount64;
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Runtime bridge v36 listening (instance " + _instance + ")");
+                Debug.Log("[Flax MCP] Runtime bridge v37 listening (instance " + _instance + ")");
             }
             catch (Exception ex)
             {
@@ -984,7 +984,7 @@ namespace Game.MCP
 
         private static McpCaptureStatus CopyCaptureStatus(McpCaptureStatus value)
         {
-            return new McpCaptureStatus { CaptureId = value.CaptureId, Phase = value.Phase, Path = value.Path, StartedUnixMs = value.StartedUnixMs, CompletedUnixMs = value.CompletedUnixMs, SizeBytes = value.SizeBytes };
+            return new McpCaptureStatus { CaptureId = value.CaptureId, Phase = value.Phase, Path = value.Path, StartedUnixMs = value.StartedUnixMs, CompletedUnixMs = value.CompletedUnixMs, SizeBytes = value.SizeBytes, Error = value.Error };
         }
 
         // Keeps both the status map and the captures folder bounded.

@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createProjectContext, ProjectMeta } from '../projectContext.js';
 import {
+  EDITOR_CAPTURE_TIMEOUT_HINT,
   handleLogGetRecent,
   handleLogGetRuntimeErrors,
   handleLogSearch,
@@ -174,6 +175,40 @@ test('viewport_capture editor requests bridge v22 with the editor viewport selec
     const envelope = (await pending).structuredContent as Record<string, any>;
     assert.equal(envelope.data.viewport, 'editor');
     assert.equal(envelope.data.uri, `flax://capture/${captureId}`);
+  } finally { await f.cleanup(); }
+});
+
+test('viewport_capture editor reports the bridge v37 reason when the viewport cannot render', async () => {
+  const f = await fixture(37);
+  try {
+    const pending = handleViewportCapture(ViewportCaptureSchema.parse({ viewport: 'editor', poll_interval_ms: 50 }), f.ctx);
+    await reply(f, { CaptureId: 'abcdef0123456789abcdef0123456789' });
+    await reply(f, { Phase: 'Pending' });
+    await reply(f, { Phase: 'Failed', Error: 'The Editor viewport has no output texture (the Editor window has no size yet).' });
+    const result = await pending;
+    assert.equal(result.isError, true);
+    const error = (result.structuredContent as Record<string, any>).error;
+    assert.equal(error.code, 'CAPTURE_UNAVAILABLE');
+    assert.match(error.message, /no output texture/);
+  } finally { await f.cleanup(); }
+});
+
+test('viewport_capture editor that stays Pending times out with the off-screen hint; game captures do not get it', async () => {
+  const f = await fixture(36);
+  try {
+    const answering = (async () => {
+      await reply(f, { CaptureId: 'abcdef0123456789abcdef0123456789' });
+      // Pending until the caller gives up; the first unanswered wait (nextRequest throws) ends the loop.
+      for (;;) await reply(f, { Phase: 'Pending' });
+    })();
+    const result = await handleViewportCapture(ViewportCaptureSchema.parse({ viewport: 'editor', timeout_ms: 500, poll_interval_ms: 50 }), f.ctx);
+    const error = (result.structuredContent as Record<string, any>).error;
+    assert.equal(error.code, 'TIMEOUT');
+    assert.ok(error.message.endsWith(EDITOR_CAPTURE_TIMEOUT_HINT));
+    assert.match(error.message, /tab/);
+    assert.match(error.message, /install_editor_bridge/);
+    assert.match(error.message, /viewport "game"/);
+    await answering.catch(() => undefined);
   } finally { await f.cleanup(); }
 });
 

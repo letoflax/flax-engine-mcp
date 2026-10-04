@@ -8,7 +8,7 @@ const editorPath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import
 const smokePath = fileURLToPath(new URL('../../test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj', import.meta.url));
 
 /** The one place this suite pins the runtime bridge version (the editor bridge has its own, separate version). */
-const RUNTIME_BRIDGE_VERSION = 36;
+const RUNTIME_BRIDGE_VERSION = 37;
 
 /** The methods the v36 contract gives the runtime bridge, in dispatch order. */
 const CONTRACT_METHODS = [
@@ -102,7 +102,7 @@ test('runtime bridge is guarded to cooked non-release game builds and never comp
   assert.doesNotMatch(editor, /FLAX_GAME/);
 });
 
-test('runtime bridge states version 36 and Kind "game" everywhere', async () => {
+test('runtime bridge states version 37 and Kind "game" everywhere', async () => {
   const source = await readFile(runtimePath, 'utf8');
   const found = (pattern: RegExp) => [...source.matchAll(pattern)].map(match => Number(match[1]));
   assert.deepEqual(found(/MCP-BRIDGE-VERSION:\s*(\d+)/g), [RUNTIME_BRIDGE_VERSION]);

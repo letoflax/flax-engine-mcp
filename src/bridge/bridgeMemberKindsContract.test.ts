@@ -21,7 +21,7 @@ function method(source: string, signature: string): string {
 
 test('member kinds cover brushes and font references without widening the wire shape', async () => {
   const source = await readFile(bridgePath, 'utf8');
-  assert.match(source, /MCP-BRIDGE-VERSION:\s*36/);
+  assert.match(source, /MCP-BRIDGE-VERSION:\s*37/);
   const kinds = method(source, 'private static string MemberKindName(Type type)');
   assert.match(kinds, /if \(IsBrushType\(type\)\) return "brush";/);
   assert.match(kinds, /if \(type == typeof\(FontReference\)\) return "font";/);

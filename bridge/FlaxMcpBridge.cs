@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 36
+// MCP-BRIDGE-VERSION: 37
 // Flax 1.12 Editor-only bridge for flax-engine-mcp.
 //
 // Install this file in a game module, for example Source/Game/MCP/FlaxMcpBridge.cs.
@@ -38,12 +38,12 @@ using FLayersAndTagsSettings = FlaxEditor.Content.Settings.LayersAndTagsSettings
 namespace Game.MCP
 {
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
-    public class McpBridgeInfo { public int BridgeVersion = 36; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
+    public class McpBridgeInfo { public int BridgeVersion = 37; public int ProtocolVersion = 1; public int Pid; public string Project; public string EditorVersion; public long Timestamp; }
     // Request/response intentionally use lower camel case because the Node side
     // parses exact on-disk keys. Heartbeat remains PascalCase for compatibility.
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
-    public class McpStatus { public int BridgeVersion = 36; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = true; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = true; public bool PrefabApplyOverridesSupported = true; public bool PrefabRevertOverridesSupported = true; public bool PrefabBreakLinkSupported = true; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = true; public bool LightingBakeSupported = true; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool PerfGpuEventsSupported = true; public bool AssetModelStatsSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; public bool TerrainPaintSupported = false; public bool FoliageInstanceWriteSupported = true; public bool EnvironmentProbeBakeSupported = true; public bool ActorPropertyReadSupported = true; public bool GenericActorPropertyWriteSupported = true; public bool UiControlWorkflowsSupported = true; public bool RuntimeScriptDriveSupported = true; public bool SettingsWriteSupported = true; public bool SceneCreateSupported = true; public bool SceneCloseSupported = true; public bool ContentFolderCreateSupported = true; public bool AssetCreateSupported = true; public bool ParticleParameterWorkflowsSupported = true; public string[] Methods; public string EditorState; public bool IsEditMode; public bool IsCompiling; public bool ScriptsReady; public bool IsImporting; public bool LastCompileFailed; public int LoadedSceneCount; public bool MethodDiscoverySupported; public bool AssetImportResultIdSupported; public bool AssetImportReplaceSupported; public bool BridgeOwnershipSupported; public bool EditorReadinessSupported; public bool EditorQuitSupported; public bool EditorOptionsSupported; public bool SceneReplaceSupported; public bool SceneReloadSupported; public bool NestedMemberPathSupported; public bool ScriptAssetReferenceWriteSupported; public bool GraphArchetypeListSupported; public bool GraphEditSupported; public bool AnimgraphTransitionSettingsSupported; public bool GameplayGlobalsCreateSupported; public bool MaterialFunctionGraphSupported; }
+    public class McpStatus { public int BridgeVersion = 37; public int ProtocolVersion = 1; public int Pid; public string EditorVersion; public bool IsPlayMode; public bool IsHeadless; public bool TransactionsSupported = false; public bool EditLeasesSupported = true; public string EditLeaseSemantics = "visible-immediately-no-rollback"; public long ProjectRevision; public string RevisionScope = "bridge-session-known-mutations"; public string LogSessionId; public bool AssetRegistrySupported = true; public bool AssetReferenceGraphSupported = true; public bool AssetImportSupported = true; public bool AssetReimportSupported = true; public bool AssetImportSynchronous = true; public bool AssetReimportSynchronous = false; public bool AssetImportSettingsSupported = true; public bool AssetReferenceLocationsSupported = false; public bool AssetOrganizationSupported = true; public bool AssetOrganizationUndoSupported = false; public bool AssetOrganizationLeaseSupported = false; public string AssetOrganizationAtomicity = "single-content-api-call-not-transactional"; public bool AssetQuarantineDeleteSupported = true; public bool AssetPermanentDeleteSupported = false; public bool OperationStatusSupported = true; public bool OperationCancelSupported = true; public string OperationHandleSemantics = "raw-handles-no-mcp-tasks"; public bool PrefabWorkflowsSupported = true; public bool PrefabCreateSupported = true; public bool PrefabInstantiateSupported = true; public bool PrefabInstanceEnumerationSupported = true; public bool PrefabOverridesSupported = true; public bool PrefabApplyOverridesSupported = true; public bool PrefabRevertOverridesSupported = true; public bool PrefabBreakLinkSupported = true; public bool BuildWorkflowsSupported = true; public bool BuildCancelSupported = true; public bool BuildValidationIsPreflightOnly = true; public string BuildOutputScope = "project-relative-Builds-only"; public bool MaterialParameterReadSupported = true; public bool MaterialParameterWriteSupported = true; public bool MaterialInstanceCreationSupported = true; public bool MaterialAssignmentSupported = true; public bool AnimationClipEnumerationSupported = true; public bool AnimationGraphParameterReadSupported = true; public bool AnimationGraphParameterWriteSupported = false; public bool AnimationBindingValidationSupported = true; public bool PhysicsQueriesSupported = true; public bool NavigationQueriesSupported = true; public bool NavigationBuildSupported = true; public bool LightingBakeSupported = true; public bool TerrainFoliageReadSupported = true; public bool GraphInspectSupported = true; public bool GraphDefaultParameterWriteSupported = true; public bool GraphTopologyWriteSupported = true; public bool GraphUndoSupported = true; public bool GraphSetModelSupported = true; public bool ScriptFieldValuesReadSupported = true; public bool AnimgraphStateWriteSupported = true; public bool AnimgraphTransitionWriteSupported = true; public bool EditorViewportCaptureSupported = true; public bool PlayTimeScaleSupported = true; public bool EditorSelectionSupported = true; public bool SceneOpenSupported = true; public bool InputSimulationSupported = true; public bool PerfSnapshotSupported = true; public bool PerfGpuEventsSupported = true; public bool AssetModelStatsSupported = true; public bool ScriptFieldWriteSupported = true; public bool ActorPropertyWriteSupported = true; public bool TerrainPaintSupported = false; public bool FoliageInstanceWriteSupported = true; public bool EnvironmentProbeBakeSupported = true; public bool ActorPropertyReadSupported = true; public bool GenericActorPropertyWriteSupported = true; public bool UiControlWorkflowsSupported = true; public bool RuntimeScriptDriveSupported = true; public bool SettingsWriteSupported = true; public bool SceneCreateSupported = true; public bool SceneCloseSupported = true; public bool ContentFolderCreateSupported = true; public bool AssetCreateSupported = true; public bool ParticleParameterWorkflowsSupported = true; public string[] Methods; public string EditorState; public bool IsEditMode; public bool IsCompiling; public bool ScriptsReady; public bool IsImporting; public bool LastCompileFailed; public int LoadedSceneCount; public bool MethodDiscoverySupported; public bool AssetImportResultIdSupported; public bool AssetImportReplaceSupported; public bool BridgeOwnershipSupported; public bool EditorReadinessSupported; public bool EditorQuitSupported; public bool EditorOptionsSupported; public bool SceneReplaceSupported; public bool SceneReloadSupported; public bool NestedMemberPathSupported; public bool ScriptAssetReferenceWriteSupported; public bool GraphArchetypeListSupported; public bool GraphEditSupported; public bool AnimgraphTransitionSettingsSupported; public bool GameplayGlobalsCreateSupported; public bool MaterialFunctionGraphSupported; }
     public class McpSceneRef { public string Id; public string Name; public string Path; public bool Edited; public long ProjectRevision; public long SceneRevision; public string SaveReport; }
     public class McpVector3 { public float X; public float Y; public float Z; }
     public class McpActorDto
@@ -149,7 +149,7 @@ namespace Game.MCP
     public class McpPerfGpuEvents { public bool ProfilerAvailable; public string Reason; public bool ProfilerEnabled; public bool EnabledByBridge; public bool WasEnabled; public bool Restored; public long FrameCount; public bool HasData; public float? DrawGpuTimeMs; public float? DrawCpuTimeMs; public int EventCount; public bool Truncated; public McpPerfGpuEvent[] Events; public string GpuAdapter; public string RendererType; public bool IsPlayMode; public long TimestampUnixMs; }
     public class McpCaptureStart { public string Viewport; public int Width; public int Height; }
     public class McpCaptureStatusRequest { public string CaptureId; }
-    public class McpCaptureStatus { public string CaptureId; public string Phase; public string Path; public long StartedUnixMs; public long CompletedUnixMs; public long SizeBytes; }
+    public class McpCaptureStatus { public string CaptureId; public string Phase; public string Path; public long StartedUnixMs; public long CompletedUnixMs; public long SizeBytes; public string Error; }
     public class McpRuntimeActorInspect { public string ActorId; public int Depth; public bool IncludeScripts = true; }
     public class McpRuntimeActorInspection { public bool IsPlayMode; public bool IsPaused; public string SceneId; public McpActorDto Actor; }
     public class McpAssetSearch { public string Query; public string Path; public string Type; public string Extension; public string Guid; public string Folder; public bool? HasMissingDependency; public int Limit = 50; public string Cursor; }
@@ -418,7 +418,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpBridgePlugin : EditorPlugin
     {
-        private const int BridgeVersion = 36;
+        private const int BridgeVersion = 37;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -500,6 +500,21 @@ namespace Game.MCP
         private long _compileLogOffset;
         private McpGenerateProjectState _generate = new McpGenerateProjectState { Phase = "idle" };
         private readonly Dictionary<string, McpCaptureStatus> _captures = new Dictionary<string, McpCaptureStatus>();
+        // Bridge v37: editor-viewport captures waiting for the viewport to render (see TickPendingEditorCaptures).
+        private const int EditorCaptureWaitMs = 6000;
+        private const int EditorCaptureSettleFrames = 20;
+        private sealed class PendingEditorCapture
+        {
+            public string CaptureId;
+            public string Path;
+            public SceneRenderTask Task;
+            public int StartFrameCount;
+            public long StartedTick;
+            public bool TabSelected;
+            public int SettleUntilFrame = -1;
+            public FlaxEditor.GUI.Docking.DockWindow PreviousTab;
+        }
+        private readonly List<PendingEditorCapture> _pendingEditorCaptures = new List<PendingEditorCapture>();
         private ILogHandler _logHandler;
         // Bridge v31 lightmap bake lifecycle. Editor.BakeLightmapsOrCancel is
         // a toggle (start when idle, cancel when running), so the bridge
@@ -572,7 +587,7 @@ namespace Game.MCP
                 else
                 {
                     ActivateBridge();
-                    Debug.Log("[Flax MCP] Bridge v36 listening at " + Root);
+                    Debug.Log("[Flax MCP] Bridge v37 listening at " + Root);
                 }
                 _running = true;
                 Scripting.Update += OnUpdate;
@@ -588,6 +603,7 @@ namespace Game.MCP
             _running = false;
             Scripting.Update -= OnUpdate;
             try { RestoreGpuProfiler(); } catch { }
+            try { AbandonPendingEditorCaptures("The Editor is shutting down."); } catch { }
             if (_bridgeActive)
             {
                 UnsubscribeEvents();
@@ -667,7 +683,7 @@ namespace Game.MCP
             try
             {
                 ActivateBridge();
-                Debug.Log("[Flax MCP] Previous bridge owner is gone; this Editor now owns Cache/MCP. Bridge v36 listening at " + Root);
+                Debug.Log("[Flax MCP] Previous bridge owner is gone; this Editor now owns Cache/MCP. Bridge v37 listening at " + Root);
             }
             catch (Exception ex)
             {
@@ -754,6 +770,7 @@ namespace Game.MCP
             }
             TickPendingQuit(now);
             TickGpuProfiler(now);
+            TickPendingEditorCaptures(now);
             if (now - _lastHeartbeat >= 2000)
             {
                 _lastHeartbeat = now;
@@ -9500,10 +9517,125 @@ namespace Game.MCP
             lock (_stateLock) _captures[id] = item;
             // Flax may finish GPU readback one or more frames later. The status call
             // observes the fixed, bridge-owned file instead of blocking this callback.
-            if (isEditor) Screenshot.Capture(editorTask, path);
+            if (isEditor)
+            {
+                // Screenshot.Capture(task, path) only logs "Render task output is not allocated" and writes nothing
+                // when the viewport has no output texture yet (the Editor window was just created, or its tab is
+                // hidden), which used to leave the capture Pending forever. Hold the request until the viewport
+                // has rendered a frame (TickPendingEditorCaptures), or fail it with the reason.
+                if (EditorViewportReady(editorTask)) Screenshot.Capture(editorTask, path);
+                else _pendingEditorCaptures.Add(new PendingEditorCapture { CaptureId = id, Path = path, Task = editorTask, StartFrameCount = editorTask.FrameCount, StartedTick = Environment.TickCount64 });
+            }
             else Screenshot.Capture(path);
             CleanupCaptures();
             return CopyCaptureStatus(item);
+        }
+
+        // The Editor viewport is a RenderOutputControl: its SceneRenderTask renders into the control's back buffer
+        // (task.Output), and RenderOutputControl.OnUpdate switches the task off (Enabled = false) while the control
+        // is not under a window, an ancestor is invisible (another tab of the dock panel is selected, for example the
+        // Game window) or it is smaller than 4 pixels. It never looks at OS window focus.
+        private static bool EditorViewportReady(SceneRenderTask task)
+        {
+            return task != null && task.Enabled && task.Output != null && task.Output.IsAllocated;
+        }
+
+        private static string EditorViewportBlocker(FlaxEditor.Windows.EditGameWindow editWin, SceneRenderTask task)
+        {
+            if (task == null) return "The Editor viewport is gone.";
+            var viewport = editWin != null ? editWin.Viewport : null;
+            var detail = " (viewport " + (viewport != null ? ((int)viewport.Width) + "x" + ((int)viewport.Height) : "unknown")
+                + ", Editor tab " + (editWin == null ? "missing" : !editWin.IsDocked ? "not docked" : editWin.IsSelected ? "selected" : "hidden")
+                + ", task enabled " + task.Enabled + ", output allocated " + (task.Output != null && task.Output.IsAllocated) + ")";
+            if (task.Output == null || !task.Output.IsAllocated)
+                return "The Editor viewport has no output texture, so there is nothing to capture; the Editor window has no size yet or the viewport is smaller than 4 pixels." + detail;
+            if (!task.Enabled)
+                return "The Editor viewport is not rendering: its tab is hidden or it is not part of a window." + detail;
+            return "The Editor viewport did not render a frame." + detail;
+        }
+
+        // Runs from OnUpdate (main thread). If the Editor tab is hidden behind another tab of its dock panel (for
+        // example the Game window), it is selected for the capture, the same call the Editor uses for its own
+        // screenshot of the Game window (DockWindow.SelectTab / FocusOrShow), and the previous tab is selected
+        // again once the capture was issued.
+        private void TickPendingEditorCaptures(long now)
+        {
+            if (_pendingEditorCaptures.Count == 0) return;
+            for (var i = _pendingEditorCaptures.Count - 1; i >= 0; i--)
+            {
+                var pending = _pendingEditorCaptures[i];
+                string failure = null;
+                var finished = false;
+                try
+                {
+                    var editWin = FEditor.Instance.Windows != null ? FEditor.Instance.Windows.EditWin : null;
+                    var viewport = editWin != null ? editWin.Viewport : null;
+                    var task = viewport != null ? viewport.Task : null;
+                    if (task == null || !ReferenceEquals(task, pending.Task))
+                    {
+                        failure = "The Editor viewport is gone.";
+                    }
+                    else
+                    {
+                        if (!pending.TabSelected && editWin.IsDocked && !editWin.IsSelected)
+                        {
+                            pending.PreviousTab = editWin.ParentDockPanel != null ? editWin.ParentDockPanel.SelectedTab : null;
+                            editWin.SelectTab(false);
+                            pending.TabSelected = true;
+                        }
+                        if (task.Output == null || !task.Output.IsAllocated) viewport.SyncBackbufferSize();
+                        // A viewport that was hidden renders its first frames with a cold eye adaptation; give it a few.
+                        if (pending.TabSelected && pending.SettleUntilFrame < 0 && EditorViewportReady(task) && task.FrameCount > pending.StartFrameCount)
+                            pending.SettleUntilFrame = task.FrameCount + EditorCaptureSettleFrames;
+                        if (EditorViewportReady(task) && task.FrameCount > pending.StartFrameCount && task.FrameCount >= pending.SettleUntilFrame)
+                        {
+                            Screenshot.Capture(task, pending.Path);
+                            finished = true;
+                        }
+                        else if (now - pending.StartedTick >= EditorCaptureWaitMs)
+                        {
+                            failure = EditorViewportBlocker(editWin, task);
+                        }
+                    }
+                }
+                catch (Exception ex) { failure = "Editor viewport capture failed: " + ex.Message; }
+                if (failure == null && !finished) continue;
+                RestoreEditorTab(pending);
+                _pendingEditorCaptures.RemoveAt(i);
+                if (failure != null) FailCapture(pending.CaptureId, failure);
+            }
+        }
+
+        private static void RestoreEditorTab(PendingEditorCapture pending)
+        {
+            var previous = pending.PreviousTab;
+            pending.PreviousTab = null;
+            if (!pending.TabSelected || previous == null) return;
+            pending.TabSelected = false;
+            try { if (previous.IsDocked) previous.SelectTab(false); }
+            catch { }
+        }
+
+        private void FailCapture(string captureId, string error)
+        {
+            lock (_stateLock)
+            {
+                McpCaptureStatus item;
+                if (!_captures.TryGetValue(captureId, out item) || item.Phase != "Pending") return;
+                item.Phase = "Failed";
+                item.Error = error;
+                item.CompletedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            }
+        }
+
+        private void AbandonPendingEditorCaptures(string reason)
+        {
+            foreach (var pending in _pendingEditorCaptures)
+            {
+                RestoreEditorTab(pending);
+                FailCapture(pending.CaptureId, reason);
+            }
+            _pendingEditorCaptures.Clear();
         }
 
         private McpCaptureStatus GetCaptureStatus(McpCaptureStatusRequest request)
@@ -14729,7 +14861,7 @@ namespace Game.MCP
 
         private static McpCaptureStatus CopyCaptureStatus(McpCaptureStatus value)
         {
-            return new McpCaptureStatus { CaptureId = value.CaptureId, Phase = value.Phase, Path = value.Path, StartedUnixMs = value.StartedUnixMs, CompletedUnixMs = value.CompletedUnixMs, SizeBytes = value.SizeBytes };
+            return new McpCaptureStatus { CaptureId = value.CaptureId, Phase = value.Phase, Path = value.Path, StartedUnixMs = value.StartedUnixMs, CompletedUnixMs = value.CompletedUnixMs, SizeBytes = value.SizeBytes, Error = value.Error };
         }
 
         private static LogType ParseLogLevel(string value)

@@ -275,6 +275,13 @@ async function captureFromGame(args: z.infer<typeof ViewportCaptureSchema>, ctx:
   } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, true, true)); }
 }
 
+/**
+ * Appended to a timed-out editor-viewport capture. Flax renders the Editor viewport only while its tab is the selected
+ * one (RenderOutputControl switches the task off while an ancestor is invisible, and a never-shown viewport has no back
+ * buffer); before bridge v37 such a request stayed Pending without any message.
+ */
+export const EDITOR_CAPTURE_TIMEOUT_HINT = ' The Editor viewport is only rendered while the Editor tab is the selected tab of its dock panel (for example the Game tab selected in the saved layout hides it) and once the window has been laid out; bridges older than v37 do not select it and never report why, so update the bridge (install_editor_bridge). Meanwhile select the Editor tab or capture the game viewport in play mode (viewport "game"), which always renders, also with display "offscreen".';
+
 export async function handleViewportCapture(args: z.infer<typeof ViewportCaptureSchema>, ctx: ProjectMeta): Promise<ToolResponse> {
   if (args.instance !== undefined) return captureFromGame(args, ctx, args.instance);
   try {
@@ -304,7 +311,7 @@ export async function handleViewportCapture(args: z.infer<typeof ViewportCapture
       reportProgress('Waiting for the viewport capture', args.timeout_ms);
       await delay(Math.min(args.poll_interval_ms, Math.max(0, deadline - Date.now())));
     }
-    throw new ToolDomainError('TIMEOUT', `Capture did not complete within ${args.timeout_ms} ms.`);
+    throw new ToolDomainError('TIMEOUT', `Capture did not complete within ${args.timeout_ms} ms.${args.viewport === 'editor' ? EDITOR_CAPTURE_TIMEOUT_HINT : ''}`);
   } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, true)); }
 }
 
