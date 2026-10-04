@@ -95,7 +95,7 @@ test('perf tool schemas have bounded defaults and refuse unbounded captures', ()
   assert.equal(PerfGetGpuEventsSchema.safeParse({ frames: 61 }).success, false);
   assert.equal(PerfGetGpuEventsSchema.safeParse({ max_events: 1_001 }).success, false);
   assert.equal(PerfGetGpuEventsSchema.safeParse({ min_ms: -1 }).success, false);
-  assert.deepEqual(PerfCaptureSchema.parse({}), { duration_s: 5, interval_ms: 250, hitch_factor: 2, include_gpu: false, gpu_depth: 1 });
+  assert.deepEqual(PerfCaptureSchema.parse({}), { duration_s: 5, interval_ms: 250, hitch_factor: 2, draw_stats: true, include_gpu: false, gpu_depth: 2 });
   assert.equal(PerfCaptureSchema.safeParse({ duration_s: 61 }).success, false);
   assert.equal(PerfCaptureSchema.safeParse({ interval_ms: 49 }).success, false);
   assert.equal(PerfCaptureSchema.safeParse({ duration_s: 60, interval_ms: 100 }).success, true);
@@ -294,7 +294,7 @@ test('perf_capture samples the snapshot path and summarizes frame time, hitches,
     return { Fps: 60, FrameTimeMs: frameMs[i], DrawCalls: 100 * (i + 1), Triangles: 1000 * (i + 1), IsPlayMode: false, GpuAdapter: 'GPU', RendererType: 'Vulkan' };
   });
   try {
-    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 1, interval_ms: 100 }), f.ctx, fakeDeps());
+    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 1, interval_ms: 100, draw_stats: false }), f.ctx, fakeDeps());
     assert.equal(result.isError, undefined);
     const data = envelope(result).data;
     assert.equal(data.capture.samples, 10);
@@ -324,7 +324,7 @@ test('perf_capture include_gpu aggregates passes and restores the profiler', asy
     return gpuReply(frame(gpuCalls));
   });
   try {
-    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 0.5, interval_ms: 100, include_gpu: true }), f.ctx, fakeDeps());
+    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 0.5, interval_ms: 100, include_gpu: true, gpu_depth: 1 }), f.ctx, fakeDeps());
     const data = envelope(result).data;
     assert.equal(data.gpu.available, true);
     assert.equal(data.gpu.frames, 5);
@@ -360,7 +360,7 @@ test('perf_capture keeps partial data when the bridge fails mid-capture and erro
     return { Fps: 60, FrameTimeMs: 16, IsPlayMode: false };
   });
   try {
-    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 1, interval_ms: 100 }), f.ctx, fakeDeps());
+    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 1, interval_ms: 100, draw_stats: false }), f.ctx, fakeDeps());
     assert.equal(result.isError, undefined);
     assert.equal(envelope(result).data.capture.samples, 3);
     assert.ok((envelope(result).warnings as string[]).some(w => w.includes('Stopped after 3 samples')));
@@ -369,7 +369,7 @@ test('perf_capture keeps partial data when the bridge fails mid-capture and erro
   const g = await fixture(36);
   const failing = peer(g, () => { throw Object.assign(new Error('boom'), { code: 'DEADLINE_EXCEEDED' }); });
   try {
-    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 0.5 }), g.ctx, fakeDeps());
+    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 0.5, draw_stats: false }), g.ctx, fakeDeps());
     assert.equal(result.isError, true);
     assert.equal(envelope(result).error.code, 'TIMEOUT');
   } finally { await failing.stop(); await g.cleanup(); }
@@ -379,13 +379,33 @@ test('perf_capture needs only the v27 snapshot bridge when include_gpu is off', 
   const f = await fixture(27);
   const server = peer(f, () => ({ Fps: 60, FrameTimeMs: 16, IsPlayMode: false }));
   try {
-    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 0.5, interval_ms: 250 }), f.ctx, fakeDeps());
+    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 0.5, interval_ms: 250, draw_stats: false }), f.ctx, fakeDeps());
     assert.equal(result.isError, undefined);
     assert.equal(envelope(result).data.capture.samples, 2);
+    const withStats = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 0.5, interval_ms: 250 }), f.ctx, fakeDeps());
+    assert.equal(withStats.isError, undefined, 'draw_stats degrades to a warning on a pre-v36 bridge');
+    assert.ok((envelope(withStats).warnings as string[]).some(w => w.includes('bridge v36')));
   } finally { await server.stop(); await f.cleanup(); }
   const g = await fixture(35);
   try {
     const result = await handlePerfGetGpuEvents(PerfGetGpuEventsSchema.parse({}), g.ctx, fakeDeps());
     assert.equal(envelope(result).error.code, 'UNSUPPORTED_FLAX_VERSION');
   } finally { await g.cleanup(); }
+});
+
+test('perf_capture draw_stats enables the GPU profiler once up front and restores it', async () => {
+  const f = await fixture(36);
+  const server = peer(f, request => {
+    if (request.method === 'perf.snapshot') return { Fps: 60, FrameTimeMs: 16, DrawCalls: 222, Triangles: 1500, IsPlayMode: false };
+    return request.params.Restore ? gpuReply(null, { Restored: true }) : gpuReply(null);
+  });
+  try {
+    const result = await handlePerfCapture(PerfCaptureSchema.parse({ duration_s: 0.5, interval_ms: 250 }), f.ctx, fakeDeps());
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(server.seen.map(r => r.method), ['perf.gpu_events', 'perf.snapshot', 'perf.snapshot', 'perf.gpu_events']);
+    assert.equal(server.seen[0].params.Enable, true);
+    assert.equal(server.seen[3].params.Restore, true);
+    assert.equal(envelope(result).data.draw_calls.max, 222);
+    assert.equal(envelope(result).data.gpu, undefined);
+  } finally { await server.stop(); await f.cleanup(); }
 });

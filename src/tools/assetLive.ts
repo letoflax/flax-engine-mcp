@@ -55,7 +55,11 @@ export const AssetSearchSchema = z.object({
 export const AssetGetSchema = z.object(AssetSelectorShape).strict().superRefine(exactlyOneSelector);
 
 /** Bridge v36: per-LOD triangle/vertex/mesh counts for a Model or SkinnedModel (asset_get returns registry metadata only). */
-export const AssetGetModelStatsSchema = z.object(AssetSelectorShape).strict().superRefine(exactlyOneSelector);
+export const AssetGetModelStatsSchema = z.object({
+  ...AssetSelectorShape,
+  timeout_ms: z.number().int().min(0).max(30_000).optional().default(5_000)
+    .describe('How long to repeat the read while some LODs are still streaming in (a freshly loaded asset has none resident for a few frames). 0 reads once.'),
+}).strict().superRefine(exactlyOneSelector);
 
 export const AssetDependenciesSchema = z.object({
   ...AssetSelectorShape,
@@ -138,8 +142,26 @@ export const handleAssetSearch = (args: z.infer<typeof AssetSearchSchema>, ctx: 
 export const handleAssetGet = (args: z.infer<typeof AssetGetSchema>, ctx: ProjectMeta) =>
   assetCall('asset.get', { AssetId: args.asset_id, Path: args.path }, ctx);
 
-export const handleAssetGetModelStats = (args: z.infer<typeof AssetGetModelStatsSchema>, ctx: ProjectMeta) =>
-  assetCall('asset.get_model_stats', { AssetId: args.asset_id, Path: args.path }, ctx, BRIDGE_V36);
+export async function handleAssetGetModelStats(
+  args: z.infer<typeof AssetGetModelStatsSchema>,
+  ctx: ProjectMeta,
+  sleep: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms)),
+): Promise<ToolResponse> {
+  // The bridge makes the asset load on the first call but LOD buffers stream in on later frames, so repeat until resident.
+  const params = { AssetId: args.asset_id, Path: args.path };
+  const deadline = Date.now() + args.timeout_ms;
+  let waited = 0;
+  while (true) {
+    const result = await assetCall('asset.get_model_stats', params, ctx, BRIDGE_V36);
+    const data = (result.structuredContent as { data?: { result?: { Lods?: Array<{ Loaded?: boolean }> } } } | undefined)?.data;
+    const lods = data?.result?.Lods;
+    const pending = Array.isArray(lods) && lods.some(lod => lod.Loaded !== true);
+    if (result.isError || !pending || Date.now() >= deadline) return result;
+    waited++;
+    await sleep(Math.min(250, Math.max(0, deadline - Date.now())));
+    if (waited > 200) return result;
+  }
+}
 
 export const handleAssetDependencies = (args: z.infer<typeof AssetDependenciesSchema>, ctx: ProjectMeta) =>
   assetCall('asset.dependencies', {

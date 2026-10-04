@@ -1084,7 +1084,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'perf_capture',
-      description: 'Samples perf_get_snapshot for duration_s (0.5-60) every interval_ms (at most 600 samples) and returns frame-time avg/min/median/p95/p99/max, avg fps, the hitch count over hitch_factor x median (or an absolute hitch_threshold_ms), and avg/max draw calls and triangles. Statistical: it samples the latest frame time per snapshot, it does not see every frame. include_gpu also samples perf.gpu_events (bridge v36) and adds the average GPU ms per pass at gpu_depth, restoring the profiler afterwards. Works in edit and play mode; draw calls and triangles stay null headless. With the optional instance parameter it targets a running cooked game (bridge v35, v36 for include_gpu).',
+      description: 'Samples perf_get_snapshot for duration_s (0.5-60) every interval_ms (at most 600 samples; draw_stats, default true, turns the GPU profiler on for the capture so draw calls and triangles are not null, and restores it) and returns frame-time avg/min/median/p95/p99/max, avg fps, the hitch count over hitch_factor x median (or an absolute hitch_threshold_ms), and avg/max draw calls and triangles. Statistical: it samples the latest frame time per snapshot, it does not see every frame. include_gpu also samples perf.gpu_events (bridge v36) and adds the average GPU ms per pass at gpu_depth, restoring the profiler afterwards. Works in edit and play mode; draw calls and triangles stay null headless. With the optional instance parameter it targets a running cooked game (bridge v35, v36 for include_gpu).',
       inputSchema: zodToJsonSchema(PerfCaptureSchema),
       handler: (a, c) => handlePerfCapture(a as Parameters<typeof handlePerfCapture>[0], c),
     },
@@ -1238,7 +1238,7 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
     },
     {
       name: 'asset_get_model_stats',
-      description: 'Reads per-LOD triangle count, vertex count and mesh count (plus LOD count, streamed-in LODs, material slot count, and bone count for a SkinnedModel) of exactly one Model or SkinnedModel asset by GUID or project-relative path, the numbers the Editor model window shows per LOD. Loads the asset if needed. LODs still streaming in report null counts; any other asset type fails VALIDATION_FAILED. asset_get returns registry metadata only. Requires bridge v36.',
+      description: 'Reads per-LOD triangle count, vertex count and mesh count (plus LOD count, streamed-in LODs, material slot count, and bone count for a SkinnedModel) of exactly one Model or SkinnedModel asset by GUID or project-relative path, the numbers the Editor model window shows per LOD. Loads the asset if needed. Repeats (timeout_ms) until every LOD is resident, else the non-resident LODs report null counts; any other asset type fails VALIDATION_FAILED. asset_get returns registry metadata only. Requires bridge v36.',
       inputSchema: zodToJsonSchema(AssetGetModelStatsSchema),
       handler: (a, c) => handleAssetGetModelStats(a as Parameters<typeof handleAssetGetModelStats>[0], c),
     },

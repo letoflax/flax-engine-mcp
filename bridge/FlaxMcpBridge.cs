@@ -1238,16 +1238,25 @@ namespace Game.MCP
 
         // Bridge v36: per-LOD triangle/vertex/mesh counts of a Model or SkinnedModel.
         //
-        // Mirrors the Editor's model asset window (Source/Editor/Windows/Assets/
-        // ModelBaseWindow.cs, the per-LOD "Triangles / Vertices" group): the
-        // asset is loaded with Content.LoadAsync, then ModelBase.LODsCount,
-        // LoadedLODs, MaterialSlotsCount, ModelBase.GetMeshes(out meshes,
-        // lodIndex) and MeshBase.TriangleCount/VertexCount are summed per LOD
-        // (ModelLODBase.ScreenSize is the LOD switch size). LODs that are not
-        // streamed in yet report Loaded = false with null counts, as the
-        // window shows "Loading LOD...". asset.get returns registry metadata
-        // only, never geometry counts. Loading uses the same bounded
-        // WaitForLoaded as the other model loaders here.
+        // Mirrors what the Editor shows per LOD: the model asset window
+        // (Source/Editor/Windows/Assets/ModelBaseWindow.cs) and the content
+        // item tooltip (Source/Editor/Content/Items/BinaryAssetItem.cs, which
+        // sums asset.LODs[i].Meshes[j].TriangleCount/VertexCount). The asset
+        // is loaded with the bridge's bounded loaders, then LODsCount,
+        // MaterialSlotsCount, ModelBase.GetMeshes(out meshes, lodIndex) and
+        // MeshBase.TriangleCount/VertexCount are summed per LOD
+        // (ModelLODBase.ScreenSize is the LOD switch size). The counts come
+        // from the mesh headers and do not need the GPU buffers, so they are
+        // valid even when the streaming system has no LOD resident
+        // (live-verified: a mesh of a LOD that is not resident reports 0
+        // triangles and 0 vertices, and LoadedLODs is 0 right after the asset
+        // is first loaded; the streaming system makes the LOD resident on a
+        // later frame, so the first call can see none and a repeat sees all).
+        // The bridge therefore reports null counts for LODs that are not
+        // resident ("Loading LOD..." in the window) and never a misleading 0;
+        // the Node tool repeats the call until every LOD is resident. Loaded
+        // = LoadedLODs says which LODs are resident. asset.get returns
+        // registry metadata only, never geometry counts.
         private McpAssetModelStats AssetGetModelStats(McpAssetGet request)
         {
             var record = ResolveAssetRecord(request, BuildAssetRegistry());
@@ -1281,8 +1290,6 @@ namespace Game.MCP
             {
                 var entry = new McpModelLodStats { Lod = i };
                 lods[i] = entry;
-                // The streamed-in LODs are the last ones, exactly like ModelBaseWindow.
-                if (i < lodCount - loaded) continue;
                 try
                 {
                     MeshBase[] meshes;
@@ -1295,16 +1302,18 @@ namespace Game.MCP
                             triangles += mesh.TriangleCount;
                             vertices += mesh.VertexCount;
                         }
-                    entry.Loaded = true;
-                    entry.MeshCount = meshes == null ? 0 : meshes.Length;
-                    entry.Triangles = triangles;
-                    entry.Vertices = vertices;
                     var lod = model.GetLOD(i);
                     if (lod != null) entry.ScreenSize = lod.ScreenSize;
+                    entry.MeshCount = meshes == null ? 0 : meshes.Length;
+                    // The streamed-in LODs are the last ones, exactly like ModelBaseWindow.
+                    entry.Loaded = i >= lodCount - loaded;
+                    if (!entry.Loaded) continue;
+                    entry.Triangles = triangles;
+                    entry.Vertices = vertices;
                 }
                 catch (Exception ex) { warnings.Add("LOD " + i + " could not be read: " + ex.Message); }
             }
-            if (loaded < lodCount) warnings.Add((lodCount - loaded) + " LOD(s) are still streaming in; their counts are null.");
+            if (loaded < lodCount) warnings.Add((lodCount - loaded) + " LOD(s) are not resident yet (streaming); their counts are null. Repeat the call.");
             result.Lods = lods;
             result.Warnings = warnings.ToArray();
             return result;

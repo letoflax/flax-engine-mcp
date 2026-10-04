@@ -47,8 +47,10 @@ export const PerfCaptureSchema = z.object({
     .describe('Absolute hitch threshold in ms; when given it replaces hitch_factor.'),
   include_gpu: z.boolean().optional().default(false)
     .describe('Also sample perf.gpu_events (bridge v36) with each snapshot and aggregate the average GPU ms per pass at gpu_depth. Enables GPU profiling for the capture and restores the previous state.'),
-  gpu_depth: z.number().int().min(0).max(4).optional().default(1)
-    .describe('Event depth that counts as a "pass" for include_gpu (0 is the frame root).'),
+  draw_stats: z.boolean().optional().default(true)
+    .describe('Turn the GPU profiler on for the capture (bridge v36, restored afterwards) so the engine fills the draw-call and triangle counts; with the profiler off perf_get_snapshot reports them as null. Set false to measure without the profiler overhead (counts stay null). Ignored on a bridge older than v36, with a warning.'),
+  gpu_depth: z.number().int().min(0).max(8).optional().default(2)
+    .describe('Event depth that counts as a "pass" for include_gpu. Live-verified layout in Flax 1.12: depth 0 is "Draw" (the frame), depth 1 is "Render Frame" and "GUI", depth 2 holds the render passes (GBuffer, Ambient Occlusion, Reflections, Post Processing, ...).'),
   instance: InstanceParam,
 }).superRefine((value, ctx) => {
   const samples = Math.ceil((value.duration_s * 1000) / value.interval_ms);
@@ -361,6 +363,16 @@ export async function handlePerfCapture(
   let renderer: string | null = null;
   const durationMs = args.duration_s * 1000;
   const maxSamples = Math.min(PERF_CAPTURE_MAX_SAMPLES, Math.ceil(durationMs / args.interval_ms));
+  if (args.draw_stats && !args.include_gpu) {
+    // One enable up front: the snapshot's draw stats are only filled while the GPU profiler runs.
+    try {
+      const response = await callGpu(ctx, args.instance, { Enable: true, MaxEvents: 1 });
+      if (parseGpuEvents(response.data).meta.available) gpuTouched = true;
+      else warnings.push(`Draw call and triangle counts need the GPU profiler, which is unavailable (${parseGpuEvents(response.data).meta.reason ?? 'unknown'}).`);
+    } catch (error) {
+      warnings.push(`Draw call and triangle counts need bridge v36 to enable the GPU profiler (${error instanceof Error ? error.message : String(error)}); they may be null.`);
+    }
+  }
   const started = deps.now();
   try {
     while (samples.length < maxSamples) {

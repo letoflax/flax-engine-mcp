@@ -172,13 +172,30 @@ test('legacy asset aliases retain offline behavior when bridge v8 is unavailable
   }
 });
 
+test('asset_get_model_stats repeats until every LOD is resident', async () => {
+  const f = await fixture(36);
+  try {
+    const lods = (loaded: boolean) => [{ Lod: 0, Loaded: loaded, MeshCount: 1, Triangles: loaded ? 12 : null, Vertices: loaded ? 8 : null, ScreenSize: 1 }];
+    const pending = handleAssetGetModelStats(AssetGetModelStatsSchema.parse({ asset_id: ASSET_ID, timeout_ms: 5000 }), f.ctx, async () => undefined);
+    const first = await nextRequest(f);
+    await reply(f, first, { ok: true, resultJson: JSON.stringify({ Kind: 'Model', LodCount: 1, LoadedLods: 0, Lods: lods(false), Warnings: ['not resident'] }) });
+    await fs.rm(path.join(f.requests, first.name), { force: true });
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const second = await nextRequest(f);
+    assert.notEqual(second.body.id, first.body.id);
+    await reply(f, second, { ok: true, resultJson: JSON.stringify({ Kind: 'Model', LodCount: 1, LoadedLods: 1, Lods: lods(true), Warnings: [] }) });
+    const result = await pending;
+    assert.equal((result.structuredContent as Record<string, any>).data.result.Lods[0].Triangles, 12);
+  } finally { await f.cleanup(); }
+});
+
 test('asset_get_model_stats sends the asset selector, returns per-LOD counts and needs bridge v36', async () => {
   assert.equal(AssetGetModelStatsSchema.safeParse({}).success, false);
   assert.equal(AssetGetModelStatsSchema.safeParse({ asset_id: ASSET_ID, path: 'Content/M.flax' }).success, false);
   assert.equal(AssetGetModelStatsSchema.safeParse({ path: '../M.flax' }).success, false);
   const f = await fixture(36);
   try {
-    const pending = handleAssetGetModelStats(AssetGetModelStatsSchema.parse({ path: 'Content/Hero.flax' }), f.ctx);
+    const pending = handleAssetGetModelStats(AssetGetModelStatsSchema.parse({ path: 'Content/Hero.flax', timeout_ms: 0 }), f.ctx);
     const request = await nextRequest(f);
     assert.equal(request.body.method, 'asset.get_model_stats');
     assert.deepEqual(JSON.parse(String(request.body.paramsJson)), { Path: 'Content/Hero.flax' });

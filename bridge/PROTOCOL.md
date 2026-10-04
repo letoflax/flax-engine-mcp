@@ -2555,8 +2555,12 @@ metadata only and returns no geometry counts.
   `LoadedLODs`, `MaterialSlotsCount`, `ModelBase.GetMeshes(out meshes, lod)` and
   `MeshBase.TriangleCount` / `VertexCount` are summed per LOD
   (`ModelLODBase.ScreenSize` is the LOD switch size; `SkinnedModel.Bones.Length`
-  is `BoneCount`). LODs that are still streaming in (the window shows "Loading
-  LOD...") have `Loaded:false` and null counts plus a warning. Read-only.
+  is `BoneCount`). LODs that are not resident (the window shows "Loading
+  LOD...") have `Loaded:false` and null counts plus a warning: live on Flax 1.12 a
+  mesh of a non-resident LOD reports 0 triangles and 0 vertices, and a freshly
+  loaded asset has no resident LOD for a few frames, so the bridge never reports
+  that 0. Node repeats the call (`timeout_ms`, default 5000, 0 = once) until every
+  LOD is resident. Read-only.
 - Counts are per asset, not per instance: they are the geometry the asset holds
   now (an import that has not run, or a streamed-out LOD, shows as is).
 
@@ -2582,7 +2586,7 @@ metadata only and returns no geometry counts.
   runtime v35) once per sample. It returns `frame_ms { samples, avg, min,
   median, p95, p99, max }`, `avg_fps` (mean of the engine FPS counter, else from
   the frame time), `hitches { threshold_ms, rule, count }`, `draw_calls` and
-  `triangles` `{ samples, avg, max }` (null headless), and `capture { samples,
+  `triangles` `{ samples, avg, max }` (null headless, and null while the GPU profiler is off: `draw_stats`, default true, enables it once up front through `perf.gpu_events` and restores it at the end; ignored with a warning on a pre-v36 bridge), and `capture { samples,
   duration_s, interval_requested_ms, interval_actual_ms, ... }`. It is
   statistical: `FrameTimeMs` is the delta of the latest frame at the moment the
   snapshot ran, so only the sampled frames are seen and a hitch between two
@@ -2591,9 +2595,9 @@ metadata only and returns no geometry counts.
   With `include_gpu` each sample also calls `perf.gpu_events` (v36) and the
   result adds `gpu { available, reason, pass_depth, frames, total_gpu_ms_avg,
   passes[{ name, avg_ms, max_ms, share_pct }], profiler }` for the events at
-  `gpu_depth`, restoring the profiler at the end. A bridge failure after the
+  `gpu_depth` (default 2: live on Flax 1.12 depth 0 is `Draw`, depth 1 is `Render Frame` and `GUI`, and the render passes such as `GBuffer`, `Ambient Occlusion`, `Reflections` and `Post Processing` are at depth 2), restoring the profiler at the end. A bridge failure after the
   first sample ends the capture with the data so far and a warning.
-- `asset_get_model_stats` (`asset_id` xor `path`) returns the bridge DTO under
+- `asset_get_model_stats` (`asset_id` xor `path`, `timeout_ms`) returns the bridge DTO under
   `result` like the other asset tools. Requires v36.
 - Compile smoke: `BridgeCompileSmoke` and `RuntimeBridgeCompileSmoke`
   (Development and Release) build with 0 warnings against Flax 1.12.6912 on

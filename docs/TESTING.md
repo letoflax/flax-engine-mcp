@@ -71,19 +71,41 @@ the simulated-peer tests. `animation_set_graph_parameter` and `terrain_paint` re
 stable `UNSUPPORTED_FLAX_VERSION` capabilities, as do `input_key_press` and
 `input_mouse_click` after their gates and validation.
 
-## Bridge v36 status (Linux, Flax 1.12.6912, 2026-10-04): not live-verified
+## Bridge v36 live run (Linux, Flax 1.12.6912, AMD RX 7900 GRE / RADV, 2026-10-04)
 
-`perf.gpu_events` (Editor and runtime bridge), `asset.get_model_stats`, and the Node tools
-`perf_get_gpu_events`, `perf_capture`, and `asset_get_model_stats` are covered by the
-compile probes (`BridgeCompileSmoke`, `RuntimeBridgeCompileSmoke` in Development and Release, 0 warnings;
-both smoke projects set `AllowUnsafeBlocks` because `ProfilerGPU.Event.Name` is a `char*` and Flax.Build
-passes `/unsafe` to every C# module), by source-contract tests, and by simulated-peer tests
-(`src/tools/perfLive.test.ts`, `src/tools/assetLive.test.ts`, `src/bridge/*Contract.test.ts`).
-No real Editor run is recorded yet: the GPU of the development machine hung twice with two
-Flax processes, so a live run has to wait for a free machine. Still to check live: that
-`ProfilerGPU.Enabled` alone makes `ProfilingTools.EventsGPU` fill in a headed editor (edit and
-play), which depth holds the render passes (`gpu_depth`, default 1), the lease restore, an empty
-result headless, and `asset_get_model_stats` on a Model and a SkinnedModel.
+Run on a disposable project (one scene with a light, a camera and a static model actor; an OBJ cube
+imported as a Model, the UEFN mannequin FBX imported as a SkinnedModel; no GI), with the bridge v36
+file installed into `Source/Game/MCP/`. Headed editor (edit mode, then play mode), then headless.
+No GPU error appeared in the kernel log during the run.
+
+- `perf_get_gpu_events`: edit and play mode return 42-62 events, `total_gpu_ms` 0.48-0.65 (the root
+  `Draw` event, equal to its draw-call count 222-268 in `perf_get_snapshot` once the profiler is on),
+  adapter `AMD Radeon RX 7900 GRE (RADV NAVI31)`, renderer `Vulkan`. Layout: depth 0 `Draw`, depth 1
+  `Render Frame` and `GUI`, depth 2 the passes (`GBuffer`, `Motion Vectors`, `Ambient Occlusion`,
+  `Reflections`, `Eye Adaptation`, `Post Processing`, `Fast Approximate Antialiasing`, and `Render2D`
+  under `GUI`), depth 3 and deeper the sub-passes. So `gpu_depth` defaults to 2 (a first guess of 1
+  was wrong: depth 1 holds only the two buckets). `frames:10` returned 10 distinct frames. The profiler
+  was off before (`was_enabled:false`), `restored:true` after, and `perf_get_snapshot` draw calls were
+  null again afterwards. A raw `perf.gpu_events` `Enable` left alone was undone by the 30 s lease
+  (draw calls 226 while on, null after 34 s).
+- `perf_capture`: 3 s at 200 ms gave 15 samples, `avg_fps` 120 in the edit viewport and 60.8 in play
+  mode, p95/p99, 0 hitches. Live finding: with the GPU profiler off the engine reports zero draw stats,
+  so draw calls and triangles were null; `draw_stats` (default true) turns the profiler on once for
+  the capture and restores it, after which they read 222 / 1499 (edit) and 228 / 5738 (play).
+  `include_gpu` returned 13 frames and 12 passes (Reflections 0.12 ms, Post Processing 0.12 ms, Render2D
+  0.11 ms, ...). The real interval was 206 ms for 200 requested.
+- `asset_get_model_stats`: Cube 12 triangles / 8 vertices, mannequin 9324 triangles / 6009 vertices /
+  73 bones, 1 LOD, 1 mesh, 1 material slot; a texture-less non-model asset fails
+  `VALIDATION_FAILED`. Live finding: a freshly loaded asset has no resident LOD for a few frames and
+  its meshes report 0 triangles and 0 vertices, so the bridge returns null counts for non-resident LODs
+  and Node repeats the call (`timeout_ms`, default 5000) until all are resident.
+- Headless (`-headless -std`): `perf_get_gpu_events` answers `available:false, reason:"headless"` with null
+  totals and touches nothing, `perf_capture` keeps the frame-time statistics with null draw stats and an
+  empty `gpu` block, `asset_get_model_stats` works.
+
+Not run: the runtime bridge `perf.gpu_events` in a cooked Development game (compile-probed in
+Development and Release, and covered by the simulated-peer and contract tests; the method body is the
+Editor's apart from the headless gate).
 
 ## Bridge v33 live run (Windows, Flax 1.12.6912, 2026-09-30)
 
