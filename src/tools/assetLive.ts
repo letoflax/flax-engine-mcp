@@ -6,6 +6,7 @@ import { ProjectMeta } from '../projectContext.js';
 import { inspectEditorBridge } from './serverStatus.js';
 import { ListAssetsSchema, handleListAssets } from './assets.js';
 import { GetAssetInfoSchema, handleGetAssetInfo } from './assetInfo.js';
+import { BRIDGE_V36 } from './liveToolSupport.js';
 
 const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
 const ProjectContentPath = z.string().min(9).max(512).superRefine((value, ctx) => {
@@ -52,6 +53,9 @@ export const AssetSearchSchema = z.object({
 }).strict();
 
 export const AssetGetSchema = z.object(AssetSelectorShape).strict().superRefine(exactlyOneSelector);
+
+/** Bridge v36: per-LOD triangle/vertex/mesh counts for a Model or SkinnedModel (asset_get returns registry metadata only). */
+export const AssetGetModelStatsSchema = z.object(AssetSelectorShape).strict().superRefine(exactlyOneSelector);
 
 export const AssetDependenciesSchema = z.object({
   ...AssetSelectorShape,
@@ -101,9 +105,9 @@ function bridgeError(error: unknown): ToolDomainError {
   return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
 }
 
-async function assetCall(method: BridgeMethod, params: Record<string, unknown>, ctx: ProjectMeta): Promise<ToolResponse> {
+async function assetCall(method: BridgeMethod, params: Record<string, unknown>, ctx: ProjectMeta, minimumBridgeVersion = 8): Promise<ToolResponse> {
   try {
-    const response = await callEditorBridge<BridgeMethod, Record<string, unknown>, BridgeAssetResult>(ctx, method, params, { minimumBridgeVersion: 8 });
+    const response = await callEditorBridge<BridgeMethod, Record<string, unknown>, BridgeAssetResult>(ctx, method, params, { minimumBridgeVersion });
     const bridgeWarnings = Array.isArray(response.data?.Warnings)
       ? response.data.Warnings.filter((warning): warning is string => typeof warning === 'string')
       : [];
@@ -133,6 +137,9 @@ export const handleAssetSearch = (args: z.infer<typeof AssetSearchSchema>, ctx: 
 
 export const handleAssetGet = (args: z.infer<typeof AssetGetSchema>, ctx: ProjectMeta) =>
   assetCall('asset.get', { AssetId: args.asset_id, Path: args.path }, ctx);
+
+export const handleAssetGetModelStats = (args: z.infer<typeof AssetGetModelStatsSchema>, ctx: ProjectMeta) =>
+  assetCall('asset.get_model_stats', { AssetId: args.asset_id, Path: args.path }, ctx, BRIDGE_V36);
 
 export const handleAssetDependencies = (args: z.infer<typeof AssetDependenciesSchema>, ctx: ProjectMeta) =>
   assetCall('asset.dependencies', {

@@ -26,11 +26,13 @@ import { GetAssetInfoSchema, ReimportAssetSchema, handleReimportAsset } from './
 import {
   AssetDependenciesSchema,
   AssetFindReferencesSchema,
+  AssetGetModelStatsSchema,
   AssetGetSchema,
   AssetSearchSchema,
   handleAssetDependencies,
   handleAssetFindReferences,
   handleAssetGet,
+  handleAssetGetModelStats,
   handleAssetSearch,
   handleGetAssetInfoCompatibility,
   handleListAssetsCompatibility,
@@ -220,6 +222,12 @@ import {
   handleViewportCapture,
 } from './liveObservability.js';
 import {
+  PerfCaptureSchema,
+  PerfGetGpuEventsSchema,
+  handlePerfCapture,
+  handlePerfGetGpuEvents,
+} from './perfLive.js';
+import {
   CodeCompileSchema,
   CodeGenerateProjectSchema,
   CodeGetDiagnosticsSchema,
@@ -386,6 +394,8 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   capture_compare: CaptureCompareSchema,
   runtime_inspect_actor: RuntimeInspectActorSchema,
   perf_get_snapshot: PerfGetSnapshotSchema,
+  perf_get_gpu_events: PerfGetGpuEventsSchema,
+  perf_capture: PerfCaptureSchema,
   code_compile: CodeCompileSchema,
   code_get_diagnostics: CodeGetDiagnosticsSchema,
   code_generate_project: CodeGenerateProjectSchema,
@@ -448,6 +458,7 @@ const INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   list_assets: ListAssetsSchema,
   asset_search: AssetSearchSchema,
   asset_get: AssetGetSchema,
+  asset_get_model_stats: AssetGetModelStatsSchema,
   asset_dependencies: AssetDependenciesSchema,
   asset_find_references: AssetFindReferencesSchema,
   asset_import: AssetImportSchema,
@@ -1065,6 +1076,19 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       handler: (a, c) => handlePerfGetSnapshot(a as Parameters<typeof handlePerfGetSnapshot>[0], c),
     },
 
+    {
+      name: 'perf_get_gpu_events',
+      description: 'Reads per-pass GPU timings of the last rendered frame (or averaged over `frames` recent distinct frames) from the connected editor: a pre-order list of {name, depth, time_ms, draw_calls, dispatch_calls, triangles} plus total_gpu_ms, the same data as the Editor Profiler window GPU tab (ProfilingTools.EventsGPU). Temporarily enables the GPU profiler if it is off and restores the previous state (a 30 s bridge lease restores it if this call dies). Filters: min_ms, max_events, sort_by. Returns available:false with a reason and null totals, not an error, when headless or when no GPU frame resolved in time. Works in edit and play mode. Requires bridge v36. With the optional instance parameter it targets a running cooked Development game with the runtime bridge (v36) instead of the Editor.',
+      inputSchema: zodToJsonSchema(PerfGetGpuEventsSchema),
+      handler: (a, c) => handlePerfGetGpuEvents(a as Parameters<typeof handlePerfGetGpuEvents>[0], c),
+    },
+    {
+      name: 'perf_capture',
+      description: 'Samples perf_get_snapshot for duration_s (0.5-60) every interval_ms (at most 600 samples) and returns frame-time avg/min/median/p95/p99/max, avg fps, the hitch count over hitch_factor x median (or an absolute hitch_threshold_ms), and avg/max draw calls and triangles. Statistical: it samples the latest frame time per snapshot, it does not see every frame. include_gpu also samples perf.gpu_events (bridge v36) and adds the average GPU ms per pass at gpu_depth, restoring the profiler afterwards. Works in edit and play mode; draw calls and triangles stay null headless. With the optional instance parameter it targets a running cooked game (bridge v35, v36 for include_gpu).',
+      inputSchema: zodToJsonSchema(PerfCaptureSchema),
+      handler: (a, c) => handlePerfCapture(a as Parameters<typeof handlePerfCapture>[0], c),
+    },
+
     // ── Project Info ──────────────────────────────────────────────────────────
     {
       name: 'get_project_info',
@@ -1211,6 +1235,12 @@ export function buildToolRegistry(ctx: ProjectMeta): ToolDefinition[] {
       description: 'Reads stable registry metadata for exactly one Content asset by GUID or project-relative path. ImportSettingsAvailable reports whether asset_get_import_settings supports the asset type (texture, model, audio); the settings themselves are read with that tool. Requires bridge v8.',
       inputSchema: zodToJsonSchema(AssetGetSchema),
       handler: (a, c) => handleAssetGet(a as Parameters<typeof handleAssetGet>[0], c),
+    },
+    {
+      name: 'asset_get_model_stats',
+      description: 'Reads per-LOD triangle count, vertex count and mesh count (plus LOD count, streamed-in LODs, material slot count, and bone count for a SkinnedModel) of exactly one Model or SkinnedModel asset by GUID or project-relative path, the numbers the Editor model window shows per LOD. Loads the asset if needed. LODs still streaming in report null counts; any other asset type fails VALIDATION_FAILED. asset_get returns registry metadata only. Requires bridge v36.',
+      inputSchema: zodToJsonSchema(AssetGetModelStatsSchema),
+      handler: (a, c) => handleAssetGetModelStats(a as Parameters<typeof handleAssetGetModelStats>[0], c),
     },
     {
       name: 'asset_dependencies',

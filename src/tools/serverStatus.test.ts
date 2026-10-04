@@ -212,6 +212,8 @@ const CAPABILITY_MINIMUM_BRIDGE: Record<string, number | null> = {
   sceneOpen: 25,
   inputSimulation: 26,
   perfSnapshot: 27,
+  perfGpuEvents: 36,
+  assetModelStats: 36,
   runtimeInspection: 6,
   sceneRevisions: 7,
   editLeases: 7,

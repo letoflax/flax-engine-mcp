@@ -1,4 +1,4 @@
-// MCP-BRIDGE-VERSION: 35
+// MCP-BRIDGE-VERSION: 36
 // Flax 1.12 runtime (cooked game) bridge for flax-engine-mcp.
 //
 // Install this file in a game module next to FlaxMcpBridge.cs, for example
@@ -30,8 +30,8 @@ namespace Game.MCP
     // Wire DTOs. Public field names are the protocol keys (see bridge/PROTOCOL.md).
     // They deliberately reuse the Editor bridge's names and shapes; the two files
     // never compile together.
-    public class McpRuntimeBridgeInfo { public int BridgeVersion = 35; public int ProtocolVersion = 1; public string Kind = "game"; public int Pid; public string Instance; public string ProductName; public string EngineVersion; public long Timestamp; }
-    public class McpRuntimeStatus { public int BridgeVersion = 35; public int ProtocolVersion = 1; public string Kind = "game"; public int Pid; public string Instance; public string ProductName; public string EngineVersion; public long FrameCount; public float TimeScale; public int LoadedSceneCount; public string[] Methods; }
+    public class McpRuntimeBridgeInfo { public int BridgeVersion = 36; public int ProtocolVersion = 1; public string Kind = "game"; public int Pid; public string Instance; public string ProductName; public string EngineVersion; public long Timestamp; }
+    public class McpRuntimeStatus { public int BridgeVersion = 36; public int ProtocolVersion = 1; public string Kind = "game"; public int Pid; public string Instance; public string ProductName; public string EngineVersion; public long FrameCount; public float TimeScale; public int LoadedSceneCount; public string[] Methods; }
     public class McpRequest { public string id; public string token; public string method; public string paramsJson; public long deadlineUnixMs; }
     public class McpResponse { public string id; public string token; public bool ok; public string errorCode; public string error; public string errorDetails; public string resultJson; public long timestamp; }
     public class McpVector2 { public float X; public float Y; }
@@ -60,6 +60,9 @@ namespace Game.MCP
     public class McpLogEntry { public long Sequence; public long TimestampUnixMs; public string Level; public string Category; public string CompilationId; public string PlaySessionId; public string Message; public string StackTrace; }
     public class McpLogQueryResult { public string SessionId; public long NextSequence; public bool HasMore; public long DroppedCount; public McpLogEntry[] Entries; }
     public class McpPerfSnapshot { public int? Fps; public float? FrameTimeMs; public long? DrawCalls; public long? Triangles; public long? ManagedMemoryBytes; public int? ActorCount; public string GpuAdapter; public string RendererType; public bool IsPlayMode; public long TimestampUnixMs; }
+    public class McpPerfGpuEventsRequest { public bool Enable; public bool Restore; public int MaxEvents; }
+    public class McpPerfGpuEvent { public string Name; public int Depth; public float TimeMs; public long DrawCalls; public long DispatchCalls; public long Triangles; public long Vertices; }
+    public class McpPerfGpuEvents { public bool ProfilerAvailable; public string Reason; public bool ProfilerEnabled; public bool EnabledByBridge; public bool WasEnabled; public bool Restored; public long FrameCount; public bool HasData; public float? DrawGpuTimeMs; public float? DrawCpuTimeMs; public int EventCount; public bool Truncated; public McpPerfGpuEvent[] Events; public string GpuAdapter; public string RendererType; public bool IsPlayMode; public long TimestampUnixMs; }
     public class McpCaptureStart { public string Viewport; public int Width; public int Height; }
     public class McpCaptureStatusRequest { public string CaptureId; }
     public class McpCaptureStatus { public string CaptureId; public string Phase; public string Path; public long StartedUnixMs; public long CompletedUnixMs; public long SizeBytes; }
@@ -95,7 +98,7 @@ namespace Game.MCP
     /// </summary>
     public sealed class FlaxMcpRuntimeBridgePlugin : GamePlugin
     {
-        private const int BridgeVersion = 35;
+        private const int BridgeVersion = 36;
         private const int ProtocolVersion = 1;
         private const int MaxRequestBytes = 128 * 1024;
         private const int MaxParamsBytes = 64 * 1024;
@@ -155,7 +158,7 @@ namespace Game.MCP
                 Category = "Debug",
                 Author = "flax-engine-mcp",
                 Description = "File-RPC debug bridge for a running game. Inert unless the game is started with -mcpdir=<absolute path>.",
-                Version = new Version(35, 0),
+                Version = new Version(36, 0),
                 IsBeta = true,
             };
         }
@@ -193,7 +196,7 @@ namespace Game.MCP
                 _lastHeartbeat = Environment.TickCount64;
                 _running = true;
                 Scripting.Update += OnUpdate;
-                Debug.Log("[Flax MCP] Runtime bridge v35 listening (instance " + _instance + ")");
+                Debug.Log("[Flax MCP] Runtime bridge v36 listening (instance " + _instance + ")");
             }
             catch (Exception ex)
             {
@@ -207,6 +210,7 @@ namespace Game.MCP
         {
             var wasRunning = _running;
             _running = false;
+            try { RestoreGpuProfiler(); } catch { }
             if (wasRunning)
             {
                 Scripting.Update -= OnUpdate;
@@ -387,6 +391,7 @@ namespace Game.MCP
             if (!_running) return;
             var now = Environment.TickCount64;
             TickPendingQuit(now);
+            TickGpuProfiler(now);
             if (now - _lastHeartbeat >= HeartbeatMs)
             {
                 _lastHeartbeat = now;
@@ -489,6 +494,7 @@ namespace Game.MCP
             "log.query",
             "play.set_time_scale",
             "perf.snapshot",
+            "perf.gpu_events",
             "game.quit",
         };
 
@@ -519,6 +525,7 @@ namespace Game.MCP
                 case "log.query": result = QueryLogs(JsonSerializer.Deserialize<McpLogQuery>(p)); break;
                 case "play.set_time_scale": result = OnMain(() => SetPlayTimeScale(JsonSerializer.Deserialize<McpTimeScaleRequest>(p)), request.deadlineUnixMs); break;
                 case "perf.snapshot": result = OnMain(PerfSnapshot, request.deadlineUnixMs); break;
+                case "perf.gpu_events": result = OnMain(() => PerfGpuEvents(JsonSerializer.Deserialize<McpPerfGpuEventsRequest>(p)), request.deadlineUnixMs); break;
                 case "game.quit": result = OnMain(GameQuit, request.deadlineUnixMs); break;
                 default: throw new McpProtocolException("METHOD_NOT_FOUND", "Method '" + (request.method ?? "unknown") + "' is not a runtime bridge method.", new { Method = request.method, Methods = KnownMethods });
             }
@@ -643,6 +650,162 @@ namespace Game.MCP
             }
             catch { }
             return snapshot;
+        }
+
+        // Bridge v36: per-pass GPU timings (perf.gpu_events).
+        //
+        // Mirrors the Editor Profiler window's GPU tab
+        // (Source/Editor/Windows/Profiler/GPU.cs): it reads
+        // FlaxEngine.ProfilingTools.EventsGPU (ProfilingTools.h API_FIELD
+        // ReadOnly Array<ProfilerGPU::Event>), the events of the last
+        // resolved GPU frame in pre-order with Depth, Time (ms) and Stats
+        // (RenderStatsData); ProfilingTools.Stats.DrawGPUTimeMs is the root
+        // event time. The profiler collects nothing until it is enabled. The
+        // Profiler window flips ProfilingTools.Enabled (CPU + GPU + GPU
+        // debug events) on its record button; this method only flips
+        // FlaxEngine.ProfilerGPU.Enabled (ProfilerGPU.h: "Can be changed
+        // during rendering"), the same single flag ProfilerGPU.Dump sets and
+        // restores, so the CPU profiler stays off. The previous state is
+        // remembered and put back on Restore, on deinitialize, or by a
+        // 30 s lease from OnUpdate when the client never comes back. When
+        // the profiler was already on (for example a recording Profiler
+        // window), the bridge never touches it. ProfilerGPU.Event.Name is a
+        // char*, so reading it needs an unsafe context; Flax.Build compiles
+        // every C# module with /unsafe (Builder.DotNet.cs). Headless
+        // editors have no GPU device: everything stays empty with a Reason.
+        private const int GpuProfilerLeaseMs = 30000;
+        private const int GpuEventsDefaultMax = 500;
+        private const int GpuEventsHardMax = 2000;
+        private bool _gpuProfilerByBridge;
+        private bool _gpuProfilerPrevious;
+        private long _gpuProfilerExpireTick;
+
+        private bool RestoreGpuProfiler()
+        {
+            if (!_gpuProfilerByBridge) return false;
+            _gpuProfilerByBridge = false;
+            try { ProfilerGPU.Enabled = _gpuProfilerPrevious; }
+            catch { }
+            return true;
+        }
+
+        // Runs from OnUpdate (update thread), like every other profiler access here.
+        private void TickGpuProfiler(long now)
+        {
+            if (_gpuProfilerByBridge && now >= _gpuProfilerExpireTick)
+            {
+                RestoreGpuProfiler();
+                Debug.Log("[Flax MCP] GPU profiler lease expired; restored the previous state.");
+            }
+        }
+
+        private static unsafe string GpuEventName(char* name)
+        {
+            if (name == null) return "";
+            var length = 0;
+            while (length < 128 && name[length] != 0) length++;
+            return new string(name, 0, length);
+        }
+
+        private McpPerfGpuEvents PerfGpuEvents(McpPerfGpuEventsRequest request)
+        {
+            request = request ?? new McpPerfGpuEventsRequest();
+            var maxEvents = request.MaxEvents <= 0 ? GpuEventsDefaultMax : Math.Min(request.MaxEvents, GpuEventsHardMax);
+            var result = new McpPerfGpuEvents { IsPlayMode = true, TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Events = new McpPerfGpuEvent[0] };
+            try { result.FrameCount = (long)Engine.FrameCount; }
+            catch { }
+            var headless = false;
+            // A cooked game always renders; no headless editor gate applies.
+            GPUDevice device = null;
+            if (!headless)
+            {
+                try { device = GPUDevice.Instance; }
+                catch { }
+            }
+            if (device != null)
+            {
+                try
+                {
+                    var adapter = device.Adapter;
+                    if (adapter != null && !string.IsNullOrEmpty(adapter.Description)) result.GpuAdapter = adapter.Description.Length > 256 ? adapter.Description.Substring(0, 256) : adapter.Description;
+                }
+                catch { }
+                try { result.RendererType = device.RendererType.ToString(); }
+                catch { }
+            }
+            if (headless)
+            {
+                RestoreGpuProfiler();
+                result.Reason = "headless";
+                return result;
+            }
+            if (device == null)
+            {
+                RestoreGpuProfiler();
+                result.Reason = "no_gpu_device";
+                return result;
+            }
+            try
+            {
+                if (request.Restore) result.Restored = RestoreGpuProfiler();
+                else if (request.Enable)
+                {
+                    if (!_gpuProfilerByBridge && !ProfilerGPU.Enabled)
+                    {
+                        _gpuProfilerPrevious = false;
+                        ProfilerGPU.Enabled = true;
+                        _gpuProfilerByBridge = true;
+                    }
+                    if (_gpuProfilerByBridge) _gpuProfilerExpireTick = Environment.TickCount64 + GpuProfilerLeaseMs;
+                }
+                result.ProfilerEnabled = ProfilerGPU.Enabled;
+                result.EnabledByBridge = _gpuProfilerByBridge;
+                result.WasEnabled = _gpuProfilerByBridge ? _gpuProfilerPrevious : ProfilerGPU.Enabled;
+                result.ProfilerAvailable = true;
+            }
+            catch (Exception)
+            {
+                result.Reason = "profiler_api_unavailable";
+                return result;
+            }
+            ProfilerGPU.Event[] events = null;
+            try { events = ProfilingTools.EventsGPU; }
+            catch { }
+            if (events == null || events.Length == 0)
+            {
+                result.Reason = result.ProfilerEnabled ? "no_data_yet" : "profiler_disabled";
+                return result;
+            }
+            try
+            {
+                var stats = ProfilingTools.Stats;
+                if (!float.IsNaN(stats.DrawGPUTimeMs) && stats.DrawGPUTimeMs > 0.0f) result.DrawGpuTimeMs = stats.DrawGPUTimeMs;
+                if (!float.IsNaN(stats.DrawCPUTimeMs) && stats.DrawCPUTimeMs > 0.0f) result.DrawCpuTimeMs = stats.DrawCPUTimeMs;
+            }
+            catch { }
+            var count = Math.Min(events.Length, maxEvents);
+            var list = new McpPerfGpuEvent[count];
+            for (var i = 0; i < count; i++)
+            {
+                var e = events[i];
+                string name;
+                unsafe { name = GpuEventName(e.Name); }
+                list[i] = new McpPerfGpuEvent
+                {
+                    Name = name,
+                    Depth = e.Depth,
+                    TimeMs = float.IsNaN(e.Time) || float.IsInfinity(e.Time) ? 0.0f : e.Time,
+                    DrawCalls = e.Stats.DrawCalls,
+                    DispatchCalls = e.Stats.DispatchCalls,
+                    Triangles = e.Stats.Triangles,
+                    Vertices = e.Stats.Vertices,
+                };
+            }
+            result.HasData = true;
+            result.EventCount = events.Length;
+            result.Truncated = events.Length > count;
+            result.Events = list;
+            return result;
         }
 
         // ---- log ring ----

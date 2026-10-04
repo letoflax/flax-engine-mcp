@@ -1,15 +1,15 @@
-# Flax MCP Editor Bridge protocol (Editor bridge v34, runtime bridge v35 / protocol v1)
+# Flax MCP Editor Bridge protocol (Editor bridge v36, runtime bridge v36 / protocol v1)
 
 `FlaxMcpBridge.cs` is an Editor-only Flax 1.12 plugin. It uses only files below
 `<project>/Cache/MCP`; it does not open a network listener.
 
 This document is cumulative. The opening sections describe the v5 to v7 baseline;
 each later `## Bridge vNN` section records what that version added or superseded,
-and the "Bridge v34" section describes the newest Editor bridge. The last
+and the "Bridge v36" section describes the newest Editor bridge. The last
 section, "Runtime bridge (v35)", describes the separate bridge file for cooked
-games (server 1.13.0, 177 tools). Sections are
+games (server 1.13.0, 180 tools). Sections are
 not in strict version order (after v14 the file continues with v27 down to v16,
-then v28 to v34), so when two statements disagree, the one from the higher bridge
+then v28 to v36), so when two statements disagree, the one from the higher bridge
 version wins (for the Editor bridge; the runtime bridge is a separate file and
 only the "Runtime bridge (v35)" section describes it). The protocol version stays 1: every addition since v5 is optional or
 additive.
@@ -17,7 +17,7 @@ additive.
 At startup the bridge creates `requests/`, `processing/`, and `responses/` (plus
 `captures/` and `operations/`), then writes these project-local files:
 
-- `bridge.json`: `{ "BridgeVersion": 34, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
+- `bridge.json`: `{ "BridgeVersion": 36, "ProtocolVersion": 1, "Pid": 123, "Project": "...", "EditorVersion": "1.12.6912", "Timestamp": 0 }`.
   It is atomically rewritten every two seconds. `Timestamp` is Unix milliseconds.
   Since v34 only one Editor per project owns this directory; see "Bridge directory
   ownership (v34)".
@@ -2477,9 +2477,131 @@ from the bridge's `IsHeadlessMode` gates and are mapped to `HEADLESS_MODE` (see
   server from a shell, so scripts need no raw `Cache/MCP/requests` writes (see the
   README "Command line" section).
 
+## Bridge v36: GPU events, model stats (180-tool contract)
+
+Bridge v36 keeps protocol v1 and the full v34 surface; the runtime bridge moves
+to v36 with it (the two files share the number from here on; the Node client
+still accepts a v35 runtime bridge for everything except the new GPU methods).
+It adds `perf.gpu_events` (Editor and runtime bridge) and `asset.get_model_stats`
+(Editor bridge), and `status` adds `PerfGpuEventsSupported:true` and
+`AssetModelStatsSupported:true`. The server registers three more tools,
+`perf_get_gpu_events`, `perf_capture` (both read family) and
+`asset_get_model_stats` (read family), for 180 in total. A v35 bridge without
+the method answers `METHOD_NOT_FOUND`; Node maps that, and a bridge older than
+v36, to `UNSUPPORTED_FLAX_VERSION`.
+
+### perf.gpu_events
+
+Request `McpPerfGpuEventsRequest { Enable, Restore, MaxEvents }`. Response
+`McpPerfGpuEvents { ProfilerAvailable, Reason, ProfilerEnabled, EnabledByBridge,
+WasEnabled, Restored, FrameCount, HasData, DrawGpuTimeMs, DrawCpuTimeMs,
+EventCount, Truncated, Events[], GpuAdapter, RendererType, IsPlayMode,
+TimestampUnixMs }` with `McpPerfGpuEvent { Name, Depth, TimeMs, DrawCalls,
+DispatchCalls, Triangles, Vertices }`. The events are the last resolved GPU
+frame in pre-order, `Depth` 0 being the root. One call is one read: a frame
+needs several engine frames before its GPU timer queries resolve, so a client
+enables, polls, and restores (Node does this in `perf_get_gpu_events` and in
+`perf_capture` with `include_gpu`).
+
+- Same data as the Editor Profiler window GPU tab
+  (`Source/Editor/Windows/Profiler/GPU.cs`): `ProfilingTools.EventsGPU`
+  (`ProfilingTools.h`, `API_FIELD(ReadOnly) Array<ProfilerGPU::Event>`;
+  `ProfilerGPU.h` `Event { Name, Query, Stats, Time, Depth, QueryActive }`),
+  and `ProfilingTools.Stats.DrawGPUTimeMs` for the frame total (the root
+  event, as `ProfilingTools.cpp` computes it from `ProfilerGPU::GetLastFrameData`).
+  `DrawCalls`/`Triangles`/`Vertices` come from the event's `RenderStatsData`;
+  the Profiler window's "Draw Calls" column is `DrawCalls + DispatchCalls`,
+  here they are two fields.
+- Enabling. Nothing is collected while the profiler is off. The Profiler
+  window flips `ProfilingTools.Enabled` (CPU profiler, GPU profiler and GPU
+  debug markers). The bridge flips only `ProfilerGPU.Enabled` (`ProfilerGPU.h`:
+  "can be changed during rendering"), the single flag `ProfilerGPU.Dump` also
+  sets and restores, so the CPU profiler is never turned on.
+  `Enable:true` turns it on when it was off (`EnabledByBridge:true`) and
+  (re)arms a 30 s lease; when it was already on (a recording Profiler window)
+  the bridge touches nothing and `EnabledByBridge` is false.
+  `Restore:true` puts the previous state back (`Restored:true` when the bridge
+  had enabled it). The lease is checked from `OnUpdate`, and deinitialize
+  restores too, so a client that dies leaves the profiler on for at most 30 s.
+- `MaxEvents` is capped at 2000 (default 500) so the 512 KiB response limit
+  holds; `EventCount` is the real count and `Truncated` says when the array
+  was cut. Event names are capped at 128 characters.
+- Null and empty, never an error: headless Editor (`Reason: "headless"`, no GPU
+  device, nothing touched), no GPU device (`"no_gpu_device"`), profiler API
+  unreadable (`"profiler_api_unavailable"`), enabled but no frame resolved yet
+  (`"no_data_yet"`), disabled (`"profiler_disabled"`). `ProfilerAvailable` is
+  true only when the flag could be read or set.
+- `ProfilerGPU.Event.Name` is a `char*`: reading it needs an unsafe context.
+  Flax.Build compiles every C# module with `/unsafe`
+  (`Source/Tools/Flax.Build/Build/DotNet/Builder.DotNet.cs`), the Editor's own
+  `GPU.cs` does the same, and the compile smoke projects set
+  `AllowUnsafeBlocks` to match.
+- Runtime bridge: the same method on the update thread of a cooked Development
+  game (`IsPlayMode` is always true, no headless gate). A Release game has no
+  bridge and no profiler.
+
+### asset.get_model_stats
+
+Request `McpAssetGet { AssetId | Path }`. Response `McpAssetModelStats
+{ AssetId, Path, Kind, LodCount, LoadedLods, MaterialSlotCount, BoneCount,
+Lods[], Warnings[] }` with `McpModelLodStats { Lod, Loaded, MeshCount, Triangles,
+Vertices, ScreenSize }`. Only `FlaxEngine.Model` and `FlaxEngine.SkinnedModel`
+registry types; any other type is `VALIDATION_FAILED`. `asset.get` is registry
+metadata only and returns no geometry counts.
+
+- Mirrors the per-LOD group of the Editor model window
+  (`Source/Editor/Windows/Assets/ModelBaseWindow.cs`): the asset is loaded with
+  the bridge's existing bounded model loaders, then `ModelBase.LODsCount`,
+  `LoadedLODs`, `MaterialSlotsCount`, `ModelBase.GetMeshes(out meshes, lod)` and
+  `MeshBase.TriangleCount` / `VertexCount` are summed per LOD
+  (`ModelLODBase.ScreenSize` is the LOD switch size; `SkinnedModel.Bones.Length`
+  is `BoneCount`). LODs that are still streaming in (the window shows "Loading
+  LOD...") have `Loaded:false` and null counts plus a warning. Read-only.
+- Counts are per asset, not per instance: they are the geometry the asset holds
+  now (an import that has not run, or a streamed-out LOD, shows as is).
+
+### Node side
+
+- `perf_get_gpu_events` (`frames` 1-60, `timeout_ms`, `min_ms`, `max_events`
+  1-1000, `sort_by` order|time, `instance`) calls `perf.gpu_events` with
+  `Enable:true` every 50 ms until `frames` distinct frames arrived (a re-read of
+  the same resolved frame is detected by its event times and not counted) or the
+  timeout passed, then once with `Restore:true` (also after a failed poll).
+  Events of several frames are averaged per path key (ancestor names + name +
+  occurrence among equal paths), a missing event counting as 0 ms. The result
+  is `{ available, reason, frames_requested, frames_sampled, total_gpu_ms,
+  draw_cpu_ms, event_count, matching_events, truncated, events[{ name, depth,
+  time_ms, draw_calls, dispatch_calls, triangles }], profiler{ was_enabled,
+  enabled_by_tool, restored }, gpu_adapter, renderer_type, is_play_mode }`.
+  Headless or no data is `available:false` with `reason`, `total_gpu_ms:null`
+  and `events:[]`, not a tool error. Requires bridge v36; with `instance` it
+  routes to the runtime bridge.
+- `perf_capture` (`duration_s` 0.5-60, `interval_ms` 50-5000, at most 600
+  samples, `hitch_factor` or `hitch_threshold_ms`, `include_gpu`, `gpu_depth`,
+  `instance`) needs no bridge method of its own: it calls `perf.snapshot` (v27;
+  runtime v35) once per sample. It returns `frame_ms { samples, avg, min,
+  median, p95, p99, max }`, `avg_fps` (mean of the engine FPS counter, else from
+  the frame time), `hitches { threshold_ms, rule, count }`, `draw_calls` and
+  `triangles` `{ samples, avg, max }` (null headless), and `capture { samples,
+  duration_s, interval_requested_ms, interval_actual_ms, ... }`. It is
+  statistical: `FrameTimeMs` is the delta of the latest frame at the moment the
+  snapshot ran, so only the sampled frames are seen and a hitch between two
+  samples is missed. Every sample is one file-RPC round trip and the bridge
+  picks up requests every 100 ms, so the real interval is above about 100 ms.
+  With `include_gpu` each sample also calls `perf.gpu_events` (v36) and the
+  result adds `gpu { available, reason, pass_depth, frames, total_gpu_ms_avg,
+  passes[{ name, avg_ms, max_ms, share_pct }], profiler }` for the events at
+  `gpu_depth`, restoring the profiler at the end. A bridge failure after the
+  first sample ends the capture with the data so far and a warning.
+- `asset_get_model_stats` (`asset_id` xor `path`) returns the bridge DTO under
+  `result` like the other asset tools. Requires v36.
+- Compile smoke: `BridgeCompileSmoke` and `RuntimeBridgeCompileSmoke`
+  (Development and Release) build with 0 warnings against Flax 1.12.6912 on
+  Linux.
+
 ## Runtime bridge (v35): a cooked game, a second bridge file (177-tool contract)
 
-Server 1.13.0 registers 177 tools: the 175 of v34 plus `game_launch`,
+Server 1.13.0 registers 177 tools (180 with v36): the 175 of v34 plus `game_launch`,
 `game_list_instances`, and `game_stop`, minus the game-specific
 `mm_apply_preset`, which was removed afterwards (no bridge change). The
 Editor bridge stays at v34 and does not change. `bridge/FlaxMcpRuntimeBridge.cs` is a second, self-contained bridge
@@ -2558,6 +2680,7 @@ wherever the method exists there.
 | `log.query` | The Editor's `McpLogQuery` / `McpLogQueryResult`, fed by a ring of 2000 entries from `Debug.Logger.LogHandler` (`SendLog`, `SendExceptionLog`). `Category` is always `"engine"` and `PlaySessionId` is always null (a game has no play sessions). The project folder and the instance directory are redacted from messages and stacks |
 | `play.set_time_scale` | `Time.TimeScale`, 0 to 10 (else `VALIDATION_FAILED`); returns `McpRuntimePlayStatus { State, IsPlayMode, IsPaused, FrameCount, TimeScale, PreviousTimeScale }` |
 | `perf.snapshot` | The Editor's `McpPerfSnapshot`; `IsPlayMode` is always true |
+| `perf.gpu_events` | (v36) The Editor's `McpPerfGpuEvents`; see "Bridge v36". `IsPlayMode` is always true, no headless gate |
 | `game.quit` | Answers `McpRuntimeQuitResult { Accepted, Phase = "exiting", Pid }` first. `Engine.RequestExit()` runs from the update loop on a later frame, after the response file is on disk (or after 5 s at the latest) |
 
 ### Differences from the Editor contract

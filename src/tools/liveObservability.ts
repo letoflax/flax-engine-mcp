@@ -52,7 +52,7 @@ export const RuntimeInspectActorSchema = z.object({
 // one instantaneous, read-only sample (null = backing API had no data).
 export const PerfGetSnapshotSchema = z.object({ instance: InstanceParam });
 
-function bridgeError(error: unknown, capture = false, runtime = false): ToolDomainError {
+export function bridgeError(error: unknown, capture = false, runtime = false): ToolDomainError {
   if (!(error instanceof BridgeRpcError)) return new ToolDomainError('INTERNAL_ERROR', error instanceof Error ? error.message : String(error));
   if (runtime) {
     // A cooked game has no play mode: only a capture refusal keeps its own code, everything else maps like any bridge error.
@@ -77,7 +77,7 @@ function bridgeError(error: unknown, capture = false, runtime = false): ToolDoma
   return new ToolDomainError('INTERNAL_ERROR', error.message, { bridgeCode: error.code, details: error.details });
 }
 
-async function call<R>(ctx: ProjectMeta, method: string, params: Row, deadlineMs?: number, instance?: string) {
+export async function call<R>(ctx: ProjectMeta, method: string, params: Row, deadlineMs?: number, instance?: string) {
   if (instance !== undefined) return callGame<R>(ctx, instance, method as BridgeMethod, params, deadlineMs);
   return callEditorBridge<BridgeMethod, Row, R>(ctx, method as BridgeMethod, params, deadlineMs ? { deadlineMs } : undefined);
 }
@@ -89,7 +89,7 @@ function assertNoPlaySession(args: { instance?: string; play_session_id?: string
   }
 }
 
-function val(row: Row, ...keys: string[]): unknown {
+export function val(row: Row, ...keys: string[]): unknown {
   for (const key of keys) if (row[key] !== undefined) return row[key];
   return undefined;
 }
@@ -112,7 +112,7 @@ function redactText(value: string, projectRoot: string): string {
   return text.replaceAll(sentinel, '<project>');
 }
 
-function clean(value: unknown, ctx: ProjectMeta, key = ''): unknown {
+export function clean(value: unknown, ctx: ProjectMeta, key = ''): unknown {
   if (typeof value === 'string') {
     const root = path.resolve(ctx.projectPath);
     let text = value;
@@ -164,7 +164,7 @@ async function fetchPage(ctx: ProjectMeta, args: z.infer<typeof LogGetRecentSche
   return { response, page: normalizePage(response.data, since) };
 }
 
-function ok(data: unknown, warnings: string[] = [], instance?: string): ToolResponse {
+export function ok(data: unknown, warnings: string[] = [], instance?: string): ToolResponse {
   return toolResult(JSON.stringify(data, null, 2), { mode: instance === undefined ? 'editor-connected' : 'game-connected', data, warnings });
 }
 
@@ -317,11 +317,11 @@ export async function handleRuntimeInspectActor(args: z.infer<typeof RuntimeInsp
   } catch (error) { return toolError(error instanceof ToolDomainError ? error : bridgeError(error, false, args.instance !== undefined)); }
 }
 
-function finiteNumber(value: unknown): number | null {
+export function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function shortText(value: unknown): string | null {
+export function shortText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const text = value.trim();
   return text ? text.slice(0, 256) : null;
@@ -329,7 +329,7 @@ function shortText(value: unknown): string | null {
 
 // Allowlisted projection: only the documented McpPerfSnapshot primitives
 // survive, so unknown bridge keys (and any path-shaped extras) never leave.
-function cleanPerfSnapshot(raw: unknown): Row {
+export function cleanPerfSnapshot(raw: unknown): Row {
   const row = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Row : {};
   return {
     fps: finiteNumber(val(row, 'Fps', 'fps')),

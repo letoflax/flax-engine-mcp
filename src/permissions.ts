@@ -27,11 +27,11 @@ const TOOL_FAMILIES = {
     'log_get_runtime_errors', 'get_project_info', 'get_game_settings', 'get_project_summary', 'project_get_packages',
     'list_scripts', 'read_script', 'get_audit_entries', 'get_script_classes',
     'find_references', 'list_networked_scripts', 'search_in_files', 'search_tools', 'get_scene_actors',
-    'get_asset_info', 'list_assets', 'asset_search', 'asset_get', 'asset_dependencies', 'asset_find_references', 'asset_import_status', 'asset_reimport_status', 'asset_get_import_settings', 'prefab_get_instances', 'prefab_get_overrides', 'material_get_parameters', 'animation_list_clips', 'animation_get_graph_parameters', 'animation_validate_bindings', 'graph_inspect', 'read_settings', 'get_input_actions',
+    'get_asset_info', 'list_assets', 'asset_search', 'asset_get', 'asset_get_model_stats', 'asset_dependencies', 'asset_find_references', 'asset_import_status', 'asset_reimport_status', 'asset_get_import_settings', 'prefab_get_instances', 'prefab_get_overrides', 'material_get_parameters', 'animation_list_clips', 'animation_get_graph_parameters', 'animation_validate_bindings', 'graph_inspect', 'read_settings', 'get_input_actions',
     'get_physics_settings', 'get_compiler_errors', 'validate_project', 'operation_get_status', 'build_list_targets', 'build_validate', 'build_get_status', 'build_get_result',
     'physics_validate_colliders', 'physics_raycast', 'physics_get_layer_matrix', 'physics_find_overlaps', 'navigation_get_status', 'navigation_validate_agents', 'navigation_query_path',
     'lighting_get_status', 'lighting_validate', 'terrain_get_summary', 'foliage_get_summary', 'list_docs',
-    'read_doc', 'capture_compare', 'get_latest_log', 'perf_get_snapshot',
+    'read_doc', 'capture_compare', 'get_latest_log', 'perf_get_snapshot', 'perf_get_gpu_events', 'perf_capture',
     'actor_get_properties', 'ui_control_get_properties', 'particle_get_parameters',
     'graph_list_archetypes',
     // Bridge v35: heartbeat scan of running cooked game instances.

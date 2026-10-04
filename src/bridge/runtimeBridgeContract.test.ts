@@ -8,9 +8,9 @@ const editorPath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import
 const smokePath = fileURLToPath(new URL('../../test/flax-api-smoke/RuntimeBridgeCompileSmoke.csproj', import.meta.url));
 
 /** The one place this suite pins the runtime bridge version (the editor bridge has its own, separate version). */
-const RUNTIME_BRIDGE_VERSION = 35;
+const RUNTIME_BRIDGE_VERSION = 36;
 
-/** The methods the v35 contract gives the runtime bridge, in dispatch order. */
+/** The methods the v36 contract gives the runtime bridge, in dispatch order. */
 const CONTRACT_METHODS = [
   'status',
   'runtime.invoke_script_method',
@@ -21,6 +21,7 @@ const CONTRACT_METHODS = [
   'log.query',
   'play.set_time_scale',
   'perf.snapshot',
+  'perf.gpu_events',
   'game.quit',
 ];
 
@@ -101,7 +102,7 @@ test('runtime bridge is guarded to cooked non-release game builds and never comp
   assert.doesNotMatch(editor, /FLAX_GAME/);
 });
 
-test('runtime bridge states version 35 and Kind "game" everywhere', async () => {
+test('runtime bridge states version 36 and Kind "game" everywhere', async () => {
   const source = await readFile(runtimePath, 'utf8');
   const found = (pattern: RegExp) => [...source.matchAll(pattern)].map(match => Number(match[1]));
   assert.deepEqual(found(/MCP-BRIDGE-VERSION:\s*(\d+)/g), [RUNTIME_BRIDGE_VERSION]);
@@ -208,7 +209,7 @@ test('runtime bridge transport matches the editor bridge', async () => {
   assert.match(source, /private void OnUpdate\(\)[\s\S]*?now - _lastHeartbeat >= HeartbeatMs/);
 });
 
-test('runtime bridge dispatch cases equal KnownMethods and the v35 contract, and unknown methods fail with METHOD_NOT_FOUND', async () => {
+test('runtime bridge dispatch cases equal KnownMethods and the v36 contract, and unknown methods fail with METHOD_NOT_FOUND', async () => {
   const source = await readFile(runtimePath, 'utf8');
   const switchStart = source.indexOf('switch (request.method)');
   assert.notEqual(switchStart, -1);
@@ -335,6 +336,17 @@ test('runtime bridge play.set_time_scale and perf.snapshot follow the editor lim
   const perf = source.slice(source.indexOf('private McpPerfSnapshot PerfSnapshot('), source.indexOf('// ---- log ring ----'));
   for (const probe of ['Engine.FramesPerSecond', 'Time.UnscaledDeltaTime', 'GC.GetTotalMemory(false)', 'Level.GetActors(typeof(Actor), false)', 'GPUDevice.Instance', 'ProfilingTools.Stats'])
     assert.ok(perf.includes(probe), `perf.snapshot reads ${probe}`);
+});
+
+test('runtime bridge perf.gpu_events matches the editor method and restores the profiler state', async () => {
+  const source = await readFile(runtimePath, 'utf8');
+  assert.match(source, /case "perf\.gpu_events": result = OnMain\(\(\) => PerfGpuEvents\(JsonSerializer\.Deserialize<McpPerfGpuEventsRequest>\(p\)\), request\.deadlineUnixMs\); break;/);
+  const body = source.slice(source.indexOf('private const int GpuProfilerLeaseMs'), source.indexOf('// ---- log ring ----'));
+  for (const probe of ['ProfilingTools.EventsGPU', 'ProfilingTools.Stats', 'ProfilerGPU.Enabled = _gpuProfilerPrevious', 'GPUDevice.Instance'])
+    assert.ok(body.includes(probe), `perf.gpu_events reads ${probe}`);
+  assert.doesNotMatch(body, /ProfilingTools\.Enabled|ProfilerCPU|EventsEnabled|FlaxEditor|FEditor/);
+  assert.match(source, /private void OnUpdate\(\)[\s\S]*?TickGpuProfiler\(now\);/);
+  assert.match(source, /public override void Deinitialize\(\)[\s\S]*?RestoreGpuProfiler\(\);/);
 });
 
 test('runtime bridge game.quit responds first and calls RequestExit on a later frame from the update loop', async () => {

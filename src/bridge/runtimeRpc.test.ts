@@ -393,7 +393,7 @@ test('viewport_capture with instance accepts only the game viewport and reports 
 
 test('the tools that gained instance keep their families, and the new tools stay strict about instance names', () => {
   for (const name of ['runtime_set_script_value', 'runtime_invoke_script_method', 'runtime_inspect_actor', 'viewport_capture', 'play_set_time_scale']) assert.equal(toolFamily(name), 'runtime', name);
-  for (const name of ['log_get_recent', 'log_search', 'log_get_runtime_errors', 'perf_get_snapshot']) assert.equal(toolFamily(name), 'read', name);
+  for (const name of ['log_get_recent', 'log_search', 'log_get_runtime_errors', 'perf_get_snapshot', 'perf_get_gpu_events', 'perf_capture']) assert.equal(toolFamily(name), 'read', name);
   for (const bad of ['../x', 'a b', '', 'x'.repeat(65)]) {
     assert.equal(LogGetRecentSchema.safeParse({ instance: bad }).success, false, bad);
     assert.equal(PerfGetSnapshotSchema.safeParse({ instance: bad }).success, false, bad);

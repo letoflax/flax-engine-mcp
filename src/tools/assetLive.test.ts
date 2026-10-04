@@ -7,11 +7,13 @@ import { ProjectMeta, createProjectContext } from '../projectContext.js';
 import {
   AssetDependenciesSchema,
   AssetFindReferencesSchema,
+  AssetGetModelStatsSchema,
   AssetGetSchema,
   AssetSearchSchema,
   handleAssetDependencies,
   handleAssetFindReferences,
   handleAssetGet,
+  handleAssetGetModelStats,
   handleAssetSearch,
   handleGetAssetInfoCompatibility,
   handleListAssetsCompatibility,
@@ -168,4 +170,33 @@ test('legacy asset aliases retain offline behavior when bridge v8 is unavailable
   } finally {
     await f.cleanup();
   }
+});
+
+test('asset_get_model_stats sends the asset selector, returns per-LOD counts and needs bridge v36', async () => {
+  assert.equal(AssetGetModelStatsSchema.safeParse({}).success, false);
+  assert.equal(AssetGetModelStatsSchema.safeParse({ asset_id: ASSET_ID, path: 'Content/M.flax' }).success, false);
+  assert.equal(AssetGetModelStatsSchema.safeParse({ path: '../M.flax' }).success, false);
+  const f = await fixture(36);
+  try {
+    const pending = handleAssetGetModelStats(AssetGetModelStatsSchema.parse({ path: 'Content/Hero.flax' }), f.ctx);
+    const request = await nextRequest(f);
+    assert.equal(request.body.method, 'asset.get_model_stats');
+    assert.deepEqual(JSON.parse(String(request.body.paramsJson)), { Path: 'Content/Hero.flax' });
+    await reply(f, request, { ok: true, resultJson: JSON.stringify({
+      AssetId: ASSET_ID, Path: 'Content/Hero.flax', Kind: 'SkinnedModel', LodCount: 2, LoadedLods: 1, MaterialSlotCount: 3, BoneCount: 70,
+      Lods: [{ Lod: 0, Loaded: false, MeshCount: null, Triangles: null, Vertices: null, ScreenSize: null }, { Lod: 1, Loaded: true, MeshCount: 4, Triangles: 12000, Vertices: 8000, ScreenSize: 0.25 }],
+      Warnings: ['1 LOD(s) are still streaming in; their counts are null.'],
+    }) });
+    const result = await pending;
+    const envelope = result.structuredContent as Record<string, any>;
+    assert.equal(envelope.data.result.Lods[1].Triangles, 12000);
+    assert.equal(envelope.data.result.BoneCount, 70);
+    assert.deepEqual(envelope.warnings, ['1 LOD(s) are still streaming in; their counts are null.']);
+  } finally { await f.cleanup(); }
+  const old = await fixture(35);
+  try {
+    const result = await handleAssetGetModelStats(AssetGetModelStatsSchema.parse({ asset_id: ASSET_ID }), old.ctx);
+    assert.equal((result.structuredContent as Record<string, any>).error.code, 'UNSUPPORTED_FLAX_VERSION');
+    assert.deepEqual(await fs.readdir(old.requests), []);
+  } finally { await old.cleanup(); }
 });

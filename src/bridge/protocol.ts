@@ -82,11 +82,13 @@ export type ObservabilityBridgeMethod =
   | 'capture.start'
   | 'capture.status'
   | 'runtime.inspect_actor'
-  | 'perf.snapshot';
+  | 'perf.snapshot'
+  | 'perf.gpu_events';
 
 export type AssetBridgeMethod =
   | 'asset.search'
   | 'asset.get'
+  | 'asset.get_model_stats'
   | 'asset.dependencies'
   | 'asset.find_references'
   | 'asset.import_start'

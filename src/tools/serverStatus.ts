@@ -267,6 +267,8 @@ export async function handleGetServerCapabilities(
     const sceneOpen = supports(25);
     const inputSimulation = supports(26);
     const perfSnapshot = supports(27);
+    const perfGpuEvents = supports(36);
+    const assetModelStats = supports(36);
     const scriptFieldWrite = supports(28);
     const actorPropertyWrite = supports(28);
     const materialParameterWrite = supports(29);
@@ -299,6 +301,8 @@ export async function handleGetServerCapabilities(
         sceneOpen,
         inputSimulation,
         perfSnapshot,
+        perfGpuEvents,
+        assetModelStats,
         runtimeInspection: phase2,
         sceneRevisions: phase3,
         editLeases: phase3,

@@ -10,7 +10,7 @@ const bridgePath = fileURLToPath(new URL('../../bridge/FlaxMcpBridge.cs', import
  * constant only; the per-feature tests below assert their own feature and do
  * not repeat the version.
  */
-const CURRENT_BRIDGE_VERSION = 34;
+const CURRENT_BRIDGE_VERSION = 36;
 
 test('every place the bridge source states its version agrees with the current version', async () => {
   const source = await readFile(bridgePath, 'utf8');
@@ -555,6 +555,40 @@ test('bridge v26 gates play-mode input simulation to managed Flax APIs only', as
   assert.doesNotMatch(keyPress, /Thread\.Sleep\s*\(/);
   assert.doesNotMatch(mouseClick, /Thread\.Sleep\s*\(/);
   assert.doesNotMatch(source, /Process\.Start\s*\(/);
+});
+
+test('bridge v36 perf.gpu_events mirrors the Profiler window GPU tab and restores the profiler state', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /PerfGpuEventsSupported = true/);
+  assert.match(source, /case "perf\.gpu_events": result = OnMain\(\(\) => PerfGpuEvents\(JsonSerializer\.Deserialize<McpPerfGpuEventsRequest>\(p\)\), request\.deadlineUnixMs\); break;/);
+  const body = source.slice(source.indexOf('private const int GpuProfilerLeaseMs'), source.indexOf('// Bridge v26: play-mode input simulation'));
+  assert.ok(body.length > 500);
+  // Same data path as Source/Editor/Windows/Profiler/GPU.cs: ProfilingTools.EventsGPU events plus Stats.DrawGPUTimeMs.
+  for (const probe of ['ProfilingTools.EventsGPU', 'ProfilingTools.Stats', 'DrawGPUTimeMs', 'ProfilerGPU.Enabled', 'e.Stats.DrawCalls', 'e.Depth', 'e.Time', 'FEditor.Instance.IsHeadlessMode', 'GPUDevice.Instance'])
+    assert.ok(body.includes(probe), `perf.gpu_events reads ${probe}`);
+  // Only the GPU flag is flipped (not ProfilingTools.Enabled, which also turns the CPU profiler on), then put back.
+  assert.doesNotMatch(body, /ProfilingTools\.Enabled|ProfilerCPU|EventsEnabled/);
+  assert.match(body, /_gpuProfilerPrevious/);
+  assert.match(body, /ProfilerGPU\.Enabled = _gpuProfilerPrevious/);
+  // A forgotten enable is undone by the lease from OnUpdate, and on deinitialize.
+  assert.match(source, /private void OnUpdate\(\)[\s\S]*?TickGpuProfiler\(now\);/);
+  assert.match(body, /GpuProfilerLeaseMs = 30000/);
+  assert.match(source, /DeinitializeEditor\(\)[\s\S]*?RestoreGpuProfiler\(\);/);
+  // The event array is capped inside the bridge so the 512 KiB response limit holds.
+  assert.doesNotMatch(body, /Thread\.Sleep/);
+  assert.match(body, /GpuEventsHardMax = 2000/);
+  assert.match(body, /Math\.Min\(request\.MaxEvents, GpuEventsHardMax\)/);
+});
+
+test('bridge v36 asset.get_model_stats reads per-LOD counts the way the Editor model window does', async () => {
+  const source = await readFile(bridgePath, 'utf8');
+  assert.match(source, /AssetModelStatsSupported = true/);
+  assert.match(source, /case "asset\.get_model_stats": result = OnMain\(\(\) => AssetGetModelStats\(JsonSerializer\.Deserialize<McpAssetGet>\(p\)\), request\.deadlineUnixMs\); break;/);
+  const body = source.slice(source.indexOf('private McpAssetModelStats AssetGetModelStats('), source.indexOf('private McpAssetDependenciesResult AssetDependencies('));
+  for (const probe of ['LoadActorModelAsset(', 'LoadSkinnedModelFromRecord(', 'model.LODsCount', 'model.LoadedLODs', 'model.MaterialSlotsCount', 'model.GetMeshes(out meshes, i)', 'mesh.TriangleCount', 'mesh.VertexCount', 'lod.ScreenSize', '"FlaxEngine.Model"', '"FlaxEngine.SkinnedModel"'])
+    assert.ok(body.includes(probe), `asset.get_model_stats uses ${probe}`);
+  // Read-only: no save, no import, no setter.
+  assert.doesNotMatch(body, /\.Save\(|Reimport|SetupLODs|lod\.ScreenSize\s*=[^=]/);
 });
 
 test('bridge v27 reads one instantaneous engine performance snapshot without allocation storms', async () => {

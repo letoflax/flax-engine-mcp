@@ -71,6 +71,20 @@ the simulated-peer tests. `animation_set_graph_parameter` and `terrain_paint` re
 stable `UNSUPPORTED_FLAX_VERSION` capabilities, as do `input_key_press` and
 `input_mouse_click` after their gates and validation.
 
+## Bridge v36 status (Linux, Flax 1.12.6912, 2026-10-04): not live-verified
+
+`perf.gpu_events` (Editor and runtime bridge), `asset.get_model_stats`, and the Node tools
+`perf_get_gpu_events`, `perf_capture`, and `asset_get_model_stats` are covered by the
+compile probes (`BridgeCompileSmoke`, `RuntimeBridgeCompileSmoke` in Development and Release, 0 warnings;
+both smoke projects set `AllowUnsafeBlocks` because `ProfilerGPU.Event.Name` is a `char*` and Flax.Build
+passes `/unsafe` to every C# module), by source-contract tests, and by simulated-peer tests
+(`src/tools/perfLive.test.ts`, `src/tools/assetLive.test.ts`, `src/bridge/*Contract.test.ts`).
+No real Editor run is recorded yet: the GPU of the development machine hung twice with two
+Flax processes, so a live run has to wait for a free machine. Still to check live: that
+`ProfilerGPU.Enabled` alone makes `ProfilingTools.EventsGPU` fill in a headed editor (edit and
+play), which depth holds the render passes (`gpu_depth`, default 1), the lease restore, an empty
+result headless, and `asset_get_model_stats` on a Model and a SkinnedModel.
+
 ## Bridge v33 live run (Windows, Flax 1.12.6912, 2026-09-30)
 
 Bridge v33 was exercised against a real Flax 1.12 Editor on a disposable

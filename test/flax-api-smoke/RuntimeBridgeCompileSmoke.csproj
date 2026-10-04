@@ -15,6 +15,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Flax.Build passes /unsafe to every C# module (Builder.DotNet.cs); the bridge reads ProfilerGPU.Event.Name (char*). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RuntimeBuildConfig Condition="'$(RuntimeBuildConfig)' == ''">Development</RuntimeBuildConfig>
     <DefineConstants>FLAX_GAME;BUILD_$([System.String]::Copy('$(RuntimeBuildConfig)').ToUpperInvariant())</DefineConstants>
     <!-- A per-config assembly name keeps the Development and Release outputs apart. -->

@@ -5,6 +5,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Flax.Build passes /unsafe to every C# module (Builder.DotNet.cs); the bridge reads ProfilerGPU.Event.Name (char*). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DefineConstants>FLAX_EDITOR</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(FlaxEngineCSharpPath)' == ''">

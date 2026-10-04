@@ -14,6 +14,9 @@ export const BRIDGE_V34 = 34;
 /** Bridge version a runtime (cooked game) bridge reports; the editor bridge stays at v34. */
 export const RUNTIME_BRIDGE_V35 = 35;
 
+/** Minimum bridge (Editor and runtime) for the v36 perf.gpu_events surface (perf_get_gpu_events, perf_capture include_gpu). */
+export const BRIDGE_V36 = 36;
+
 export const FlaxId = z.string().regex(/^[0-9a-fA-F]{32}$/, 'Expected a 32-character Flax GUID.');
 
 function isContentPath(value: string, allowRoot: boolean): boolean {
