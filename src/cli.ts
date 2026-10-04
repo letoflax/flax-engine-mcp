@@ -28,7 +28,7 @@ const USAGE = [
   '  flax-mcp tools [--json] [--project-path <dir>] [policy flags]',
   '',
   'Policy flags (same as the server): --permission-profile <profile>, --allow-tool <name>, --deny-tool <name>,',
-  '  --emergency-read-only, --asset-import-root <dir>, --flax-editor <FlaxEditor.exe>, --allow-game-launch.',
+  '  --emergency-read-only, --asset-import-root <dir>, --flax-editor <FlaxEditor[.exe] or Flax install folder>, --allow-game-launch.',
   'Without --project-path the current directory is used.',
   'Exit codes: 0 success, 1 tool error, 2 usage error.',
 ].join('\n');
